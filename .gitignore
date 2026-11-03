@@ -1,0 +1,24 @@
+# ESP-IDF Build directory
+build/
+.cache/
+sdkconfig.old
+sdkconfig.ci
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating system files
+Thumbs.db
+.DS_Store
+
