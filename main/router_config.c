@@ -38,7 +38,7 @@ int8_t auto_reboot_tz_offset = 2; // Default UTC+2 (Cairo/Jerusalem)
 bool telegram_enabled = false;
 bool telegram_interactive = false;
 char telegram_token[80] = {0};
-char telegram_chat_id[32] = {0};
+char telegram_chat_id[128] = {0};
 char telegram_thresholds[48] = "50,75,90,95"; // Default multi-thresholds
 uint32_t telegram_alert_flags = 0;
 
@@ -145,13 +145,17 @@ void config_load(void) {
   }
 
   // Telegram Settings
-  uint8_t loaded_tg_en = 0;
+  uint8_t loaded_tg_en = 1;
   if (nvs_get_u8(nvs, "tg_en", &loaded_tg_en) == ESP_OK) {
     telegram_enabled = (loaded_tg_en != 0);
+  } else {
+    telegram_enabled = true;
   }
-  uint8_t loaded_tg_inter = 0;
+  uint8_t loaded_tg_inter = 1;
   if (nvs_get_u8(nvs, "tg_inter", &loaded_tg_inter) == ESP_OK) {
     telegram_interactive = (loaded_tg_inter != 0);
+  } else {
+    telegram_interactive = true;
   }
   len = sizeof(telegram_token);
   nvs_get_str(nvs, "tg_token", telegram_token, &len);
@@ -164,6 +168,12 @@ void config_load(void) {
     strncpy(telegram_thresholds, "50,75,90,95", sizeof(telegram_thresholds) - 1);
   }
   nvs_get_u32(nvs, "tg_flags", &telegram_alert_flags);
+
+  // If token is configured, auto-activate both alerts and interactive bot
+  if (telegram_token[0]) {
+    telegram_enabled = true;
+    telegram_interactive = true;
+  }
 
   nvs_close(nvs);
 }
@@ -238,8 +248,6 @@ void config_save_auto_reboot(bool enabled, uint8_t hour, uint8_t min, int8_t tz)
 }
 
 void config_save_telegram(bool enabled, bool interactive, const char *token, const char *chat_id, const char *thresholds) {
-  telegram_enabled = enabled;
-  telegram_interactive = interactive;
   if (token) {
     strncpy(telegram_token, token, sizeof(telegram_token) - 1);
     telegram_token[sizeof(telegram_token) - 1] = 0;
@@ -252,6 +260,10 @@ void config_save_telegram(bool enabled, bool interactive, const char *token, con
     strncpy(telegram_thresholds, thresholds, sizeof(telegram_thresholds) - 1);
     telegram_thresholds[sizeof(telegram_thresholds) - 1] = 0;
   }
+
+  // Force true if token is set
+  telegram_enabled = (telegram_token[0] != 0) ? true : enabled;
+  telegram_interactive = (telegram_token[0] != 0) ? true : interactive;
 
   nvs_handle_t nvs;
   if (nvs_open("router", NVS_READWRITE, &nvs) == ESP_OK) {

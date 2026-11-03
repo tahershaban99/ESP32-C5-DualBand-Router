@@ -27,6 +27,101 @@
 static int64_t last_update_id = 0;
 static bool telegram_busy = false;
 
+// Persistent Interactive Keyboards
+static const char *TG_ADMIN_KEYBOARD =
+    "{\"keyboard\":[[{\"text\":\"📊 استهلاك الباقة\"},{\"text\":\"👥 الأجهزة المتصلة\"}],"
+    "[{\"text\":\"⚡ فحص السرعة\"},{\"text\":\"⚙️ حالة الراوتر\"}],"
+    "[{\"text\":\"🔄 إعادة التشغيل\"},{\"text\":\"📋 مساعدة\"}]],"
+    "\"resize_keyboard\":true,\"is_persistent\":true}";
+
+static const char *TG_USER_KEYBOARD =
+    "{\"keyboard\":[[{\"text\":\"📊 استهلاك باقتي\"},{\"text\":\"⚡ سرعة اتصالي\"}],"
+    "[{\"text\":\"🌐 فحص اتصالي\"},{\"text\":\"📋 مساعدة\"}]],"
+    "\"resize_keyboard\":true,\"is_persistent\":true}";
+
+static const char *TG_UNLINKED_KEYBOARD =
+    "{\"keyboard\":[[{\"text\":\"🔗 ربط جهازي\"},{\"text\":\"📋 مساعدة\"}]],"
+    "\"resize_keyboard\":true,\"is_persistent\":true}";
+
+// Discovered Telegram Users Catalog
+static tg_discovered_user_t discovered_tg_users[MAX_DISCOVERED_TG_USERS];
+static size_t discovered_tg_users_count = 0;
+
+void telegram_register_discovered_user(const char *chat_id, const char *first_name, const char *username) {
+  if (!chat_id || !chat_id[0]) return;
+  portENTER_CRITICAL(&data_mux);
+  for (size_t i = 0; i < discovered_tg_users_count; ++i) {
+    if (strcmp(discovered_tg_users[i].chat_id, chat_id) == 0) {
+      if (first_name && first_name[0]) {
+        strncpy(discovered_tg_users[i].first_name, first_name, sizeof(discovered_tg_users[i].first_name) - 1);
+        discovered_tg_users[i].first_name[sizeof(discovered_tg_users[i].first_name) - 1] = 0;
+      }
+      if (username && username[0]) {
+        strncpy(discovered_tg_users[i].username, username, sizeof(discovered_tg_users[i].username) - 1);
+        discovered_tg_users[i].username[sizeof(discovered_tg_users[i].username) - 1] = 0;
+      }
+      discovered_tg_users[i].last_seen_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+      portEXIT_CRITICAL(&data_mux);
+      return;
+    }
+  }
+
+  if (discovered_tg_users_count < MAX_DISCOVERED_TG_USERS) {
+    size_t idx = discovered_tg_users_count++;
+    memset(&discovered_tg_users[idx], 0, sizeof(tg_discovered_user_t));
+    strncpy(discovered_tg_users[idx].chat_id, chat_id, sizeof(discovered_tg_users[idx].chat_id) - 1);
+    if (first_name && first_name[0]) {
+      strncpy(discovered_tg_users[idx].first_name, first_name, sizeof(discovered_tg_users[idx].first_name) - 1);
+    }
+    if (username && username[0]) {
+      strncpy(discovered_tg_users[idx].username, username, sizeof(discovered_tg_users[idx].username) - 1);
+    }
+    discovered_tg_users[idx].last_seen_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+  }
+  portEXIT_CRITICAL(&data_mux);
+}
+
+size_t telegram_get_discovered_users(tg_discovered_user_t *out_users, size_t max_count) {
+  if (!out_users || max_count == 0) return 0;
+  size_t cnt = 0;
+  portENTER_CRITICAL(&data_mux);
+  cnt = (discovered_tg_users_count < max_count) ? discovered_tg_users_count : max_count;
+  memcpy(out_users, discovered_tg_users, cnt * sizeof(tg_discovered_user_t));
+  portEXIT_CRITICAL(&data_mux);
+  return cnt;
+}
+
+bool telegram_is_admin(const char *chat_id) {
+  if (!chat_id || !chat_id[0] || !telegram_chat_id[0]) return false;
+  char copy[140];
+  strncpy(copy, telegram_chat_id, sizeof(copy) - 1);
+  copy[sizeof(copy) - 1] = 0;
+  char *saveptr = NULL;
+  char *tok = strtok_r(copy, ", ;", &saveptr);
+  while (tok) {
+    while (*tok == ' ') tok++;
+    if (strcmp(tok, chat_id) == 0) return true;
+    tok = strtok_r(NULL, ", ;", &saveptr);
+  }
+  return false;
+}
+
+void telegram_broadcast_admins(const char *text) {
+  if (!text || !text[0] || !telegram_chat_id[0]) return;
+  char copy[140];
+  strncpy(copy, telegram_chat_id, sizeof(copy) - 1);
+  copy[sizeof(copy) - 1] = 0;
+  char *saveptr = NULL;
+  char *tok = strtok_r(copy, ", ;", &saveptr);
+  while (tok) {
+    while (*tok == ' ') tok++;
+    if (*tok) {
+      telegram_send_message_with_keyboard(tok, text, TG_ADMIN_KEYBOARD);
+    }
+    tok = strtok_r(NULL, ", ;", &saveptr);
+  }
+}
+
 // Helper to escape characters for JSON string value
 static void json_escape(const char *src, char *dst, size_t max_len) {
   if (!src || !dst || max_len == 0) return;
@@ -146,7 +241,7 @@ bool telegram_answer_callback_query(const char *callback_query_id, const char *t
 int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   if (!telegram_token[0] || !telegram_chat_id[0]) {
     if (out_err && max_err > 0) {
-      snprintf(out_err, max_err, "لم يتم إدخال توكن البوت أو معرف المحادثة Chat ID!");
+      snprintf(out_err, max_err, "لم يتم إدخال توكن البوت أو معرف المشرفين Chat ID!");
     }
     return -1;
   }
@@ -160,21 +255,39 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
     return -2;
   }
 
+  // Extract first admin ID
+  char first_admin[48] = {0};
+  char copy[140];
+  strncpy(copy, telegram_chat_id, sizeof(copy) - 1);
+  copy[sizeof(copy) - 1] = 0;
+  char *saveptr = NULL;
+  char *tok = strtok_r(copy, ", ;", &saveptr);
+  if (tok) {
+    while (*tok == ' ') tok++;
+    strncpy(first_admin, tok, sizeof(first_admin) - 1);
+  }
+  if (!first_admin[0]) {
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "معرف المشرف Chat ID غير صالح!");
+    }
+    return -1;
+  }
+
   char url[180];
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage", telegram_token);
 
   const char *msg = "✅ <b>اختبار إشعارات راوتر ESP32 المتقدم</b>\n\n"
                     "الاتصال ببوت التيليجرام يعمل بنجاح وبكفاءة فائقة! 🚀\n"
                     "ستصلك الآن تنبيهات الاستهلاك التلقائية للراوتر ولأجهزتك فور تجاوز الحدود المقررة.\n"
-                    "💡 يمكنك إرسال كلمة <code>استهلاك</code> أو <code>/quota</code> للاستعلام في أي وقت.";
+                    "💡 تم تفعيل لوحة المفاتيح التفاعلية أدناه لتسهيل الاستعلام والتحكم بلمسة واحدة.";
 
   char escaped_text[1800];
   json_escape(msg, escaped_text, sizeof(escaped_text));
 
-  char body[2400];
+  char body[2800];
   snprintf(body, sizeof(body),
-           "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
-           telegram_chat_id, escaped_text);
+           "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
+           first_admin, escaped_text, TG_ADMIN_KEYBOARD);
 
   esp_http_client_config_t config = {
       .url = url,
@@ -584,9 +697,9 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
                      th_val, (unsigned)current_pct, used_gb, total_gb, rem_gb, active_cnt);
           }
 
-          ESP_LOGW(TG_TAG, "Main ISP threshold %u%% triggered! Sending alert to admin %s...", th_val, telegram_chat_id);
+          ESP_LOGW(TG_TAG, "Main ISP threshold %u%% triggered! Sending alert to admins...", th_val);
           telegram_busy = true;
-          telegram_send_message(telegram_chat_id, alert_msg);
+          telegram_broadcast_admins(alert_msg);
           telegram_busy = false;
           return; // Send one alert per tick
         }
@@ -675,18 +788,15 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
           ESP_LOGW(TG_TAG, "Device alert triggered: %s reached %u%%", dev_name, th_val);
           telegram_busy = true;
 
-          // Dispatch to linked owner chat_id
+          // Dispatch to linked owner with TG_USER_KEYBOARD, and CC to all admins
           if (linked_chat[0]) {
-            telegram_send_message(linked_chat, alert_msg);
-            // Optionally CC admin if different
-            if (telegram_chat_id[0] && strcmp(linked_chat, telegram_chat_id) != 0) {
-              char cc_msg[600];
-              snprintf(cc_msg, sizeof(cc_msg), "📢 [نسخة للمدير]\n%s", alert_msg);
-              telegram_send_message(telegram_chat_id, cc_msg);
-            }
-          } else if (telegram_chat_id[0]) {
-            // No personal chat_id: alert admin
-            telegram_send_message(telegram_chat_id, alert_msg);
+            telegram_send_message_with_keyboard(linked_chat, alert_msg, TG_USER_KEYBOARD);
+            char cc_msg[650];
+            snprintf(cc_msg, sizeof(cc_msg), "📢 <b>[تنبيه إداري: استهلاك باقة جهاز (%u%%)]</b>\n\n%s", th_val, alert_msg);
+            telegram_broadcast_admins(cc_msg);
+          } else {
+            // No personal chat_id: alert all admins
+            telegram_broadcast_admins(alert_msg);
           }
 
           telegram_busy = false;
@@ -734,11 +844,11 @@ static void telegram_task(void *pvParameters) {
                  "🚀 راوتر ESP32 يعمل الآن بأقصى سرعة واستقرار.",
                  (unsigned long)free_ram_kb,
                  auto_reboot_hour, auto_reboot_min, auto_reboot_tz_offset);
-        telegram_send_message(telegram_chat_id, reboot_msg);
+        telegram_broadcast_admins(reboot_msg);
       }
     }
 
-    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK || !telegram_enabled || !telegram_interactive || !telegram_token[0]) {
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK || !telegram_token[0]) {
       vTaskDelay(pdMS_TO_TICKS(3000));
       continue;
     }
@@ -754,7 +864,7 @@ static void telegram_task(void *pvParameters) {
         .timeout_ms = 12000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .skip_cert_common_name_check = true,
-        .buffer_size = 1024,
+        .buffer_size = 2048,
         .buffer_size_tx = 512,
     };
 
@@ -767,10 +877,15 @@ static void telegram_task(void *pvParameters) {
     esp_err_t err = esp_http_client_open(client, 0);
     if (err == ESP_OK) {
       esp_http_client_fetch_headers(client);
-      int read_len = esp_http_client_read(client, rx_buffer, 4095);
-      if (read_len > 0) {
-        rx_buffer[read_len] = 0;
+      int total_read = 0;
+      while (total_read < 4090) {
+        int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
+        if (r <= 0) break;
+        total_read += r;
+      }
+      rx_buffer[total_read] = 0;
 
+      if (total_read > 0) {
         char *ptr = rx_buffer;
         while ((ptr = strstr(ptr, "\"update_id\":")) != NULL) {
           ptr += 12;
@@ -856,7 +971,7 @@ static void telegram_task(void *pvParameters) {
                 char sum_rep[1000], kb_rep[600];
                 format_multi_device_summary(linked_indices, linked_count, sum_rep, sizeof(sum_rep), kb_rep, sizeof(kb_rep));
                 telegram_send_message_with_keyboard(cb_sender, sum_rep, kb_rep);
-              } else if (strcmp(cb_data, "adm_devices") == 0 && strcmp(cb_sender, telegram_chat_id) == 0) {
+              } else if (strcmp(cb_data, "adm_devices") == 0 && telegram_is_admin(cb_sender)) {
                 // Forward to devices summary
                 char reply[1200] = "👥 <b>الأجهزة النشطة حالياً:</b>\n\n";
                 uint16_t count = 0;
@@ -884,7 +999,7 @@ static void telegram_task(void *pvParameters) {
                   }
                 }
                 portEXIT_CRITICAL(&data_mux);
-                telegram_send_message(cb_sender, reply);
+                telegram_send_message_with_keyboard(cb_sender, reply, TG_ADMIN_KEYBOARD);
               }
             }
           }
@@ -910,6 +1025,33 @@ static void telegram_task(void *pvParameters) {
               }
             }
 
+            // Extract sender's first_name and username from "from":{...}
+            char sender_first_name[48] = {0};
+            char sender_username[32] = {0};
+            char *from_ptr = strstr(msg_ptr, "\"from\":");
+            if (from_ptr && (!next_up || from_ptr < next_up)) {
+              char *fn_ptr = strstr(from_ptr, "\"first_name\":");
+              if (fn_ptr && fn_ptr < from_ptr + 250) {
+                fn_ptr += 13;
+                while (*fn_ptr == ' ' || *fn_ptr == '"') fn_ptr++;
+                size_t fn_i = 0;
+                while (*fn_ptr && *fn_ptr != '"' && fn_i < sizeof(sender_first_name) - 1) {
+                  sender_first_name[fn_i++] = *fn_ptr++;
+                }
+                sender_first_name[fn_i] = '\0';
+              }
+              char *un_ptr = strstr(from_ptr, "\"username\":");
+              if (un_ptr && un_ptr < from_ptr + 250) {
+                un_ptr += 11;
+                while (*un_ptr == ' ' || *un_ptr == '"') un_ptr++;
+                size_t un_i = 0;
+                while (*un_ptr && *un_ptr != '"' && un_i < sizeof(sender_username) - 1) {
+                  sender_username[un_i++] = *un_ptr++;
+                }
+                sender_username[un_i] = '\0';
+              }
+            }
+
             // Locate message text
             char *text_ptr = strstr(msg_ptr, "\"text\":");
             char cmd_text[128] = {0};
@@ -927,6 +1069,9 @@ static void telegram_task(void *pvParameters) {
               continue;
             }
 
+            // Auto-register discovered user
+            telegram_register_discovered_user(sender_chat_id, sender_first_name, sender_username);
+
             // Check if sender is admin or first-time setup
             bool is_admin = false;
             if (telegram_chat_id[0] == 0) {
@@ -934,8 +1079,8 @@ static void telegram_task(void *pvParameters) {
               snprintf(telegram_chat_id, sizeof(telegram_chat_id), "%s", sender_chat_id);
               config_save_telegram(telegram_enabled, telegram_interactive, telegram_token, telegram_chat_id, telegram_thresholds);
               is_admin = true;
-            } else if (strcmp(sender_chat_id, telegram_chat_id) == 0) {
-              is_admin = true;
+            } else {
+              is_admin = telegram_is_admin(sender_chat_id);
             }
 
             // Check for devices linked to this sender's chat_id
@@ -952,8 +1097,96 @@ static void telegram_task(void *pvParameters) {
             }
             portEXIT_CRITICAL(&data_mux);
 
-            ESP_LOGI(TG_TAG, "Processing message '%s' from %s (is_admin=%d, linked_devices=%u)",
-                     cmd_text, sender_chat_id, is_admin, (unsigned)linked_count);
+            ESP_LOGI(TG_TAG, "Processing message '%s' from %s (name='%s', is_admin=%d, linked_devices=%u)",
+                     cmd_text, sender_chat_id, sender_first_name, is_admin, (unsigned)linked_count);
+
+            // -----------------------------------------------------------------
+            // Dynamic IP Self-Linking Check (e.g. /link 192.168.4.2 or 192.168.4.2)
+            // -----------------------------------------------------------------
+            char potential_ip[128] = {0};
+            bool has_link_cmd = false;
+            if (strncmp(cmd_text, "/link", 5) == 0) {
+              has_link_cmd = true;
+              const char *p = cmd_text + 5;
+              while (*p == ' ') p++;
+              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
+            } else if (strncmp(cmd_text, "ربط", 6) == 0 || strncmp(cmd_text, "ربط", 3) == 0) {
+              has_link_cmd = true;
+              const char *p = strstr(cmd_text, "ربط") + strlen("ربط");
+              while (*p == ' ') p++;
+              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
+            } else if (strstr(cmd_text, "🔗 ربط جهازي") != NULL) {
+              char ask_ip[500];
+              snprintf(ask_ip, sizeof(ask_ip),
+                       "🔗 <b>ربط جهازك بالبوت لمتابعة الاستهلاك:</b>\n\n"
+                       "أرسل عنوان الـ IP لجهازك المتصل حالياً بالراوتر، مثل:\n"
+                       "<code>192.168.4.2</code> أو <code>/link 192.168.4.2</code>\n\n"
+                       "💡 تجد عنوان IP في تفاصيل شبكة الواي فاي بهاتفك أو كمبيوترك.\n"
+                       "🆔 معرفك: <code>%s</code>",
+                       sender_chat_id);
+              telegram_send_message_with_keyboard(sender_chat_id, ask_ip, TG_UNLINKED_KEYBOARD);
+              continue;
+            } else if (!is_admin) {
+              // If not admin, check if the whole text is an IP address
+              snprintf(potential_ip, sizeof(potential_ip), "%s", cmd_text);
+            }
+
+            char *tip = potential_ip;
+            while (*tip == ' ') tip++;
+            char *tend = tip + strlen(tip) - 1;
+            while (tend > tip && (*tend == ' ' || *tend == '\r' || *tend == '\n')) *tend-- = '\0';
+
+            ip4_addr_t check_ip;
+            if (tip[0] && ip4addr_aton(tip, &check_ip)) {
+              uint8_t t_mac[6] = {0};
+              char t_name[DEVICE_NAME_BYTES] = {0};
+              uint32_t t_ip = 0;
+              if (find_device_by_target(tip, t_mac, t_name, sizeof(t_name), &t_ip)) {
+                meter_set_device_telegram(t_mac, sender_chat_id);
+
+                char confirm_msg[600];
+                snprintf(confirm_msg, sizeof(confirm_msg),
+                         "🎉 <b>تم ربط جهازك بنجاح!</b> ✅\n\n"
+                         "📱 <b>الجهاز:</b> %s\n"
+                         "🌐 <b>عنوان IP:</b> %s\n"
+                         "🆔 <b>معرف التيليجرام:</b> <code>%s</code>\n\n"
+                         "يمكنك الآن متابعة استهلاك باقتك وسرعة اتصالك وفحص حالتك مباشرة من الأزرار بالأسفل! 🚀",
+                         t_name, tip, sender_chat_id);
+                telegram_send_message_with_keyboard(sender_chat_id, confirm_msg, TG_USER_KEYBOARD);
+
+                // Notify all administrators
+                char adm_notif[450];
+                snprintf(adm_notif, sizeof(adm_notif),
+                         "🔔 <b>تم ربط جهاز جديد عبر التيليجرام:</b>\n\n"
+                         "👤 <b>المستخدم:</b> %s%s%s\n"
+                         "📱 <b>الجهاز:</b> %s (<code>%s</code>)\n"
+                         "🆔 <b>Chat ID:</b> <code>%s</code>",
+                         sender_first_name[0] ? sender_first_name : "مستخدم",
+                         sender_username[0] ? " (@" : "",
+                         sender_username[0] ? sender_username : (sender_username[0] ? ")" : ""),
+                         t_name, tip, sender_chat_id);
+                telegram_broadcast_admins(adm_notif);
+                continue;
+              } else {
+                char not_found[450];
+                snprintf(not_found, sizeof(not_found),
+                         "⚠️ <b>لم يتم العثور على جهاز متصل بعنوان IP:</b> <code>%s</code>\n\n"
+                         "تأكد أن جهازك متصل بشبكة واي فاي الراوتر حالياً ومسجل بالشبكة، ثم أعد المحاولة.",
+                         tip);
+                telegram_send_message_with_keyboard(sender_chat_id, not_found,
+                                                    linked_count > 0 ? TG_USER_KEYBOARD : TG_UNLINKED_KEYBOARD);
+                continue;
+              }
+            } else if (has_link_cmd) {
+              char inv_ip[450];
+              snprintf(inv_ip, sizeof(inv_ip),
+                       "⚠️ <b>عنوان IP غير صالح:</b> '%.32s'\n\n"
+                       "يرجى كتابة عنوان IP صحيح، مثال:\n"
+                       "<code>/link 192.168.4.2</code>", tip);
+              telegram_send_message_with_keyboard(sender_chat_id, inv_ip,
+                                                  linked_count > 0 ? TG_USER_KEYBOARD : TG_UNLINKED_KEYBOARD);
+              continue;
+            }
 
             // =================================================================
             // CASE 1: UNRECOGNIZED SENDER (Not Admin & No Linked Devices)
@@ -965,38 +1198,125 @@ static void telegram_task(void *pvParameters) {
                        "🆔 <b>معرف المحادثة الخاص بك (Chat ID):</b>\n"
                        "<code>%s</code>\n\n"
                        "⚠️ <i>هذا الحساب غير مربوط بأي جهاز في الشبكة حالياً.</i>\n\n"
-                       "يرجى نسخ هذا المعرف وتزويد مدير الشبكة به لربطه بأجهزتك لتتمكن من متابعة استهلاكك وسرعاتك وباقاتك مباشرة.",
+                       "🔗 <b>لربط جهازك تلقائياً:</b>\n"
+                       "أرسل عنوان IP لجهازك الآن (مثال: <code>192.168.4.2</code>) أو اضغط <b>ربط جهازي</b> بالأسفل، أو زود مدير الشبكة بمعرفك لربطه من لوحة التحكم.",
                        sender_chat_id);
-              telegram_send_message(sender_chat_id, polite_reply);
+              telegram_send_message_with_keyboard(sender_chat_id, polite_reply, TG_UNLINKED_KEYBOARD);
               continue;
             }
 
             // =================================================================
-            // CASE 2: SINGLE LINKED DEVICE OWNER (Not Admin)
+            // CASE 2: REGULAR LINKED USER (Not Admin)
             // =================================================================
-            if (!is_admin && linked_count == 1) {
-              char dev_rep[950];
-              format_single_device_report(linked_indices[0], dev_rep, sizeof(dev_rep));
-              telegram_send_message(sender_chat_id, dev_rep);
+            if (!is_admin && linked_count > 0) {
+              // 1. Quota
+              if (strstr(cmd_text, "/quota") || strstr(cmd_text, "استهلاك") || strstr(cmd_text, "باقة") || strstr(cmd_text, "كوتا")) {
+                if (linked_count == 1) {
+                  char dev_rep[950];
+                  format_single_device_report(linked_indices[0], dev_rep, sizeof(dev_rep));
+                  telegram_send_message_with_keyboard(sender_chat_id, dev_rep, TG_USER_KEYBOARD);
+                } else {
+                  char sum_rep[1000], kb_rep[600];
+                  format_multi_device_summary(linked_indices, linked_count, sum_rep, sizeof(sum_rep), kb_rep, sizeof(kb_rep));
+                  telegram_send_message_with_keyboard(sender_chat_id, sum_rep, kb_rep);
+                }
+              }
+              // 2. Speed
+              else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة")) {
+                char spd_rep[750] = "⚡ <b>تقرير سرعة أجهزتك اللحظية:</b>\n\n";
+                portENTER_CRITICAL(&data_mux);
+                for (size_t li = 0; li < linked_count; ++li) {
+                  int p_idx = linked_indices[li];
+                  uint8_t mac[6];
+                  memcpy(mac, device_policies[p_idx].mac, 6);
+                  char d_name[DEVICE_NAME_BYTES] = "جهاز";
+                  int n = meter_find_name_locked(mac, false);
+                  if (n >= 0 && device_names[n].name[0]) {
+                    strncpy(d_name, device_names[n].name, sizeof(d_name) - 1);
+                  }
+                  int u = meter_find_usage_locked(mac, false);
+                  uint32_t c_down = (u >= 0) ? device_live_speeds[u].cur_down_bps : 0;
+                  uint32_t c_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
+                  int s = meter_find_speed_locked(mac, false);
+                  uint32_t cap_down = (s >= 0) ? device_speeds[s].download_bps : 0;
+                  uint32_t cap_up = (s >= 0) ? device_speeds[s].upload_bps : 0;
+
+                  char lbuf[180];
+                  if (cap_down > 0 || cap_up > 0) {
+                    snprintf(lbuf, sizeof(lbuf),
+                             "• <b>%s</b>:\n   ⬇️ %.2f Mbps (حد: %.1f M) | ⬆️ %.2f Mbps (حد: %.1f M)\n",
+                             d_name, (double)c_down / 1000000.0, (double)cap_down / 1000000.0,
+                             (double)c_up / 1000000.0, (double)cap_up / 1000000.0);
+                  } else {
+                    snprintf(lbuf, sizeof(lbuf),
+                             "• <b>%s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة مفتوحة 🚀)\n",
+                             d_name, (double)c_down / 1000000.0, (double)c_up / 1000000.0);
+                  }
+                  if (strlen(spd_rep) + strlen(lbuf) < sizeof(spd_rep) - 20) strcat(spd_rep, lbuf);
+                }
+                portEXIT_CRITICAL(&data_mux);
+                telegram_send_message_with_keyboard(sender_chat_id, spd_rep, TG_USER_KEYBOARD);
+              }
+              // 3. Status
+              else if (strstr(cmd_text, "/status") || strstr(cmd_text, "اتصالي") || strstr(cmd_text, "حالة")) {
+                char st_rep[750] = "🌐 <b>فحص حالة اتصال أجهزتك:</b>\n\n";
+                portENTER_CRITICAL(&data_mux);
+                for (size_t li = 0; li < linked_count; ++li) {
+                  int p_idx = linked_indices[li];
+                  uint8_t mac[6];
+                  memcpy(mac, device_policies[p_idx].mac, 6);
+                  char d_name[DEVICE_NAME_BYTES] = "جهاز";
+                  int n = meter_find_name_locked(mac, false);
+                  if (n >= 0 && device_names[n].name[0]) {
+                    strncpy(d_name, device_names[n].name, sizeof(d_name) - 1);
+                  }
+                  bool is_conn = false;
+                  uint32_t d_ip = 0;
+                  for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+                    if (memcmp(active_clients[k].mac, mac, 6) == 0 && active_clients[k].aid != 0) {
+                      is_conn = true;
+                      d_ip = active_clients[k].ip;
+                      break;
+                    }
+                  }
+                  bool blk = device_policies[p_idx].blocked;
+
+                  char lbuf[180];
+                  ip4_addr_t dip = {.addr = d_ip};
+                  if (is_conn) {
+                    snprintf(lbuf, sizeof(lbuf),
+                             "• <b>%s</b>: 🟢 متصل بالواي فاي (<code>%d.%d.%d.%d</code>) %s\n",
+                             d_name, IP2STR(&dip), blk ? "🔴 [محظور من النت]" : "✅ [الإنترنت نشط]");
+                  } else {
+                    snprintf(lbuf, sizeof(lbuf),
+                             "• <b>%s</b>: ⚪ غير متصل بالشبكة حالياً\n", d_name);
+                  }
+                  if (strlen(st_rep) + strlen(lbuf) < sizeof(st_rep) - 20) strcat(st_rep, lbuf);
+                }
+                portEXIT_CRITICAL(&data_mux);
+                telegram_send_message_with_keyboard(sender_chat_id, st_rep, TG_USER_KEYBOARD);
+              }
+              // 4. User Help / Default
+              else {
+                char u_help[600];
+                snprintf(u_help, sizeof(u_help),
+                         "👋 <b>مرحباً بك!</b> أجهزتك مربوطة بهذا الحساب بنجاح 🌐\n\n"
+                         "استخدم الأزرار التفاعلية بالأسفل لمتابعة حسابك:\n"
+                         "📊 <b>استهلاك باقتي</b>: متابعة كمية الجيجابايت المستهلكة والمتبقية\n"
+                         "⚡ <b>سرعة اتصالي</b>: فحص سرعة التحميل والرفع اللحظية\n"
+                         "🌐 <b>فحص اتصالي</b>: التحقق من تواجد جهازك على الشبكة\n\n"
+                         "💡 <i>لربط جهاز إضافي، أرسل عنوان الـ IP الخاص به في أي وقت.</i>");
+                telegram_send_message_with_keyboard(sender_chat_id, u_help, TG_USER_KEYBOARD);
+              }
               continue;
             }
 
             // =================================================================
-            // CASE 3: MULTIPLE LINKED DEVICES OWNER (Not Admin)
-            // =================================================================
-            if (!is_admin && linked_count >= 2) {
-              char sum_rep[1000], kb_rep[600];
-              format_multi_device_summary(linked_indices, linked_count, sum_rep, sizeof(sum_rep), kb_rep, sizeof(kb_rep));
-              telegram_send_message_with_keyboard(sender_chat_id, sum_rep, kb_rep);
-              continue;
-            }
-
-            // =================================================================
-            // CASE 4: ADMINISTRATOR (Full Router Management Capabilities)
+            // CASE 3: ADMINISTRATOR (Full Router Management Capabilities)
             // =================================================================
             if (is_admin) {
-              // 1. Command: /quota, استهلاك, باقي, كوتا
-              if (strstr(cmd_text, "/quota") || strstr(cmd_text, "استهلاك") || strstr(cmd_text, "باقي") || strstr(cmd_text, "كوتا")) {
+              // 1. Command: /quota, استهلاك, باقي, كوتا, باقة
+              if (strstr(cmd_text, "/quota") || strstr(cmd_text, "استهلاك") || strstr(cmd_text, "باقي") || strstr(cmd_text, "كوتا") || strstr(cmd_text, "باقة")) {
                 uint64_t total_up = 0, total_down = 0;
                 uint32_t live_up = 0, live_down = 0;
                 uint16_t active_cnt = 0;
@@ -1091,8 +1411,7 @@ static void telegram_task(void *pvParameters) {
                 }
                 portEXIT_CRITICAL(&data_mux);
 
-                const char *adm_kb = "{\"inline_keyboard\":[[{\"text\":\"👥 الأجهزة المتصلة\",\"callback_data\":\"adm_devices\"},{\"text\":\"🚀 قياس السرعة\",\"callback_data\":\"/speed\"}],[{\"text\":\"⚙️ حالة النظام\",\"callback_data\":\"/status\"}]]}";
-                telegram_send_message_with_keyboard(sender_chat_id, reply, adm_kb);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 2. Command: /devices, أجهزة, المتصلين
               else if (strstr(cmd_text, "/devices") || strstr(cmd_text, "أجهزة") || strstr(cmd_text, "المتصلين")) {
@@ -1171,7 +1490,7 @@ static void telegram_task(void *pvParameters) {
                            "💡 للحظر: <code>/block [IP]</code> | لفك الحظر: <code>/unblock [IP]</code>", count);
                   strcat(reply, summary);
                 }
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 3. Command: /all, الكل
               else if (strstr(cmd_text, "/all") || strstr(cmd_text, "الكل")) {
@@ -1205,14 +1524,14 @@ static void telegram_task(void *pvParameters) {
                   }
                 }
                 portEXIT_CRITICAL(&data_mux);
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 4. Command: /block, حظر
               else if ((strstr(cmd_text, "/block") && !strstr(cmd_text, "/unblock")) ||
                        (strstr(cmd_text, "حظر") && !strstr(cmd_text, "فك"))) {
                 char *arg = NULL;
                 if (strncmp(cmd_text, "/block", 6) == 0) arg = cmd_text + 6;
-                else if (strncmp(cmd_text, "حظر", 6) == 0 || strncmp(cmd_text, "حظر", 3) == 0) {
+                else if (strstr(cmd_text, "حظر")) {
                   arg = strstr(cmd_text, "حظر") + strlen("حظر");
                 } else {
                   arg = cmd_text;
@@ -1233,7 +1552,7 @@ static void telegram_task(void *pvParameters) {
                            "🌐 <b>عنوان IP:</b> %d.%d.%d.%d\n"
                            "⚡ تم قطع وصول الإنترنت فوراً عبر lwIP NAPT hook.",
                            target_name, IP2STR(&tip));
-                  telegram_send_message(sender_chat_id, reply);
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 } else {
                   char reply[512];
                   snprintf(reply, sizeof(reply),
@@ -1241,15 +1560,16 @@ static void telegram_task(void *pvParameters) {
                            "يرجى تحديد عنوان IP صحيح للجهاز، مثال:\n"
                            "<code>/block 192.168.4.2</code>\n"
                            "أو كتابة <code>/devices</code> لعرض الأجهزة المتصلة.", arg);
-                  telegram_send_message(sender_chat_id, reply);
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 }
               }
               // 5. Command: /unblock, فك_حظر, فك حظر
-              else if (strstr(cmd_text, "/unblock") || strstr(cmd_text, "فك_حظر") || strstr(cmd_text, "فك حظر")) {
+              else if (strstr(cmd_text, "/unblock") || strstr(cmd_text, "فك_حظر") || strstr(cmd_text, "فك حظر") || strstr(cmd_text, "فك")) {
                 char *arg = NULL;
                 if (strncmp(cmd_text, "/unblock", 8) == 0) arg = cmd_text + 8;
                 else if (strstr(cmd_text, "فك_حظر")) arg = strstr(cmd_text, "فك_حظر") + strlen("فك_حظر");
                 else if (strstr(cmd_text, "فك حظر")) arg = strstr(cmd_text, "فك حظر") + strlen("فك حظر");
+                else if (strstr(cmd_text, "فك")) arg = strstr(cmd_text, "فك") + strlen("فك");
                 else arg = cmd_text;
                 while (*arg == ' ') arg++;
 
@@ -1267,14 +1587,14 @@ static void telegram_task(void *pvParameters) {
                            "🌐 <b>عنوان IP:</b> %d.%d.%d.%d\n"
                            "⚡ تمت استعادة اتصال الإنترنت للجهاز بالكامل.",
                            target_name, IP2STR(&tip));
-                  telegram_send_message(sender_chat_id, reply);
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 } else {
                   char reply[512];
                   snprintf(reply, sizeof(reply),
                            "⚠️ <b>تعذر العثور على الجهاز المطلوب: '%.32s'</b>\n\n"
                            "يرجى تحديد عنوان IP صحيح للجهاز، مثال:\n"
                            "<code>/unblock 192.168.4.2</code>", arg);
-                  telegram_send_message(sender_chat_id, reply);
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 }
               }
               // 6. Command: /speed, سرعة
@@ -1300,7 +1620,7 @@ static void telegram_task(void *pvParameters) {
                          "📶 <b>قوة الإشارة:</b> %d dBm (%s)",
                          (double)ldown / 1000000.0, (double)lup / 1000000.0,
                          active_cnt, ap_info.rssi, ap_info.ssid);
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 7. Command: /ota, تحديث
               else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "تحديث")) {
@@ -1317,11 +1637,11 @@ static void telegram_task(void *pvParameters) {
                          "💡 <i>يمكنك رفع ملف .bin أو فحص التحديثات السحابية من لوحة تحكم الويب.</i>",
                          o_inf.current_version, o_inf.build_timestamp,
                          o_inf.running_partition, o_inf.target_partition);
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
-              // 8. Command: /reboot, ريستارت
-              else if (strstr(cmd_text, "/reboot") || strstr(cmd_text, "ريستارت")) {
-                telegram_send_message(sender_chat_id, "🔄 <b>جاري حفظ العدادات وإعادة تشغيل الراوتر الآن بأمان...</b>");
+              // 8. Command: /reboot, ريستارت, إعادة التشغيل
+              else if (strstr(cmd_text, "/reboot") || strstr(cmd_text, "ريستارت") || strstr(cmd_text, "إعادة التشغيل")) {
+                telegram_send_message_with_keyboard(sender_chat_id, "🔄 <b>جاري حفظ العدادات وإعادة تشغيل الراوتر الآن بأمان...</b>", TG_ADMIN_KEYBOARD);
                 vTaskDelay(pdMS_TO_TICKS(1500));
                 meter_save_usage();
                 vTaskDelay(pdMS_TO_TICKS(500));
@@ -1357,7 +1677,7 @@ static void telegram_task(void *pvParameters) {
                          (unsigned long)free_heap_kb, (unsigned)esp_cpu_freq_mhz,
                          ap_info.ssid, ap_info.rssi, active_cnt,
                          (double)total_cur_down_bps / 1000000.0, (double)total_cur_up_bps / 1000000.0);
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 10. Command: /help, /start, مساعدة
               else {
@@ -1374,7 +1694,7 @@ static void telegram_task(void *pvParameters) {
                          "🔹 <code>/status</code> أو <b>حالة</b> : تقرير حالة النظام والمعالج والذاكرة\n"
                          "🔹 <code>/ota</code> أو <b>تحديث</b> : إصدار النظام وقسم الإقلاع\n"
                          "🔹 <code>/reboot</code> أو <b>ريستارت</b> : إعادة تشغيل الراوتر بأمان");
-                telegram_send_message(sender_chat_id, reply);
+                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
             }
           }
@@ -1389,7 +1709,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 6.5KB stack
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 6656, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with 10KB stack
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 10240, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }

@@ -1269,6 +1269,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
     <span style="font-size:0.78rem;color:var(--muted)">تحديث لحظي للسرعة ومعدل النقل</span>
   </div>
 
+  <datalist id="tg_users_datalist"></datalist>
+
   <div class="cards-view" id="cards-container"></div>
   <div class="table-view glass" id="table-container" style="display:none">
     <table>
@@ -1482,8 +1484,9 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         </div>
 
         <div class="form-group">
-          <label style="font-weight:700;font-size:0.88rem;color:var(--text);margin-bottom:4px;display:block">معرف المحادثة (Chat ID):</label>
-          <input id="cfg_tg_chat_id" type="text" placeholder="987654321" style="direction:ltr;text-align:left">
+          <label style="font-weight:700;font-size:0.88rem;color:var(--text);margin-bottom:4px;display:block">معرف المشرفين (Admin Chat IDs):</label>
+          <input id="cfg_tg_chat_id" type="text" placeholder="12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" style="direction:ltr;text-align:left">
+          <small style="font-size:0.75rem;color:var(--muted);display:block;margin-top:2px">يمكنك إضافة أكثر من مشرف مفصولاً بفاصلة (مثال: <code>12345678, 98765432</code>) لاستقبال التنبيهات والتحكم بالكامل.</small>
         </div>
 
         <div class="form-group">
@@ -1497,11 +1500,24 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         </div>
       </form>
 
+      <!-- Discovered Telegram Users Card -->
+      <div class="glass" style="margin-top:12px;padding:14px;border-radius:12px;background:rgba(0,0,0,0.25);border:1px solid rgba(59,130,246,0.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+          <b style="color:var(--blue);font-size:0.88rem">👥 المستخدمين المكتشفين في التيليجرام:</b>
+          <span style="font-size:0.75rem;color:var(--muted)">يتم التقاط المعرفات تلقائياً فور مراسلة البوت</span>
+        </div>
+        <div id="tg_discovered_users_list">
+          <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:8px">لم يدخل أي مستخدم على البوت بعد. عندما يرسل أي شخص رسالة للبوت ستظهر هويته هنا لتعيينه كمشرف أو لربط جهازه بسهولة.</div>
+        </div>
+      </div>
+
       <div class="glass" style="margin-top:10px;padding:14px;border-radius:12px;background:rgba(0,0,0,0.25);border:1px solid rgba(244,63,94,0.25)">
         <b style="color:var(--accent);display:block;margin-bottom:8px;font-size:0.88rem">📌 ميزات التيليجرام المتقدمة المدمجة:</b>
         <ol style="margin:0;padding-right:20px;font-size:0.82rem;color:var(--muted);line-height:1.7">
-          <li>تنبيهات تلقائية (Push Alerts) للباقة العامة وباقات الأجهزة فور تجاوز الحدود المقررة بدون تكرار.</li>
-          <li>أوامر تفاعلية فورية (Interactive Pull) عبر Long Polling المشفر على النواة 1.</li>
+          <li>تنبيهات تلقائية (Push Alerts) للباقة العامة وباقات الأجهزة فور تجاوز الحدود المقررة بدون تكرار إلى المشرفين ومالك الجهاز.</li>
+          <li>لوحة مفاتيح تفاعلية فورية مدمجة بأزرار سريعة للاستعلام والتحكم المباشر.</li>
+          <li>اكتشاف تلقائي لجميع المستخدمين الذين يراسلون البوت وإمكانية تعيينهم كمشرفين بضغطة زر.</li>
+          <li>ربط الأجهزة الذكي: يمكن للمستخدم إرسال الـ IP في التيليجرام للربط التلقائي، أو اختياره مباشرة من القائمة المنسدلة في لوحة التحكم.</li>
           <li>حظر وفك حظر الأجهزة عن بُعد عبر أمر <code>/block [IP]</code> و <code>/unblock [IP]</code>.</li>
         </ol>
       </div>
@@ -1861,8 +1877,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
       </div>
 
       <div class="form-group">
-        <label>معرّف مدير الشبكة (Admin Chat ID):</label>
-        <input id="cfg_tg_chat_id_st" type="text" placeholder="مثال: 987654321" style="direction:ltr;text-align:left">
+        <label>معرّف مدير الشبكة (Admin Chat ID - مفصول بفاصلة لأكثر من مشرف):</label>
+        <input id="cfg_tg_chat_id_st" type="text" placeholder="مثال: 12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" style="direction:ltr;text-align:left">
       </div>
 
       <div class="form-group">
@@ -2809,6 +2825,9 @@ async function refreshData() {
     }
 
     renderDevices(data.devices || []);
+    if (data.tg_users) {
+      updateDiscoveredTgUsers(data.tg_users);
+    }
   } catch (err) {}
 }
 
@@ -3056,10 +3075,10 @@ function renderDevices(devices) {
                    style="width:55px;padding:3px 5px;color:var(--accent);text-align:center;${isGaming ? 'border-color:var(--amber)' : ''}" title="${isGaming ? 'الحد مضبوط على ' + upLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة رفع Mbps'}">
           </td>
           <td>
-            <input type="text" value="${tgChat}" id="tbl_tg_${canonMac}" 
+            <input type="text" list="tg_users_datalist" value="${tgChat}" id="tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر">
+                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر (اختر من القائمة المكتشفة)">
           </td>
           <td>
             <div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap">
@@ -3243,10 +3262,10 @@ function renderDevices(devices) {
             </div>
             <div>
               <label>معرف التيليجرام:</label>
-              <input type="text" value="${tgChat}" id="card_tg_${canonMac}" 
+              <input type="text" list="tg_users_datalist" value="${tgChat}" id="card_tg_${canonMac}" 
                      oninput="this.dataset.dirty='1'"
                      onkeydown="if(event.key==='Enter') saveDeviceCard('${canonMac}')"
-                     placeholder="Chat ID" style="direction:ltr;text-align:center" title="معرف محادثة التيليجرام الخاص بمالك الجهاز">
+                     placeholder="Chat ID" style="direction:ltr;text-align:center" title="معرف محادثة التيليجرام الخاص بمالك الجهاز (اختر من القائمة المكتشفة)">
             </div>
           </div>
           <button type="button" class="primary-btn" style="width:100%;padding:6px 10px;font-size:0.8rem;margin-bottom:8px" onclick="saveDeviceCard('${canonMac}')">💾 حفظ الكوتة والسرعة</button>
@@ -3432,10 +3451,10 @@ function renderDevices(devices) {
                    style="width:55px;padding:3px 5px;color:var(--accent);text-align:center" title="أقصى سرعة رفع Mbps">
           </td>
           <td>
-            <input type="text" value="${tgChat}" id="off_tbl_tg_${canonMac}" 
+            <input type="text" list="tg_users_datalist" value="${tgChat}" id="off_tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر">
+                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر (اختر من القائمة المكتشفة)">
           </td>
           <td>
             <button class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" style="padding:4px 8px" onclick="toggleBlock('${canonMac}', ${!isBlocked})">${isBlocked ? 'محظور مسبقاً' : 'نشط'}</button>
@@ -4189,6 +4208,66 @@ async function testTelegramAlert(btn) {
       btn.textContent = old;
     }
   }
+}
+
+// Discovered Telegram Users & Multi-Admin Management
+function updateDiscoveredTgUsers(tgUsers) {
+  if (!Array.isArray(tgUsers)) return;
+  window._lastTgUsers = tgUsers;
+  let dl = document.getElementById('tg_users_datalist');
+  if (dl) {
+    dl.innerHTML = tgUsers.map(u => {
+      let label = u.name || '';
+      if (u.username) label += ` (@${u.username})`;
+      return `<option value="${u.chat_id}">${label} [${u.chat_id}]</option>`;
+    }).join('');
+  }
+
+  let box = document.getElementById('tg_discovered_users_list');
+  if (box) {
+    if (tgUsers.length === 0) {
+      box.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:8px">لم يدخل أي مستخدم على البوت بعد. عندما يرسل أي شخص رسالة للبوت ستظهر هويته هنا فوراً لتعيينه كمشرف أو لربط جهازه بسهولة.</div>';
+    } else {
+      box.innerHTML = tgUsers.map(u => {
+        let name = u.name || 'مستخدم';
+        let un = u.username ? `@${u.username}` : 'بدون معرف';
+        return `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column">
+              <span style="font-weight:700;font-size:0.85rem;color:var(--text)">👤 ${name} <span style="font-weight:normal;color:var(--accent);font-size:0.78rem">(${un})</span></span>
+              <span style="font-size:0.75rem;color:var(--muted);direction:ltr;text-align:left">Chat ID: <code style="color:var(--cyan)">${u.chat_id}</code></span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="action-btn btn-gaming" style="padding:4px 9px;font-size:0.75rem" onclick="addTgAdmin('${u.chat_id}')" title="إضافة هذا المعرف لقائمة المشرفين">👑 تعيين كمشرف</button>
+              <button type="button" class="primary-btn" style="padding:4px 9px;font-size:0.75rem" onclick="navigator.clipboard.writeText('${u.chat_id}');showToast('تم نسخ Chat ID: ' + '${u.chat_id}')" title="نسخ المعرف">📋 نسخ</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function addTgAdmin(chatId) {
+  let inp = document.getElementById('cfg_tg_chat_id');
+  let inpSt = document.getElementById('cfg_tg_chat_id_st');
+  if (!inp) inp = inpSt;
+  if (!inp) return;
+  let cur = inp.value.trim();
+  if (!cur) {
+    inp.value = chatId;
+  } else {
+    let ids = cur.split(',').map(s => s.trim()).filter(Boolean);
+    if (!ids.includes(chatId)) {
+      ids.push(chatId);
+      inp.value = ids.join(', ');
+    } else {
+      showToast('هذا المعرف مضاف مسبقاً كمشرف.');
+      return;
+    }
+  }
+  if (inpSt) inpSt.value = inp.value;
+  showToast('تمت إضافة ' + chatId + ' إلى قائمة المشرفين! اضغط على "حفظ الإعدادات" لتطبيق التغيير.');
 }
 
 // Performance & CPU Control

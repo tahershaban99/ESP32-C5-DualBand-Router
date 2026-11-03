@@ -52,15 +52,18 @@ print("If device is not responding automatically:")
 print(">> HOLD the 'BOOT' button, CLICK the 'RST' button, then RELEASE 'BOOT' <<")
 print("=" * 60)
 
-max_attempts = 20
+max_attempts = 30
 success = False
 
 for attempt in range(1, max_attempts + 1):
-    print(f"[{attempt}/{max_attempts}] Connecting to {port}...", flush=True)
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    reset_mode = "default-reset" if (attempt % 2 == 1) else "usb-reset"
+    cmd_run = list(cmd)
+    cmd_run[cmd_run.index("--before") + 1] = reset_mode
+    print(f"[{attempt}/{max_attempts}] Connecting to {port} ({reset_mode})...", flush=True)
+    res = subprocess.run(cmd_run, capture_output=True, text=True)
     if res.returncode == 0:
         print("\n" + "=" * 60)
-        print(">> FLASH & NVS ERASE SUCCESSFUL! <<")
+        print(">> FLASH SUCCESSFUL! <<")
         print("=" * 60)
         print(res.stdout)
         success = True
@@ -73,7 +76,7 @@ for attempt in range(1, max_attempts + 1):
             print("  Stub detected, please click RST once...", flush=True)
         else:
             print("  Retrying...", flush=True)
-        time.sleep(1.5)
+        time.sleep(1.2)
 
 if not success:
     print("\n[FAILED] Timed out waiting for ESP32-C5 Download Mode.")

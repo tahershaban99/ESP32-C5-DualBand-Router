@@ -33,9 +33,12 @@ extern int8_t auto_reboot_tz_offset;
 extern bool telegram_enabled;
 extern bool telegram_interactive;
 extern char telegram_token[80];
-extern char telegram_chat_id[32];
+extern char telegram_chat_id[128];
 extern char telegram_thresholds[48];
 extern uint32_t telegram_alert_flags;
+
+bool telegram_is_admin(const char *chat_id);
+void telegram_broadcast_admins(const char *text);
 
 void config_load(void);
 void config_save_all(void);

@@ -347,6 +347,26 @@ static esp_err_t devices_handler(httpd_req_t *req) {
         telegram_chat_id, telegram_thresholds,
         auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str);
   }
+
+  // Output discovered Telegram users list for dropdown linking
+  tg_discovered_user_t disc_users[MAX_DISCOVERED_TG_USERS];
+  size_t disc_cnt = telegram_get_discovered_users(disc_users, MAX_DISCOVERED_TG_USERS);
+  if (used < sizeof(buf) - 32) {
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"tg_users\":[");
+    for (size_t u = 0; u < disc_cnt; ++u) {
+      if (used < sizeof(buf) - 128) {
+        used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+            "%s{\"chat_id\":\"%s\",\"name\":\"%s\",\"username\":\"%s\"}",
+            (u == 0) ? "" : ",",
+            disc_users[u].chat_id, disc_users[u].first_name, disc_users[u].username);
+      }
+    }
+    if (used < sizeof(buf) - 2) {
+      buf[used++] = ']';
+      buf[used] = 0;
+    }
+  }
+
   if (used < sizeof(buf) - 16) {
     used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"devices\":[");
   }
@@ -984,7 +1004,7 @@ static esp_err_t telegram_handler(httpd_req_t *req) {
   char test_s[8] = {0};
   form_value(body, "test", test_s, sizeof(test_s));
 
-  char token[80] = {0}, chat_id[32] = {0}, thresholds[48] = {0};
+  char token[80] = {0}, chat_id[128] = {0}, thresholds[48] = {0};
   form_value(body, "token", token, sizeof(token));
   form_value(body, "chat_id", chat_id, sizeof(chat_id));
   form_value(body, "thresholds", thresholds, sizeof(thresholds));
@@ -1013,7 +1033,8 @@ static esp_err_t telegram_handler(httpd_req_t *req) {
   bool en = (atoi(en_s) != 0);
   bool inter = (atoi(inter_s) != 0);
 
-  config_save_telegram(en, inter, token[0] ? token : NULL, chat_id[0] ? chat_id : NULL, thresholds[0] ? thresholds : NULL);
+  // Always enable both if token is present
+  config_save_telegram(token[0] ? true : en, token[0] ? true : inter, token[0] ? token : NULL, chat_id[0] ? chat_id : NULL, thresholds[0] ? thresholds : NULL);
 
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true,\"msg\":\"تم حفظ إعدادات بوت التيليجرام بنجاح! 🤖\"}");
