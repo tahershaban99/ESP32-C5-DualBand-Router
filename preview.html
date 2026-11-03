@@ -1877,14 +1877,17 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
     <div id="login-lockout" class="lockout-banner"></div>
     <div id="login-error" style="display:none;color:var(--red);font-size:0.86rem;margin-bottom:10px;font-weight:700"></div>
     <form onsubmit="submitLogin(event)" style="display:flex;flex-direction:column;gap:12px">
-      <div class="form-group"><label>اسم المستخدم:</label><input id="login_user" type="text" required autocomplete="username" style="direction:ltr;text-align:left"></div>
+      <div class="form-group"><label>اسم المستخدم:</label><input id="login_user" type="text" value="admin" required autocomplete="username" style="direction:ltr;text-align:left"></div>
       <div class="form-group"><label>كلمة المرور:</label>
         <div class="pw-wrap">
-          <input id="login_pass" type="password" required autocomplete="current-password" style="direction:ltr;text-align:left">
+          <input id="login_pass" type="password" value="admin" required autocomplete="current-password" style="direction:ltr;text-align:left">
           <button type="button" class="pw-toggle" onclick="togglePwVis('login_pass',this)">👁️</button>
         </div>
       </div>
-      <button id="login_submit_btn" type="submit" class="primary-btn">دخول المشرف</button>
+      <div style="font-size:0.75rem;color:var(--muted);text-align:center;margin-top:-4px">
+        💡 بيانات الدخول الافتراضية: <code style="color:var(--cyan)">admin</code> / <code style="color:var(--cyan)">admin</code>
+      </div>
+      <button id="login_submit_btn" type="submit" class="primary-btn">دخول المشرف (تفعيل التحكم الكامل)</button>
     </form>
   </div>
 </div>
@@ -2203,6 +2206,44 @@ function togglePwVis(id, btn) {
   else { el.type = 'password'; btn.textContent = '👁️'; }
 }
 
+function getAuthHeaders(extra = {}) {
+  let headers = {...extra};
+  let token = localStorage.getItem('esp_session_token');
+  if (token) {
+    headers['X-Session-Token'] = token;
+  }
+  return headers;
+}
+
+let _isAuthenticating = false;
+async function ensureAdminAuth() {
+  if (isAdmin) return true;
+  if (_isAuthenticating) return false;
+  _isAuthenticating = true;
+  let u = localStorage.getItem('esp_admin_user') || 'admin';
+  let p = localStorage.getItem('esp_admin_pass') || 'admin';
+  try {
+    let res = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({username: u, password: p})
+    });
+    if (res.ok) {
+      let data = await res.json();
+      if (data.ok) {
+        isAdmin = true;
+        if (data.token) localStorage.setItem('esp_session_token', data.token);
+        localStorage.setItem('esp_admin_user', u);
+        localStorage.setItem('esp_admin_pass', p);
+        _isAuthenticating = false;
+        return true;
+      }
+    }
+  } catch(e) {}
+  _isAuthenticating = false;
+  return false;
+}
+
 function openLoginModal(msg) {
   let m = document.getElementById('login-modal');
   let r = document.getElementById('login-reason-banner');
@@ -2215,6 +2256,9 @@ function openLoginModal(msg) {
   if (m) {
     m.style.display = 'flex';
     let u = document.getElementById('login_user');
+    let p = document.getElementById('login_pass');
+    if (u && !u.value) u.value = localStorage.getItem('esp_admin_user') || 'admin';
+    if (p && !p.value) p.value = localStorage.getItem('esp_admin_pass') || 'admin';
     if (u) u.focus();
   }
 }
@@ -2249,6 +2293,9 @@ async function submitLogin(e) {
     let data = await res.json();
     if (res.ok && data.ok) {
       isAdmin = true;
+      if (data.token) localStorage.setItem('esp_session_token', data.token);
+      localStorage.setItem('esp_admin_user', u);
+      localStorage.setItem('esp_admin_pass', p);
       closeLoginModal();
       showToast('تم تسجيل الدخول كمشرف بنجاح! 🔓', 'success');
       if (_pendingAction) {
@@ -2273,6 +2320,9 @@ async function submitLogin(e) {
 }
 
 async function logoutAdmin() {
+  localStorage.removeItem('esp_session_token');
+  localStorage.removeItem('esp_admin_user');
+  localStorage.removeItem('esp_admin_pass');
   try { await fetch('/api/logout', {method: 'POST'}); } catch (e) {}
   location.reload();
 }
@@ -2326,11 +2376,18 @@ function formatBytes(bytes) {
 
 async function refreshData() {
   try {
-    let res = await fetch('/api/devices');
+    let res = await fetch('/api/devices', { headers: getAuthHeaders() });
     if (!res.ok) return;
     let data = await res.json();
 
     isAdmin = !!data.is_admin;
+    if (!isAdmin) {
+      // Auto authenticate in background using saved credentials or default admin
+      ensureAdminAuth().then(ok => {
+        if (ok) refreshData();
+      });
+    }
+
     let authBtn = document.getElementById('auth-btn');
     if (authBtn) {
       if (isAdmin) {
@@ -3082,7 +3139,7 @@ async function toggleGaming(mac, val) {
   try {
     let res = await fetch('/api/device/gaming', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac, gaming: val ? '1' : '0'})
     });
     if (res.ok) {
@@ -3094,14 +3151,17 @@ async function toggleGaming(mac, val) {
 
 async function toggleBlock(mac, val) {
   if (!isAdmin) {
-    _pendingAction = () => toggleBlock(mac, val);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لحظر أو فك حظر هذا الجهاز');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => toggleBlock(mac, val);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لحظر أو فك حظر هذا الجهاز');
+      return;
+    }
   }
   try {
     let res = await fetch('/api/device/block', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac, blocked: val ? '1' : '0'})
     });
     if (res.ok) {
@@ -3113,15 +3173,18 @@ async function toggleBlock(mac, val) {
 
 async function resetDevice(mac) {
   if (!isAdmin) {
-    _pendingAction = () => resetDevice(mac);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لتصفير عداد الجهاز');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => resetDevice(mac);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لتصفير عداد الجهاز');
+      return;
+    }
   }
   if (!confirm('هل تريد تصفير عدادات هذا الجهاز؟')) return;
   try {
     let res = await fetch('/api/device/reset', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac})
     });
     if (res.ok) {
@@ -3133,15 +3196,18 @@ async function resetDevice(mac) {
 
 async function deleteDevice(mac) {
   if (!isAdmin) {
-    _pendingAction = () => deleteDevice(mac);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لحذف هذا الجهاز');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => deleteDevice(mac);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لحذف هذا الجهاز');
+      return;
+    }
   }
   if (!confirm('هل تريد حذف هذا الجهاز من السجل نهائياً؟')) return;
   try {
     let res = await fetch('/api/device/delete', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac})
     });
     if (res.ok) {
@@ -3164,9 +3230,12 @@ async function saveDeviceTable(mac) {
   let tgChat = tgEl ? tgEl.value : null;
 
   if (!isAdmin) {
-    _pendingAction = () => saveDeviceTable(mac);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => saveDeviceTable(mac);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
+      return;
+    }
   }
   if (qEl) qEl.dataset.dirty = '';
   if (dlEl) dlEl.dataset.dirty = '';
@@ -3187,9 +3256,12 @@ async function saveDeviceCard(mac) {
   let tgChat = tgEl ? tgEl.value : null;
 
   if (!isAdmin) {
-    _pendingAction = () => saveDeviceCard(mac);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => saveDeviceCard(mac);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
+      return;
+    }
   }
   if (qEl) qEl.dataset.dirty = '';
   if (dlEl) dlEl.dataset.dirty = '';
@@ -3200,9 +3272,12 @@ async function saveDeviceCard(mac) {
 
 async function saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId) {
   if (!isAdmin) {
-    _pendingAction = () => saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لحفظ تعديلات الجهاز.');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لحفظ تعديلات الجهاز.');
+      return;
+    }
   }
   try {
     let params = new URLSearchParams({mac: mac});
@@ -3213,14 +3288,16 @@ async function saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId) {
     if (tgChatId !== undefined && tgChatId !== null) params.append('telegram_chat_id', tgChatId);
     let res = await fetch('/api/device/save', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: params
     });
     if (res.ok) {
       showToast('تم حفظ إعدادات الجهاز والكوتة والسرعة بنجاح! 💾', 'success');
       refreshData();
     } else {
-      showToast('فشل حفظ الإعدادات، يرجى المحاولة لاحقاً', 'error');
+      let errTxt = '';
+      try { let errJson = await res.json(); if (errJson.error) errTxt = ' (' + errJson.error + ')'; } catch(e){}
+      showToast('فشل حفظ الإعدادات' + errTxt + '، يرجى المحاولة لاحقاً', 'error');
     }
   } catch(e) {
     showToast('حدث خطأ أثناء الاتصال بالراوتر', 'error');
@@ -3231,14 +3308,17 @@ async function saveDeviceName(mac, newName) {
   newName = (newName || '').trim();
   if (!newName) return;
   if (!isAdmin) {
-    _pendingAction = () => saveDeviceName(mac, newName);
-    openLoginModal('لتعديل اسم الجهاز، يرجى تسجيل الدخول كمشرف');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => saveDeviceName(mac, newName);
+      openLoginModal('لتعديل اسم الجهاز، يرجى تسجيل الدخول كمشرف');
+      return;
+    }
   }
   try {
     let res = await fetch('/api/device/save', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac, name: newName})
     });
     if (res.ok) {
@@ -3250,14 +3330,17 @@ async function saveDeviceName(mac, newName) {
 
 async function saveDeviceSpeed(mac, upMbps, downMbps) {
   if (!isAdmin) {
-    _pendingAction = () => saveDeviceSpeed(mac, upMbps, downMbps);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لضبط السرعة');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => saveDeviceSpeed(mac, upMbps, downMbps);
+      openLoginModal('يرجى تسجيل الدخول كمشرف لضبط السرعة');
+      return;
+    }
   }
   try {
     await fetch('/api/device/save', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({mac: mac, upload_mbps: upMbps, download_mbps: downMbps})
     });
     showToast('تم تحديث حدود السرعة للجهاز بنجاح! 🚀', 'success');
@@ -3429,7 +3512,10 @@ function startAutoCloudOta(url) {
 
 // Main Quota & Period
 async function saveMainQuotaConfig(btn) {
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let gb = document.getElementById('cfg_main_quota_gb').value;
   let sDate = document.getElementById('cfg_start_date').value;
   let eDate = document.getElementById('cfg_end_date').value;
@@ -3437,35 +3523,41 @@ async function saveMainQuotaConfig(btn) {
   try {
     let res = await fetch('/api/main_quota', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({quota_gb: gb, start_date: sDate, end_date: eDate})
     });
-    if (res.ok) alert('تم حفظ إعدادات باقة النت بنجاح!');
-    else alert('تعذر حفظ الإعدادات');
-  } catch (e) { alert('خطأ في الاتصال'); }
+    if (res.ok) showToast('تم حفظ إعدادات باقة النت بنجاح! 💾');
+    else showToast('تعذر حفظ الإعدادات', 'error');
+  } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   finally { btn.disabled = false; refreshData(); }
 }
 
 async function submitPeriodDays(e) {
   e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let d = document.getElementById('period_days').value;
   try {
     await fetch('/meter/period', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({period_days: d})
     });
-    alert('تم تطبيق مدة الدورة الاحتياطية بنجاح!');
+    showToast('تم تطبيق مدة الدورة الاحتياطية بنجاح!');
   } catch (e) {}
 }
 
 async function resetMainQuota() {
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   if (!confirm('تحذير: سيتم تصفير جميع العدادات وإعادة بدء الدورة ورفع الحظر. هل أنت متأكد؟')) return;
   try {
-    await fetch('/meter/reset', {method: 'POST'});
-    alert('تم تصفير العدادات وتجديد الدورة بنجاح!');
+    await fetch('/meter/reset', {method: 'POST', headers: getAuthHeaders()});
+    showToast('تم تصفير العدادات وتجديد الدورة بنجاح!');
     refreshData();
   } catch (e) {}
 }
@@ -3473,7 +3565,10 @@ async function resetMainQuota() {
 // Telegram
 async function submitTelegramSettings(e) {
   e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let en = document.getElementById('cfg_tg_enable').checked ? '1' : '0';
   let inter = document.getElementById('cfg_tg_interactive').checked ? '1' : '0';
   let tok = document.getElementById('cfg_tg_token').value.trim();
@@ -3484,30 +3579,33 @@ async function submitTelegramSettings(e) {
   try {
     let res = await fetch('/api/telegram', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({enable: en, interactive: inter, token: tok, chat_id: cid, thresholds: th})
     });
-    if (res.ok) alert('تم حفظ إعدادات التيليجرام بنجاح!');
-    else alert('تعذر حفظ إعدادات التيليجرام');
-  } catch (e) { alert('خطأ في الاتصال'); }
+    if (res.ok) showToast('تم حفظ إعدادات التيليجرام بنجاح! 💾');
+    else showToast('تعذر حفظ إعدادات التيليجرام', 'error');
+  } catch (e) { showToast('خطأ في الاتصال بالراوتر', 'error'); }
   finally { btn.disabled = false; }
 }
 
 async function testTelegramAlert(btn) {
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   btn.disabled = true;
   let old = btn.textContent;
   btn.textContent = 'جاري الإرسال...';
   try {
     let res = await fetch('/api/telegram', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({test: '1'})
     });
     let data = await res.json();
-    if (res.ok && data.ok) alert('تم إرسال الرسالة التجريبية إلى التيليجرام بنجاح! تفقد محادثتك.');
-    else alert('فشل الإرسال: تأكد من صحة التوكن والـ Chat ID واتصال الراوتر بالإنترنت.');
-  } catch (e) { alert('خطأ في الاتصال بالراوتر'); }
+    if (res.ok && data.ok) showToast('تم إرسال الرسالة التجريبية إلى التيليجرام بنجاح! تفقد محادثتك.');
+    else showToast('فشل الإرسال: تأكد من صحة التوكن والـ Chat ID واتصال الراوتر بالإنترنت.', 'error');
+  } catch (e) { showToast('خطأ في الاتصال بالراوتر', 'error'); }
   finally { btn.disabled = false; btn.textContent = old; }
 }
 
@@ -3567,7 +3665,10 @@ function onManualPowerSaveChange(val) {
 
 async function submitPerformance(e) {
   if (e) e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let freq = document.getElementById('cfg_cpu_freq').value;
   let ps = document.getElementById('cfg_wifi_ps').checked ? '1' : '0';
   let btn = document.getElementById('perf_save_btn');
@@ -3575,18 +3676,18 @@ async function submitPerformance(e) {
   try {
     let res = await fetch('/api/performance', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({cpu_freq: freq, wifi_ps: ps})
     });
     if (res.ok) {
       updateDashboardCpuFreq(parseInt(freq, 10));
       updatePresetUi(parseInt(freq, 10), ps === '1');
-      alert('تم تطبيق إعدادات أداء المعالج والواي فاي بنجاح!');
+      showToast('تم تطبيق إعدادات أداء المعالج والواي فاي بنجاح!');
     } else {
-      alert('فشل حفظ إعدادات الأداء');
+      showToast('فشل حفظ إعدادات الأداء', 'error');
     }
   } catch (e) {
-    alert('حدث خطأ في الاتصال بالراوتر');
+    showToast('حدث خطأ في الاتصال بالراوتر', 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -3594,7 +3695,10 @@ async function submitPerformance(e) {
 
 async function submitAutoReboot(e) {
   e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let en = document.getElementById('cfg_rb_enable').checked ? '1' : '0';
   let tm = document.getElementById('cfg_rb_time').value;
   let tz = document.getElementById('cfg_rb_tz').value;
@@ -3603,26 +3707,29 @@ async function submitAutoReboot(e) {
   try {
     await fetch('/api/auto_reboot', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({enable: en, time: tm, tz: tz})
     });
-    alert('تم حفظ مؤقت إعادة التشغيل اليومي بنجاح!');
+    showToast('تم حفظ مؤقت إعادة التشغيل اليومي بنجاح!');
   } catch (e) {}
   finally { btn.disabled = false; }
 }
 
 async function submitCountdownReboot(e) {
   e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let min = document.getElementById('cfg_cd_min').value;
   if (!confirm('بدء عد تنازلي لإعادة تشغيل الراوتر بعد ' + min + ' دقيقة؟')) return;
   try {
     await fetch('/api/system/reboot', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({countdown_min: min})
     });
-    alert('تم تفعيل المؤقت التنازلي للريستارت!');
+    showToast('تم تفعيل المؤقت التنازلي للريستارت!');
   } catch (e) {}
 }
 
@@ -3645,7 +3752,10 @@ function onGbStandardChange(val) {
 }
 
 async function saveMeterScaleConfig() {
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let sc = document.getElementById('cfg_meter_scale').value;
   let std = document.getElementById('cfg_gb_std').value;
   let btn = document.getElementById('scale_save_btn');
@@ -3653,7 +3763,7 @@ async function saveMeterScaleConfig() {
   try {
     let res = await fetch('/api/meter_scale', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({scale: sc, gb_std: std})
     });
     if (res.ok) {
@@ -3661,12 +3771,12 @@ async function saveMeterScaleConfig() {
       meterScalePct = parseInt(sc, 10) || 100;
       updateMeterScaleBadges(meterScalePct, gbStandard);
       renderDevices();
-      alert('تم حفظ وتطبيق نسبة العداد ومعيار الجيجا بنجاح!');
+      showToast('تم حفظ وتطبيق نسبة العداد ومعيار الجيجا بنجاح!');
     } else {
-      alert('فشل حفظ إعدادات المعايرة');
+      showToast('فشل حفظ إعدادات المعايرة', 'error');
     }
   } catch (err) {
-    alert('حدث خطأ في الاتصال بالراوتر');
+    showToast('حدث خطأ في الاتصال بالراوتر', 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -3674,7 +3784,10 @@ async function saveMeterScaleConfig() {
 
 async function changeAdminPassword(e) {
   e.preventDefault();
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   let oldP = document.getElementById('pw_old').value;
   let newU = document.getElementById('pw_new_user').value.trim();
   let newP = document.getElementById('pw_new_pass').value;
@@ -3683,27 +3796,36 @@ async function changeAdminPassword(e) {
   try {
     let res = await fetch('/api/password', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
       body: new URLSearchParams({old_pass: oldP, new_user: newU, new_pass: newP})
     });
     let data = await res.json();
     if (res.ok && data.ok) {
-      alert('تم تحديث بيانات المشرف بنجاح!');
+      localStorage.setItem('esp_admin_user', newU);
+      localStorage.setItem('esp_admin_pass', newP);
+      showToast('تم تحديث بيانات المشرف بنجاح!');
       document.getElementById('pw_old').value = '';
       document.getElementById('pw_new_pass').value = '';
     } else {
-      alert('تعذر التحديث: ' + (data.error || 'خطأ'));
+      showToast('تعذر التحديث: ' + (data.error || 'خطأ'), 'error');
     }
-  } catch (e) { alert('خطأ في الاتصال'); }
+  } catch (e) { showToast('خطأ في الاتصال', 'error'); }
   finally { btn.disabled = false; }
 }
 
 async function rebootRouter() {
-  if (!isAdmin) { openLoginModal(); return; }
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
   if (!confirm('هل تريد إعادة تشغيل الراوتر الآن؟')) return;
   try {
-    await fetch('/api/system/reboot', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'immediate=1'});
-    alert('جاري إعادة تشغيل الراوتر الآن... انتظر حوالي 10 ثوانٍ.');
+    await fetch('/api/system/reboot', {
+      method: 'POST',
+      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
+      body: 'immediate=1'
+    });
+    showToast('جاري إعادة تشغيل الراوتر الآن... انتظر حوالي 10 ثوانٍ.');
   } catch (e) {}
 }
 

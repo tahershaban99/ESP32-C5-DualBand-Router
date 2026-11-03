@@ -72,12 +72,12 @@ static void format_mac(const uint8_t mac[6], char out[18]) {
 }
 
 static bool parse_mac_address(const char *text, uint8_t mac[6]) {
-  if (strlen(text) != 17) return false;
+  if (!text || strlen(text) != 17) return false;
   for (size_t i = 0; i < 6; ++i) {
     char pair[3] = {text[i * 3], text[i * 3 + 1], 0};
     char *end = NULL;
     unsigned long value = strtoul(pair, &end, 16);
-    if (end != pair + 2 || value > 255 || (i < 5 && text[i * 3 + 2] != ':')) return false;
+    if (end != pair + 2 || value > 255 || (i < 5 && text[i * 3 + 2] != ':' && text[i * 3 + 2] != '-')) return false;
     mac[i] = (uint8_t)value;
   }
   return valid_device_mac(mac);
@@ -132,23 +132,36 @@ static bool is_admin_authenticated(httpd_req_t *req) {
     session_valid = false;
     return false;
   }
-  char cookie_hdr[160];
-  size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
-  if (buf_len == 0 || buf_len >= sizeof(cookie_hdr)) return false;
-  if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr, sizeof(cookie_hdr)) != ESP_OK) {
-    return false;
-  }
-  char cookie_val[68] = {0};
-  char *p = strstr(cookie_hdr, "session_id=");
-  if (!p) return false;
-  p += strlen("session_id=");
-  char *end = strchr(p, ';');
-  size_t n = end ? (size_t)(end - p) : strlen(p);
-  if (n >= sizeof(cookie_val)) n = sizeof(cookie_val) - 1;
-  memcpy(cookie_val, p, n);
-  cookie_val[n] = 0;
 
-  return constant_time_eq(cookie_val, active_session_token);
+  // 1. Check Cookie header (up to 512 bytes for complex browser headers)
+  char cookie_hdr[512];
+  size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
+  if (buf_len > 0 && buf_len < sizeof(cookie_hdr)) {
+    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr, sizeof(cookie_hdr)) == ESP_OK) {
+      char cookie_val[68] = {0};
+      char *p = strstr(cookie_hdr, "session_id=");
+      if (p) {
+        p += strlen("session_id=");
+        char *end = strchr(p, ';');
+        size_t n = end ? (size_t)(end - p) : strlen(p);
+        if (n >= sizeof(cookie_val)) n = sizeof(cookie_val) - 1;
+        memcpy(cookie_val, p, n);
+        cookie_val[n] = 0;
+        if (constant_time_eq(cookie_val, active_session_token)) return true;
+      }
+    }
+  }
+
+  // 2. Also check custom header X-Session-Token (prevents cookie loss / SameSite issues)
+  char token_hdr[68] = {0};
+  size_t tok_len = httpd_req_get_hdr_value_len(req, "X-Session-Token");
+  if (tok_len > 0 && tok_len < sizeof(token_hdr)) {
+    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr, sizeof(token_hdr)) == ESP_OK) {
+      if (constant_time_eq(token_hdr, active_session_token)) return true;
+    }
+  }
+
+  return false;
 }
 
 static bool require_admin(httpd_req_t *req) {
@@ -289,8 +302,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   char reboot_time_str[8];
   snprintf(reboot_time_str, sizeof(reboot_time_str), "%02d:%02d", auto_reboot_hour, auto_reboot_min);
 
-  // Stack buffer (0 bytes heap allocated!)
-  char buf[896];
+  // Stack buffer: 2048 bytes ensures header string (approx ~1000 bytes) will never truncate or overflow
+  char buf[2048];
   httpd_resp_set_type(req, "application/json; charset=utf-8");
 
   size_t used = (size_t)snprintf(buf, sizeof(buf),
@@ -311,21 +324,32 @@ static esp_err_t devices_handler(httpd_req_t *req) {
                       main_quota_gb, q_start, q_end,
                       time_synced ? "true" : "false", (long)rem_days, (long)rem_hours, rem_main_gb,
                       ota_inf.running_partition);
+  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, sta_ssid_safe);
-  used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      ",\"sta_static_enabled\":%s,\"sta_ip\":\"%s\",\"sta_mask\":\"%s\",\"sta_gw\":\"%s\",\"sta_dns\":\"%s\","
-      "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"router_ssid\":",
-      sta_static_enabled ? "true" : "false", current_sta_ip, current_sta_mask, current_sta_gw, sta_dns_text,
-      (unsigned)wifi_protocol_mode, (unsigned)wifi_band_mode, wifi_manager_get_current_band_str());
+  if (used < sizeof(buf) - 1) {
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+        ",\"sta_static_enabled\":%s,\"sta_ip\":\"%s\",\"sta_mask\":\"%s\",\"sta_gw\":\"%s\",\"sta_dns\":\"%s\","
+        "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"router_ssid\":",
+        sta_static_enabled ? "true" : "false", current_sta_ip, current_sta_mask, current_sta_gw, sta_dns_text,
+        (unsigned)wifi_protocol_mode, (unsigned)wifi_band_mode, wifi_manager_get_current_band_str());
+  }
+  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, router_ssid);
-  used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"ap_ssid\":");
+  if (used < sizeof(buf) - 16) {
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"ap_ssid\":");
+  }
+  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, ap_ssid);
-  used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\"",
-      telegram_enabled ? "true" : "false", telegram_interactive ? "true" : "false",
-      telegram_chat_id, telegram_thresholds,
-      auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str);
-  used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"devices\":[");
+  if (used < sizeof(buf) - 1) {
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+        ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\"",
+        telegram_enabled ? "true" : "false", telegram_interactive ? "true" : "false",
+        telegram_chat_id, telegram_thresholds,
+        auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str);
+  }
+  if (used < sizeof(buf) - 16) {
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"devices\":[");
+  }
 
   esp_err_t err = httpd_resp_send_chunk(req, buf, used);
   if (err != ESP_OK) return err;
@@ -492,10 +516,12 @@ static esp_err_t login_handler(httpd_req_t *req) {
     session_expiry_us = now_us + SESSION_TTL_US;
 
     char set_cookie[160];
-    snprintf(set_cookie, sizeof(set_cookie), "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400", active_session_token);
+    snprintf(set_cookie, sizeof(set_cookie), "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000", active_session_token);
     httpd_resp_set_hdr(req, "Set-Cookie", set_cookie);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
-    return httpd_resp_sendstr(req, "{\"ok\":true}");
+    char res[128];
+    snprintf(res, sizeof(res), "{\"ok\":true,\"token\":\"%s\"}", active_session_token);
+    return httpd_resp_sendstr(req, res);
   } else {
     failed_login_attempts++;
     if (failed_login_attempts >= MAX_FAILED_ATTEMPTS) {
@@ -553,10 +579,10 @@ static esp_err_t password_handler(httpd_req_t *req) {
 // -----------------------------------------------------------------------------
 static esp_err_t device_save_handler(httpd_req_t *req) {
   if (!require_admin(req)) return ESP_OK;
-  char body[320];
+  char body[512];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-  char mac_text[24] = {0};
+  char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
   uint8_t mac[6];
   if (!parse_mac_address(mac_text, mac)) {
@@ -616,7 +642,7 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
   if (quota_s[0]) {
     double quota_gb = atof(quota_s);
     double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
-  uint64_t quota_bytes = (uint64_t)(quota_gb * gb_div);
+    uint64_t quota_bytes = (uint64_t)(quota_gb * gb_div);
     int p_idx = meter_find_policy_locked(mac, true);
     bool blk = (p_idx >= 0) ? device_policies[p_idx].blocked : false;
     bool gam = (p_idx >= 0) ? device_policies[p_idx].gaming_mode : false;
@@ -638,10 +664,10 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
 
 static esp_err_t device_block_handler(httpd_req_t *req) {
   if (!require_admin(req)) return ESP_OK;
-  char body[160];
+  char body[256];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-  char mac_text[24] = {0}, val_s[8] = {0};
+  char mac_text[64] = {0}, val_s[8] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
   form_value(body, "blocked", val_s, sizeof(val_s));
 
@@ -658,10 +684,10 @@ static esp_err_t device_block_handler(httpd_req_t *req) {
 
 static esp_err_t device_gaming_handler(httpd_req_t *req) {
   if (!require_admin(req)) return ESP_OK;
-  char body[160];
+  char body[256];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-  char mac_text[24] = {0}, val_s[8] = {0};
+  char mac_text[64] = {0}, val_s[8] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
   form_value(body, "gaming", val_s, sizeof(val_s));
 
@@ -678,10 +704,10 @@ static esp_err_t device_gaming_handler(httpd_req_t *req) {
 
 static esp_err_t device_reset_handler(httpd_req_t *req) {
   if (!require_admin(req)) return ESP_OK;
-  char body[160];
+  char body[256];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-  char mac_text[24] = {0};
+  char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
   uint8_t mac[6];
   if (!parse_mac_address(mac_text, mac)) {
@@ -696,10 +722,10 @@ static esp_err_t device_reset_handler(httpd_req_t *req) {
 
 static esp_err_t device_delete_handler(httpd_req_t *req) {
   if (!require_admin(req)) return ESP_OK;
-  char body[160];
+  char body[256];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-  char mac_text[24] = {0};
+  char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
   uint8_t mac[6];
   if (!parse_mac_address(mac_text, mac)) {
