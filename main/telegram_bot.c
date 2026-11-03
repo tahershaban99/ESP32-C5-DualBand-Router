@@ -1306,7 +1306,7 @@ static void telegram_task(void *pvParameters) {
   (void)pvParameters;
   ESP_LOGI(TG_TAG, "Telegram polling task started on Core %d", xPortGetCoreID());
 
-  char *rx_buffer = (char *)malloc(4096);
+  char *rx_buffer = (char *)malloc(2560);
   if (!rx_buffer) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for Telegram rx buffer");
     vTaskDelete(NULL);
@@ -1339,8 +1339,16 @@ static void telegram_task(void *pvParameters) {
       continue;
     }
 
-    // Check automated quota alerts safely within telegram_task (Core 0, 12KB stack)
+    // Check automated quota alerts safely within telegram_task
     telegram_check_quota_alerts();
+
+    // Anti-Congestion Priority: If user is actively downloading/testing speed (>5 Mbps),
+    // back off polling to eliminate TLS buffer memory competition and guarantee wire-speed throughput!
+    uint32_t traffic_bps = total_cur_down_bps + total_cur_up_bps;
+    if (traffic_bps > 5000000) {
+      vTaskDelay(pdMS_TO_TICKS(10000));
+      continue;
+    }
 
     char url[220];
     snprintf(url, sizeof(url),
@@ -1367,8 +1375,8 @@ static void telegram_task(void *pvParameters) {
     if (err == ESP_OK) {
       esp_http_client_fetch_headers(client);
       int total_read = 0;
-      while (total_read < 4090) {
-        int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
+      while (total_read < 2550) {
+        int r = esp_http_client_read(client, rx_buffer + total_read, 2550 - total_read);
         if (r <= 0) break;
         total_read += r;
       }
@@ -1920,7 +1928,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with optimized 8KB stack (saves 4KB RAM)
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }
