@@ -733,10 +733,6 @@ void meter_tick_second(uint32_t elapsed_s) {
     }
   }
 
-  // Check Automated Multi-Threshold Telegram Quota Alerts
-  if (telegram_enabled) {
-    telegram_check_quota_alerts(grand_total_used, main_quota_bytes);
-  }
 }
 
 void meter_load_usage(void) {

@@ -149,12 +149,17 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
   char url[180];
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage", telegram_token);
 
-  char escaped_text[1800];
-  json_escape(text, escaped_text, sizeof(escaped_text));
+  char *escaped_text = (char *)malloc(2048);
+  if (!escaped_text) {
+    ESP_LOGE(TG_TAG, "Failed to allocate memory for escaped_text");
+    return false;
+  }
+  json_escape(text, escaped_text, 2048);
 
   char *body = (char *)malloc(2800);
   if (!body) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for sendMessage body");
+    free(escaped_text);
     return false;
   }
 
@@ -167,6 +172,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
              "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
              chat_id, escaped_text);
   }
+  free(escaped_text);
 
   esp_http_client_config_t config = {
       .url = url,
@@ -281,13 +287,23 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
                     "ستصلك الآن تنبيهات الاستهلاك التلقائية للراوتر ولأجهزتك فور تجاوز الحدود المقررة.\n"
                     "💡 تم تفعيل لوحة المفاتيح التفاعلية أدناه لتسهيل الاستعلام والتحكم بلمسة واحدة.";
 
-  char escaped_text[1800];
-  json_escape(msg, escaped_text, sizeof(escaped_text));
+  char *escaped_text = (char *)malloc(2048);
+  if (!escaped_text) {
+    if (out_err && max_err > 0) snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
+    return -2;
+  }
+  json_escape(msg, escaped_text, 2048);
 
-  char body[2800];
-  snprintf(body, sizeof(body),
+  char *body = (char *)malloc(2800);
+  if (!body) {
+    free(escaped_text);
+    if (out_err && max_err > 0) snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
+    return -2;
+  }
+  snprintf(body, 2800,
            "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
            first_admin, escaped_text, TG_ADMIN_KEYBOARD);
+  free(escaped_text);
 
   esp_http_client_config_t config = {
       .url = url,
@@ -301,6 +317,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) {
+    free(body);
     if (out_err && max_err > 0) {
       snprintf(out_err, max_err, "فشل إنشاء عميل الاتصال HTTP");
     }
@@ -313,6 +330,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   esp_err_t err = esp_http_client_perform(client);
   int status = esp_http_client_get_status_code(client);
   esp_http_client_cleanup(client);
+  free(body);
 
   if (err == ESP_OK && (status == 200 || status == 201)) {
     if (out_err && max_err > 0) {
@@ -621,11 +639,26 @@ static void format_multi_device_summary(const int *p_indices, size_t count, char
 // -----------------------------------------------------------------------------
 // Automated Multi-Threshold Push Notifications (Main Quota & Per-Device Quota)
 // -----------------------------------------------------------------------------
-void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_bytes_val) {
+void telegram_check_quota_alerts(void) {
   if (!telegram_enabled || !telegram_token[0]) {
     return;
   }
   if (telegram_busy) return;
+
+  // Only check and send alerts if STA is actively connected to internet
+  wifi_ap_record_t ap_info;
+  if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+    return;
+  }
+
+  uint64_t total_used_bytes = 0;
+  uint64_t main_quota_bytes_val = 0;
+  portENTER_CRITICAL(&data_mux);
+  for (size_t i = 0; i < usage_count; ++i) {
+    total_used_bytes += (usage_records[i].upload_bytes + usage_records[i].download_bytes);
+  }
+  main_quota_bytes_val = main_quota_bytes;
+  portEXIT_CRITICAL(&data_mux);
 
   double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
@@ -701,7 +734,7 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
           telegram_busy = true;
           telegram_broadcast_admins(alert_msg);
           telegram_busy = false;
-          return; // Send one alert per tick
+          return; // Send one alert per check
         }
       }
       tok = strtok_r(NULL, ",", &saveptr);
@@ -709,41 +742,44 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
     }
   }
 
-  // 2. Check Per-Device Quota Multi-Thresholds
-  portENTER_CRITICAL(&data_mux);
-  for (size_t p = 0; p < policy_count; ++p) {
-    uint64_t dev_quota = device_policies[p].quota_bytes;
-    if (dev_quota == 0) continue;
-
-    int u = meter_find_usage_locked(device_policies[p].mac, false);
-    uint64_t dev_used = (u >= 0) ? (usage_records[u].upload_bytes + usage_records[u].download_bytes) : 0;
-    uint32_t dev_pct = (uint32_t)((dev_used * 100ULL) / dev_quota);
-
+  // 2. Check Per-Device Quota Multi-Thresholds (Clean, Deadlock-Free Snapshot)
+  for (size_t p = 0; p < MAX_RECORDS; ++p) {
+    device_policy_t pol;
     char dev_name[DEVICE_NAME_BYTES] = "جهاز متصل";
-    int n_idx = meter_find_name_locked(device_policies[p].mac, false);
-    if (n_idx >= 0 && device_names[n_idx].name[0]) {
-      strncpy(dev_name, device_names[n_idx].name, sizeof(dev_name) - 1);
-      dev_name[sizeof(dev_name) - 1] = 0;
-    }
-
     uint32_t dev_ip = 0;
-    for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-      if (memcmp(active_clients[k].mac, device_policies[p].mac, 6) == 0 && active_clients[k].aid != 0) {
-        dev_ip = active_clients[k].ip;
-        break;
+    uint64_t dev_used = 0;
+    bool has_policy = false;
+
+    portENTER_CRITICAL(&data_mux);
+    if (p < policy_count && device_policies[p].quota_bytes > 0) {
+      pol = device_policies[p];
+      has_policy = true;
+
+      int u = meter_find_usage_locked(pol.mac, false);
+      if (u >= 0) {
+        dev_used = usage_records[u].upload_bytes + usage_records[u].download_bytes;
+      }
+      int n_idx = meter_find_name_locked(pol.mac, false);
+      if (n_idx >= 0 && device_names[n_idx].name[0]) {
+        strncpy(dev_name, device_names[n_idx].name, sizeof(dev_name) - 1);
+        dev_name[sizeof(dev_name) - 1] = 0;
+      }
+      for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+        if (memcmp(active_clients[k].mac, pol.mac, 6) == 0 && active_clients[k].aid != 0) {
+          dev_ip = active_clients[k].ip;
+          break;
+        }
+      }
+      if (dev_ip == 0) {
+        int b = meter_find_binding_locked(pol.mac, false);
+        if (b >= 0) dev_ip = device_bindings[b].bound_ip;
       }
     }
-    if (dev_ip == 0) {
-      int b = meter_find_binding_locked(device_policies[p].mac, false);
-      if (b >= 0) dev_ip = device_bindings[b].bound_ip;
-    }
-
-    uint8_t mac_copy[6];
-    memcpy(mac_copy, device_policies[p].mac, 6);
-    uint16_t cur_alert_flags = device_policies[p].alert_flags;
-    char linked_chat[32] = {0};
-    strncpy(linked_chat, device_policies[p].telegram_chat_id, sizeof(linked_chat) - 1);
     portEXIT_CRITICAL(&data_mux);
+
+    if (!has_policy) continue;
+
+    uint32_t dev_pct = (uint32_t)((dev_used * 100ULL) / pol.quota_bytes);
 
     char thresh_copy[50];
     strncpy(thresh_copy, telegram_thresholds, sizeof(thresh_copy) - 1);
@@ -758,16 +794,16 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
       int th_val = atoi(tok);
       if (th_val > 0 && th_val <= 100) {
         uint16_t mask = (1U << th_idx);
-        if (dev_pct >= (uint32_t)th_val && !(cur_alert_flags & mask)) {
+        if (dev_pct >= (uint32_t)th_val && !(pol.alert_flags & mask)) {
           portENTER_CRITICAL(&data_mux);
-          int p_cur = meter_find_policy_locked(mac_copy, false);
+          int p_cur = meter_find_policy_locked(pol.mac, false);
           if (p_cur >= 0) {
             device_policies[p_cur].alert_flags |= mask;
           }
           portEXIT_CRITICAL(&data_mux);
 
           double dev_used_gb = (double)dev_used / gb_div;
-          double dev_total_gb = (double)dev_quota / gb_div;
+          double dev_total_gb = (double)pol.quota_bytes / gb_div;
           double dev_rem_gb = (dev_total_gb > dev_used_gb) ? (dev_total_gb - dev_used_gb) : 0.0;
 
           char alert_msg[550];
@@ -789,8 +825,8 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
           telegram_busy = true;
 
           // Dispatch to linked owner with TG_USER_KEYBOARD, and CC to all admins
-          if (linked_chat[0]) {
-            telegram_send_message_with_keyboard(linked_chat, alert_msg, TG_USER_KEYBOARD);
+          if (pol.telegram_chat_id[0]) {
+            telegram_send_message_with_keyboard(pol.telegram_chat_id, alert_msg, TG_USER_KEYBOARD);
             char cc_msg[650];
             snprintf(cc_msg, sizeof(cc_msg), "📢 <b>[تنبيه إداري: استهلاك باقة جهاز (%u%%)]</b>\n\n%s", th_val, alert_msg);
             telegram_broadcast_admins(cc_msg);
@@ -801,16 +837,13 @@ void telegram_check_quota_alerts(uint64_t total_used_bytes, uint64_t main_quota_
 
           telegram_busy = false;
           meter_save_usage();
-          return; // Send one alert per tick
+          return; // Send one alert per check
         }
       }
       tok = strtok_r(NULL, ",", &saveptr);
       th_idx++;
     }
-
-    portENTER_CRITICAL(&data_mux);
   }
-  portEXIT_CRITICAL(&data_mux);
 }
 
 // -----------------------------------------------------------------------------
@@ -852,6 +885,9 @@ static void telegram_task(void *pvParameters) {
       vTaskDelay(pdMS_TO_TICKS(3000));
       continue;
     }
+
+    // Check automated quota alerts safely within telegram_task (Core 0, 12KB stack)
+    telegram_check_quota_alerts();
 
     char url[220];
     snprintf(url, sizeof(url),
@@ -1709,7 +1745,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 10KB stack
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 10240, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }

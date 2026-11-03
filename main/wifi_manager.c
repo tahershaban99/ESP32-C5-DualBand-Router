@@ -403,7 +403,11 @@ void wifi_manager_init(void) {
   }
 
   ap_config.ap.max_connection = MAX_WIFI_STATIONS; // 12 max direct Wi-Fi connections
-  ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  if (strlen(selected_ap_pass) < 8) {
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+  } else {
+    ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  }
   ap_config.ap.pmf_cfg.required = false;
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
@@ -437,12 +441,19 @@ void wifi_manager_init(void) {
 
   // Bandwidth & Protocol Tuning with Wi-Fi 6 (802.11ax) acceleration
   if (bmode == WIFI_BAND_MODE_AUTO) {
-    wifi_protocols_t protos = {
+    // SoftAP: 2.4GHz (11b/g/n/ax) ensures universal visibility to all phones/laptops/devices
+    wifi_protocols_t ap_protos = {
+      .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
+      .ghz_5g = 0,
+    };
+    esp_wifi_set_protocols(WIFI_IF_AP, &ap_protos);
+
+    // STA: Dual-Band (2.4G + 5G) connects to either 2.4G or 5G upstream Wi-Fi
+    wifi_protocols_t sta_protos = {
       .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
       .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX,
     };
-    esp_wifi_set_protocols(WIFI_IF_AP, &protos);
-    esp_wifi_set_protocols(WIFI_IF_STA, &protos);
+    esp_wifi_set_protocols(WIFI_IF_STA, &sta_protos);
 
     wifi_bandwidths_t bws = {
       .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
@@ -450,7 +461,8 @@ void wifi_manager_init(void) {
     };
     esp_wifi_set_bandwidths(WIFI_IF_AP, &bws);
     esp_wifi_set_bandwidths(WIFI_IF_STA, &bws);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (2.4G 11bgnax + 5G 11anacax Wi-Fi 6, max_conn=%d)", MAX_WIFI_STATIONS);
+    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (SoftAP 2.4G 11bgnax Ch %d + STA Dual-Band 2.4G/5G, max_conn=%d)",
+             ap_config.ap.channel, MAX_WIFI_STATIONS);
   } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
     uint8_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
     esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
@@ -468,5 +480,14 @@ void wifi_manager_init(void) {
     ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz Only (11bgnax Wi-Fi 6, bw=%s, Ch 1, max_conn=%d)",
              (bw == WIFI_BW40) ? "HT40" : "HT20", MAX_WIFI_STATIONS);
   }
+
+  ESP_LOGI(ROUTER_TAG, "=================================================");
+  ESP_LOGI(ROUTER_TAG, ">>> SoftAP Broadcast Active <<<");
+  ESP_LOGI(ROUTER_TAG, "SSID:      '%s'", selected_ap_ssid);
+  ESP_LOGI(ROUTER_TAG, "Password:  '%s'", selected_ap_pass);
+  ESP_LOGI(ROUTER_TAG, "Channel:   %d", ap_config.ap.channel);
+  ESP_LOGI(ROUTER_TAG, "Band Mode: %s", (bmode == WIFI_BAND_MODE_5G_ONLY) ? "5GHz Only" : (bmode == WIFI_BAND_MODE_2G_ONLY) ? "2.4GHz Only" : "Dual-Band Auto (SoftAP: 2.4G Wi-Fi 6)");
+  ESP_LOGI(ROUTER_TAG, "Auth Mode: %s", (ap_config.ap.authmode == WIFI_AUTH_OPEN) ? "OPEN" : "WPA2-PSK");
+  ESP_LOGI(ROUTER_TAG, "=================================================");
 }
 
