@@ -626,10 +626,28 @@ button.action-btn{
   font-size:0.82rem;font-weight:700;transition:all .2s;display:inline-flex;align-items:center;
   justify-content:center;gap:4px;
 }
-.btn-gaming{background:var(--badge-gaming-bg);color:var(--badge-gaming-color);border:1px solid var(--badge-gaming-border)}
-.btn-gaming:hover{background:rgba(6,182,212,0.3)}
-.btn-block{background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.3)}
-.btn-unblock{background:rgba(16,185,129,0.2);color:var(--green);border:1px solid rgba(16,185,129,0.3)}
+.btn-gaming{background:var(--badge-gaming-bg);color:var(--badge-gaming-color);border:1px solid var(--badge-gaming-border);transition:all .2s ease}
+.btn-gaming:hover{background:rgba(6,182,212,0.3);transform:translateY(-1px)}
+.btn-gaming-active, .btn-gaming.active{
+  background:linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color:#fff !important;
+  border:1px solid #fbbf24 !important;
+  box-shadow:0 0 12px rgba(245, 158, 11, 0.7), inset 0 0 4px rgba(255,255,255,0.4) !important;
+  font-weight:800 !important;
+  animation:vipGlow 2s infinite ease-in-out;
+}
+.btn-gaming-active:hover, .btn-gaming.active:hover{
+  background:linear-gradient(135deg, #fbbf24, #b45309) !important;
+  box-shadow:0 0 16px rgba(245, 158, 11, 0.95) !important;
+}
+@keyframes vipGlow{
+  0%, 100%{box-shadow:0 0 8px rgba(245, 158, 11, 0.5)}
+  50%{box-shadow:0 0 16px rgba(245, 158, 11, 0.9)}
+}
+.btn-block{background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4);transition:all .2s ease}
+.btn-block:hover{background:rgba(239,68,68,0.35);color:#fff;transform:translateY(-1px)}
+.btn-unblock{background:rgba(16,185,129,0.25);color:var(--green);border:1px solid rgba(16,185,129,0.5);font-weight:800;transition:all .2s ease}
+.btn-unblock:hover{background:rgba(16,185,129,0.4);color:#fff;box-shadow:0 0 10px rgba(16,185,129,0.5);transform:translateY(-1px)}
 .btn-reset{background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid rgba(245,158,11,0.3)}
 .btn-delete{background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.25)}
 .primary-btn{
@@ -2683,6 +2701,47 @@ function renderDevices(devices) {
       if (nInput && document.activeElement !== nInput && !nInput.dataset.dirty) nInput.value = dev.name || 'جهاز متصل';
       let tgInput = document.getElementById('tbl_tg_' + canonMac);
       if (tgInput && document.activeElement !== tgInput && !tgInput.dataset.dirty) tgInput.value = dev.telegram_chat_id || '';
+
+      // Visual indicator on speed limit inputs when VIP is active
+      if (dlInput) {
+        dlInput.title = isGaming ? `الحد مضبوط على ${dev.download_mbps || 0} Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)` : 'أقصى سرعة تحميل Mbps';
+        if (isGaming) dlInput.style.borderColor = 'var(--amber)';
+        else dlInput.style.borderColor = '';
+      }
+      if (ulInput) {
+        ulInput.title = isGaming ? `الحد مضبوط على ${dev.upload_mbps || 0} Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)` : 'أقصى سرعة رفع Mbps';
+        if (isGaming) ulInput.style.borderColor = 'var(--amber)';
+        else ulInput.style.borderColor = '';
+      }
+
+      // Dynamic Action Buttons state update for Table
+      let btnGaming = tr.querySelector('.btn-gaming');
+      if (btnGaming) {
+        btnGaming.setAttribute('onclick', `toggleGaming('${canonMac}', ${!isGaming})`);
+        if (isGaming) {
+          btnGaming.classList.add('btn-gaming-active');
+          btnGaming.innerHTML = '👑 VIP نشط';
+          btnGaming.title = 'وضع الألعاب VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)';
+        } else {
+          btnGaming.classList.remove('btn-gaming-active');
+          btnGaming.innerHTML = '🎮';
+          btnGaming.title = 'تفعيل وضع الألعاب VIP (تجاوز السرعة وأولوية Ping)';
+        }
+      }
+
+      let btnBlock = tr.querySelector('.btn-block, .btn-unblock');
+      if (btnBlock) {
+        btnBlock.setAttribute('onclick', `toggleBlock('${canonMac}', ${!isBlocked})`);
+        if (isBlocked) {
+          btnBlock.className = 'action-btn btn-unblock';
+          btnBlock.innerHTML = '🔓';
+          btnBlock.title = 'الجهاز محظور حالياً (انقر لفك الحظر)';
+        } else {
+          btnBlock.className = 'action-btn btn-block';
+          btnBlock.innerHTML = '⛔';
+          btnBlock.title = 'حظر هذا الجهاز عن الإنترنت';
+        }
+      }
     });
   } else if (!isEditing) {
     let tableHtml = '';
@@ -2704,7 +2763,7 @@ function renderDevices(devices) {
       if (quotaExceeded) statusBadge = '<span class="badge badge-blocked">⚠️ تجاوز الكوتة</span>';
       else if (isBlocked) statusBadge = '<span class="badge badge-blocked">⛔ محظور</span>';
       else statusBadge = '<span class="badge badge-online">🟢 متصل</span>';
-      if (isGaming) statusBadge += ' <span class="badge badge-gaming">🎮 VIP ألعاب</span>';
+      if (isGaming) statusBadge += ' <span class="badge badge-gaming">👑 VIP ألعاب</span>';
 
       let quotaBarColor = quotaPct >= 100 ? 'var(--red)' : quotaPct >= 80 ? 'var(--amber)' : 'var(--green)';
 
@@ -2782,13 +2841,13 @@ function renderDevices(devices) {
             <input type="number" step="0.5" min="0" value="${downLimit}" id="tbl_dl_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--cyan);text-align:center" title="أقصى سرعة تحميل Mbps">
+                   style="width:55px;padding:3px 5px;color:var(--cyan);text-align:center;${isGaming ? 'border-color:var(--amber)' : ''}" title="${isGaming ? 'الحد مضبوط على ' + downLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة تحميل Mbps'}">
           </td>
           <td>
             <input type="number" step="0.5" min="0" value="${upLimit}" id="tbl_ul_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--accent);text-align:center" title="أقصى سرعة رفع Mbps">
+                   style="width:55px;padding:3px 5px;color:var(--accent);text-align:center;${isGaming ? 'border-color:var(--amber)' : ''}" title="${isGaming ? 'الحد مضبوط على ' + upLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة رفع Mbps'}">
           </td>
           <td>
             <input type="text" value="${tgChat}" id="tbl_tg_${canonMac}" 
@@ -2799,8 +2858,8 @@ function renderDevices(devices) {
           <td>
             <div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap">
               <button class="primary-btn" style="padding:3px 7px;font-size:0.75rem" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات">💾</button>
-              <button class="action-btn btn-gaming" style="padding:3px 7px;font-size:0.75rem" onclick="toggleGaming('${canonMac}', ${!isGaming})" title="وضع الألعاب VIP">🎮</button>
-              <button class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" style="padding:3px 7px;font-size:0.75rem" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'فك الحظر' : 'حظر'}">${isBlocked ? '🔓' : '⛔'}</button>
+              <button class="action-btn btn-gaming ${isGaming ? 'btn-gaming-active' : ''}" style="padding:3px 7px;font-size:0.75rem" onclick="toggleGaming('${canonMac}', ${!isGaming})" title="${isGaming ? 'وضع الألعاب VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)' : 'تفعيل وضع الألعاب VIP (تجاوز السرعة وأولوية Ping)'}">${isGaming ? '👑 VIP نشط' : '🎮'}</button>
+              <button class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" style="padding:3px 7px;font-size:0.75rem" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'الجهاز محظور حالياً (انقر لفك الحظر)' : 'حظر هذا الجهاز عن الإنترنت'}">${isBlocked ? '🔓' : '⛔'}</button>
               <button class="action-btn btn-reset" style="padding:3px 7px;font-size:0.75rem" onclick="resetDevice('${canonMac}')" title="تصفير العداد">🔄</button>
               <button class="action-btn btn-delete" style="padding:3px 7px;font-size:0.75rem" onclick="deleteDevice('${canonMac}')" title="حذف">🗑️</button>
             </div>
@@ -2841,6 +2900,62 @@ function renderDevices(devices) {
       if (ulInput && document.activeElement !== ulInput && !ulInput.dataset.dirty) ulInput.value = dev.upload_mbps || 0;
       let tgInput = document.getElementById('card_tg_' + canonMac);
       if (tgInput && document.activeElement !== tgInput && !tgInput.dataset.dirty) tgInput.value = dev.telegram_chat_id || '';
+
+      let isGaming = !!dev.gaming;
+      let isBlocked = !!dev.blocked;
+      let quotaExceeded = dev.quota_exceeded !== undefined ? dev.quota_exceeded : (dev.quota > 0 && (dev.up + dev.down) >= dev.quota);
+
+      card.classList.toggle('gaming', isGaming);
+      card.classList.toggle('blocked', isBlocked);
+      card.classList.toggle('quota-exceeded', quotaExceeded);
+
+      let statusBadge = '';
+      if (quotaExceeded) statusBadge = '<span class="badge badge-blocked">⚠️ تجاوز الكوتة</span>';
+      else if (isBlocked) statusBadge = '<span class="badge badge-blocked">⛔ محظور</span>';
+      else statusBadge = '<span class="badge badge-online">🟢 متصل</span>';
+      if (isGaming) statusBadge += ' <span class="badge badge-gaming">👑 VIP ألعاب</span>';
+
+      let headBadge = card.querySelector('.dev-card-head > div:last-child');
+      if (headBadge) headBadge.innerHTML = statusBadge;
+
+      let cardBtnGaming = card.querySelector('.btn-gaming');
+      if (cardBtnGaming) {
+        cardBtnGaming.setAttribute('onclick', `toggleGaming('${canonMac}', ${!isGaming})`);
+        if (isGaming) {
+          cardBtnGaming.classList.add('btn-gaming-active');
+          cardBtnGaming.innerHTML = '👑 إلغاء VIP';
+          cardBtnGaming.title = 'وضع VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)';
+        } else {
+          cardBtnGaming.classList.remove('btn-gaming-active');
+          cardBtnGaming.innerHTML = '🎮 ألعاب VIP';
+          cardBtnGaming.title = 'تفعيل وضع الألعاب VIP (سرعة كاملة وأولوية Ping)';
+        }
+      }
+
+      let cardBtnBlock = card.querySelector('.btn-block, .btn-unblock');
+      if (cardBtnBlock) {
+        cardBtnBlock.setAttribute('onclick', `toggleBlock('${canonMac}', ${!isBlocked})`);
+        if (isBlocked) {
+          cardBtnBlock.className = 'action-btn btn-unblock';
+          cardBtnBlock.innerHTML = '🔓 فك الحظر';
+          cardBtnBlock.title = 'الجهاز محظور حالياً (انقر لفك الحظر)';
+        } else {
+          cardBtnBlock.className = 'action-btn btn-block';
+          cardBtnBlock.innerHTML = '⛔ حظر';
+          cardBtnBlock.title = 'حظر هذا الجهاز عن الإنترنت';
+        }
+      }
+
+      if (dlInput) {
+        dlInput.title = isGaming ? `الحد مضبوط على ${dev.download_mbps || 0} Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)` : 'أقصى سرعة تحميل Mbps';
+        if (isGaming) dlInput.style.borderColor = 'var(--amber)';
+        else dlInput.style.borderColor = '';
+      }
+      if (ulInput) {
+        ulInput.title = isGaming ? `الحد مضبوط على ${dev.upload_mbps || 0} Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)` : 'أقصى سرعة رفع Mbps';
+        if (isGaming) ulInput.style.borderColor = 'var(--amber)';
+        else ulInput.style.borderColor = '';
+      }
     });
   } else if (!isEditing) {
     let cardsHtml = '';
@@ -2862,7 +2977,7 @@ function renderDevices(devices) {
       if (quotaExceeded) statusBadge = '<span class="badge badge-blocked">⚠️ تجاوز الكوتة</span>';
       else if (isBlocked) statusBadge = '<span class="badge badge-blocked">⛔ محظور</span>';
       else statusBadge = '<span class="badge badge-online">🟢 متصل</span>';
-      if (isGaming) statusBadge += ' <span class="badge badge-gaming">🎮 VIP ألعاب</span>';
+      if (isGaming) statusBadge += ' <span class="badge badge-gaming">👑 VIP ألعاب</span>';
 
       let quotaBarColor = quotaPct >= 100 ? 'var(--red)' : quotaPct >= 80 ? 'var(--amber)' : 'var(--green)';
       let quotaBarWidth = Math.min(quotaPct, 100);
@@ -2909,14 +3024,16 @@ function renderDevices(devices) {
               <input type="number" step="0.5" min="0" value="${downLimit}" id="card_dl_${canonMac}" 
                      oninput="this.dataset.dirty='1'"
                      onkeydown="if(event.key==='Enter') saveDeviceCard('${canonMac}')"
-                     placeholder="Mbps">
+                     placeholder="Mbps" style="${isGaming ? 'border-color:var(--amber)' : ''}"
+                     title="${isGaming ? 'الحد مضبوط على ' + downLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة تحميل Mbps'}">
             </div>
             <div>
               <label>⬆️ حد الرفع:</label>
               <input type="number" step="0.5" min="0" value="${upLimit}" id="card_ul_${canonMac}" 
                      oninput="this.dataset.dirty='1'"
                      onkeydown="if(event.key==='Enter') saveDeviceCard('${canonMac}')"
-                     placeholder="Mbps">
+                     placeholder="Mbps" style="${isGaming ? 'border-color:var(--amber)' : ''}"
+                     title="${isGaming ? 'الحد مضبوط على ' + upLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة رفع Mbps'}">
             </div>
             <div>
               <label>معرف التيليجرام:</label>
@@ -2929,8 +3046,12 @@ function renderDevices(devices) {
           <button type="button" class="primary-btn" style="width:100%;padding:6px 10px;font-size:0.8rem;margin-bottom:8px" onclick="saveDeviceCard('${canonMac}')">💾 حفظ الكوتة والسرعة</button>
 
           <div class="btn-row">
-            <button type="button" class="action-btn btn-gaming" onclick="toggleGaming('${canonMac}', ${!isGaming})">🎮 ${isGaming ? 'إلغاء VIP' : 'ألعاب VIP'}</button>
-            <button type="button" class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" onclick="toggleBlock('${canonMac}', ${!isBlocked})">${isBlocked ? 'فك الحظر' : 'حظر'}</button>
+            <button type="button" class="action-btn btn-gaming ${isGaming ? 'btn-gaming-active' : ''}" onclick="toggleGaming('${canonMac}', ${!isGaming})" title="${isGaming ? 'وضع VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)' : 'تفعيل وضع الألعاب VIP (أقصى سرعة وأولوية Ping)'}">
+              ${isGaming ? '👑 إلغاء VIP' : '🎮 ألعاب VIP'}
+            </button>
+            <button type="button" class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'الجهاز محظور حالياً (انقر لفك الحظر)' : 'حظر هذا الجهاز عن الإنترنت'}">
+              ${isBlocked ? '🔓 فك الحظر' : '⛔ حظر'}
+            </button>
             <button type="button" class="action-btn btn-reset" onclick="resetDevice('${canonMac}')">🔄 تصفير</button>
             <button type="button" class="action-btn btn-delete" onclick="deleteDevice('${canonMac}')">🗑️ حذف</button>
           </div>
@@ -3132,9 +3253,12 @@ function renderDevices(devices) {
 // Device Actions with Auto-Auth & Toast Notifications
 async function toggleGaming(mac, val) {
   if (!isAdmin) {
-    _pendingAction = () => toggleGaming(mac, val);
-    openLoginModal('يرجى تسجيل الدخول كمشرف لتفعيل وضع الألعاب VIP');
-    return;
+    let ok = await ensureAdminAuth();
+    if (!ok) {
+      _pendingAction = () => toggleGaming(mac, val);
+      openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لتفعيل وضع الألعاب VIP' : 'يرجى تسجيل الدخول كمشرف لإلغاء وضع VIP');
+      return;
+    }
   }
   try {
     let res = await fetch('/api/device/gaming', {
@@ -3143,10 +3267,14 @@ async function toggleGaming(mac, val) {
       body: new URLSearchParams({mac: mac, gaming: val ? '1' : '0'})
     });
     if (res.ok) {
-      showToast(val ? 'تم تفعيل وضع ألعاب VIP بنجاح! 🎮' : 'تم إلغاء وضع الألعاب 🎮', 'info');
+      showToast(val ? 'تم تفعيل وضع ألعاب VIP (أقصى سرعة وتخطي الحدود)! 👑' : 'تم إلغاء وضع VIP والعودة للسرعة المحددة بنجاح! 🚀', val ? 'warn' : 'success');
       refreshData();
+    } else {
+      showToast('تعذر تغيير وضع VIP، يرجى المحاولة مجدداً', 'error');
     }
-  } catch (e) {}
+  } catch (e) {
+    showToast('خطأ في الاتصال بالراوتر', 'error');
+  }
 }
 
 async function toggleBlock(mac, val) {
@@ -3154,7 +3282,7 @@ async function toggleBlock(mac, val) {
     let ok = await ensureAdminAuth();
     if (!ok) {
       _pendingAction = () => toggleBlock(mac, val);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لحظر أو فك حظر هذا الجهاز');
+      openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لحظر هذا الجهاز' : 'يرجى تسجيل الدخول كمشرف لفك الحظر عن هذا الجهاز');
       return;
     }
   }
@@ -3167,8 +3295,12 @@ async function toggleBlock(mac, val) {
     if (res.ok) {
       showToast(val ? 'تم حظر الجهاز بنجاح! ⛔' : 'تم فك الحظر عن الجهاز بنجاح! 🟢', val ? 'warn' : 'success');
       refreshData();
+    } else {
+      showToast('تعذر تغيير حالة الحظر، يرجى المحاولة مجدداً', 'error');
     }
-  } catch (e) {}
+  } catch (e) {
+    showToast('خطأ في الاتصال بالراوتر', 'error');
+  }
 }
 
 async function resetDevice(mac) {
