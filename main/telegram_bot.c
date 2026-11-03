@@ -15,6 +15,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "lwip/ip4_addr.h"
@@ -76,6 +77,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
       .url = url,
       .method = HTTP_METHOD_POST,
       .timeout_ms = 8000,
+      .crt_bundle_attach = esp_crt_bundle_attach,
       .skip_cert_common_name_check = true,
       .buffer_size = 512,
       .buffer_size_tx = 2800,
@@ -124,11 +126,12 @@ bool telegram_answer_callback_query(const char *callback_query_id, const char *t
       .url = url,
       .method = HTTP_METHOD_POST,
       .timeout_ms = 6000,
+      .crt_bundle_attach = esp_crt_bundle_attach,
       .skip_cert_common_name_check = true,
       .buffer_size = 256,
       .buffer_size_tx = 300,
   };
-
+ 
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) return false;
 
@@ -140,18 +143,87 @@ bool telegram_answer_callback_query(const char *callback_query_id, const char *t
   return (err == ESP_OK);
 }
 
-bool telegram_send_test_alert(void) {
+int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   if (!telegram_token[0] || !telegram_chat_id[0]) {
-    return false;
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "لم يتم إدخال توكن البوت أو معرف المحادثة Chat ID!");
+    }
+    return -1;
   }
 
-  char msg[500];
-  snprintf(msg, sizeof(msg),
-           "✅ <b>اختبار إشعارات راوتر ESP32 المتقدم</b>\n\n"
-           "الاتصال ببوت التيليجرام يعمل بنجاح وبكفاءة فائقة! 🚀\n"
-           "ستصلك الآن تنبيهات الاستهلاك التلقائية للراوتر ولأجهزتك فور تجاوز الحدود المقررة.\n"
-           "💡 يمكنك إرسال كلمة <code>استهلاك</code> أو <code>/quota</code> للاستعلام في أي وقت.");
-  return telegram_send_message(telegram_chat_id, msg);
+  // Check STA connection
+  wifi_ap_record_t ap_rec;
+  if (esp_wifi_sta_get_ap_info(&ap_rec) != ESP_OK) {
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "الراوتر غير متصل بالإنترنت حالياً (STA غير متصل). يرجى ربطه بالواي فاي المنزلي أولاً.");
+    }
+    return -2;
+  }
+
+  char url[180];
+  snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage", telegram_token);
+
+  const char *msg = "✅ <b>اختبار إشعارات راوتر ESP32 المتقدم</b>\n\n"
+                    "الاتصال ببوت التيليجرام يعمل بنجاح وبكفاءة فائقة! 🚀\n"
+                    "ستصلك الآن تنبيهات الاستهلاك التلقائية للراوتر ولأجهزتك فور تجاوز الحدود المقررة.\n"
+                    "💡 يمكنك إرسال كلمة <code>استهلاك</code> أو <code>/quota</code> للاستعلام في أي وقت.";
+
+  char escaped_text[1800];
+  json_escape(msg, escaped_text, sizeof(escaped_text));
+
+  char body[2400];
+  snprintf(body, sizeof(body),
+           "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
+           telegram_chat_id, escaped_text);
+
+  esp_http_client_config_t config = {
+      .url = url,
+      .method = HTTP_METHOD_POST,
+      .timeout_ms = 10000,
+      .crt_bundle_attach = esp_crt_bundle_attach,
+      .skip_cert_common_name_check = true,
+      .buffer_size = 512,
+      .buffer_size_tx = 2400,
+  };
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (!client) {
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "فشل إنشاء عميل الاتصال HTTP");
+    }
+    return -3;
+  }
+
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_http_client_set_post_field(client, body, strlen(body));
+
+  esp_err_t err = esp_http_client_perform(client);
+  int status = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+
+  if (err == ESP_OK && (status == 200 || status == 201)) {
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "تم إرسال التنبيه التجريبي عبر التيليجرام بنجاح! تفقد محادثتك.");
+    }
+    return 0;
+  }
+
+  if (out_err && max_err > 0) {
+    if (err != ESP_OK) {
+      snprintf(out_err, max_err, "فشل الاتصال بخادم تيليجرام (%s). تأكد من توفر الإنترنت والـ DNS.", esp_err_to_name(err));
+    } else if (status == 401) {
+      snprintf(out_err, max_err, "توكن البوت غير صحيح (401 Unauthorized)، يرجى التأكد من نسخه بالكامل من @BotFather.");
+    } else if (status == 400 || status == 403) {
+      snprintf(out_err, max_err, "معرف Chat ID غير صحيح أو أنك لم تبدأ المحادثة بالضغط على Start في البوت (كود %d).", status);
+    } else {
+      snprintf(out_err, max_err, "رفض تيليجرام إرسال الرسالة، رمز الاستجابة: %d.", status);
+    }
+  }
+  return status > 0 ? status : -4;
+}
+
+bool telegram_send_test_alert(void) {
+  return (telegram_send_test_alert_diag(NULL, 0) == 0);
 }
 
 void telegram_reset_alert_flags(void) {
@@ -680,6 +752,7 @@ static void telegram_task(void *pvParameters) {
         .url = url,
         .method = HTTP_METHOD_GET,
         .timeout_ms = 12000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .skip_cert_common_name_check = true,
         .buffer_size = 1024,
         .buffer_size_tx = 512,
