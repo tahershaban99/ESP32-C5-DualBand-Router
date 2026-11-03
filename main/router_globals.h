@@ -107,6 +107,9 @@ extern dev_fast_entry_t* ip_lookup[256];
 extern dev_fast_entry_t fast_device_pool[MAX_CLIENTS];
 extern portMUX_TYPE data_mux;
 
+extern char last_reset_reason_str[96];
+extern int last_reset_code;
+
 static inline bool valid_device_mac(const uint8_t mac[6]) {
   bool nonzero = false;
   for (size_t i = 0; i < 6; ++i) {

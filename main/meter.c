@@ -521,27 +521,6 @@ void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip) {
   }
 }
 
-// RFC 1624 incremental checksum update for fast-track DSCP EF ToS
-static inline void update_ip_tos_fast_track(struct pbuf *packet, uint8_t new_tos) {
-  if (packet == NULL || packet->len < 20 || packet->payload == NULL) return;
-  uint8_t *ip_hdr = (uint8_t *)packet->payload;
-  uint8_t old_tos = ip_hdr[1];
-  if (old_tos == new_tos) return;
-
-  uint32_t old_val = ((uint32_t)ip_hdr[0] << 8) | old_tos;
-  uint32_t new_val = ((uint32_t)ip_hdr[0] << 8) | new_tos;
-  uint32_t old_chk = ((uint32_t)ip_hdr[10] << 8) | ip_hdr[11];
-
-  uint32_t sum = (~old_chk & 0xFFFF) + (~old_val & 0xFFFF) + new_val;
-  while (sum >> 16) {
-    sum = (sum & 0xFFFF) + (sum >> 16);
-  }
-  uint16_t new_chk = (uint16_t)~sum;
-  ip_hdr[10] = (uint8_t)(new_chk >> 8);
-  ip_hdr[11] = (uint8_t)(new_chk & 0xFF);
-  ip_hdr[1] = new_tos;
-}
-
 static inline uint32_t ipv4_total_len(const uint8_t *header, size_t avail) {
   if (avail < 20 || (header[0] >> 4) != 4) return 0;
   uint8_t header_len = (header[0] & 0x0f) * 4;
@@ -554,7 +533,7 @@ static inline uint32_t ipv4_total_len(const uint8_t *header, size_t avail) {
 // ZERO-OVERHEAD FAST PACKET HOOK:
 // In IRAM, O(1) direct lookup ip_lookup[256], zero floating-point, zero malloc, zero locks!
 // -----------------------------------------------------------------------------
-int IRAM_ATTR meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
+int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
   (void)destination_host_order;
   if (packet == NULL) return -1;
   uint8_t ip[20];
@@ -581,68 +560,11 @@ int IRAM_ATTR meter_ip4_canforward(struct pbuf *packet, uint32_t destination_hos
 
   uint8_t octet = ((uint8_t *)&target_local_ip)[3];
   dev_fast_entry_t *dev = ip_lookup[octet];
-  int64_t now_us = esp_timer_get_time();
-
   if (dev == NULL) {
-    if (octet >= 2 && octet <= 254) {
-      uint8_t resolved_mac[6] = {0};
-      bool found = false;
-
-      // 1. Look in active_clients
-      for (size_t s = 0; s < MAX_CLIENTS; ++s) {
-        if (active_clients[s].ip == target_local_ip && valid_device_mac(active_clients[s].mac)) {
-          memcpy(resolved_mac, active_clients[s].mac, 6);
-          found = true;
-          break;
-        }
-      }
-
-      // 2. Look in device_bindings
-      if (!found) {
-        for (size_t b = 0; b < binding_count; ++b) {
-          if (device_bindings[b].bound_ip == target_local_ip && valid_device_mac(device_bindings[b].mac)) {
-            memcpy(resolved_mac, device_bindings[b].mac, 6);
-            found = true;
-            break;
-          }
-        }
-      }
-
-      // 3. Look in lwIP ARP table
-      if (!found) {
-        ip4_addr_t ip_addr = {.addr = target_local_ip};
-        struct eth_addr *eth_ret = NULL;
-        const ip4_addr_t *ip_ret = NULL;
-        if (etharp_find_addr(NULL, &ip_addr, &eth_ret, &ip_ret) >= 0 && eth_ret != NULL) {
-          memcpy(resolved_mac, eth_ret->addr, 6);
-          if (valid_device_mac(resolved_mac)) {
-            found = true;
-          }
-        }
-      }
-
-      if (found) {
-        for (size_t s = 0; s < MAX_CLIENTS; ++s) {
-          if (fast_device_pool[s].ip == 0 || fast_device_pool[s].ip == target_local_ip) {
-            fast_device_pool[s].ip = target_local_ip;
-            memcpy(fast_device_pool[s].mac, resolved_mac, 6);
-            fast_device_pool[s].usage_idx = meter_find_usage_locked(resolved_mac, true);
-            fast_device_pool[s].policy_idx = meter_find_policy_locked(resolved_mac, true);
-            fast_device_pool[s].speed_idx = meter_find_speed_locked(resolved_mac, true);
-            fast_device_pool[s].blocked = (fast_device_pool[s].policy_idx >= 0) ? device_policies[fast_device_pool[s].policy_idx].blocked : false;
-            fast_device_pool[s].gaming_mode = (fast_device_pool[s].policy_idx >= 0) ? device_policies[fast_device_pool[s].policy_idx].gaming_mode : false;
-            fast_device_pool[s].last_seen_s = (uint32_t)(now_us / 1000000ULL);
-            ip_lookup[octet] = &fast_device_pool[s];
-            dev = &fast_device_pool[s];
-            break;
-          }
-        }
-      }
-    }
+    return -1; // Fast-forward unmapped packet without overhead or lock contention
   }
 
-  if (dev == NULL) return -1; // Forward packet without metering until MAC is resolved
-
+  int64_t now_us = esp_timer_get_time();
   dev->last_seen_s = (uint32_t)(now_us / 1000000ULL);
 
   // 1-cycle O(1) Block Check
@@ -711,11 +633,6 @@ int IRAM_ATTR meter_ip4_canforward(struct pbuf *packet, uint32_t destination_hos
         }
       }
     }
-  }
-
-  // ToS DSCP EF fast-track for gaming & ping VIP
-  if (is_priority) {
-    update_ip_tos_fast_track(packet, 0xB8);
   }
 
   return -1; // Forward packet
@@ -973,40 +890,79 @@ void meter_save_usage(void) {
   if (!usage_dirty && !policy_dirty && !names_dirty && !speeds_dirty && !bindings_dirty && !meter_state_dirty) {
     return;
   }
-  nvs_handle_t nvs;
-  if (nvs_open("meter", NVS_READWRITE, &nvs) != ESP_OK) return;
+
+  // Snapshots for non-blocking flash writes outside critical section
+  static usage_record_t snap_usage[MAX_RECORDS];
+  static device_policy_t snap_policies[MAX_RECORDS];
+  static device_name_t snap_names[MAX_RECORDS];
+  static device_speed_t snap_speeds[MAX_RECORDS];
+  static device_binding_t snap_bindings[MAX_RECORDS];
+
+  bool do_usage = false, do_policy = false, do_names = false, do_speeds = false, do_bindings = false, do_state = false;
+  size_t u_cnt = 0, p_cnt = 0, n_cnt = 0, s_cnt = 0, b_cnt = 0;
+  uint16_t snap_period_days = 0;
+  uint32_t snap_elapsed_s = 0;
+  uint64_t snap_main_quota = 0;
+  char snap_q_start[16] = {0}, snap_q_end[16] = {0};
 
   portENTER_CRITICAL(&data_mux);
   if (usage_dirty) {
-    nvs_set_blob(nvs, "records", usage_records, usage_count * sizeof(usage_record_t));
+    memcpy(snap_usage, usage_records, usage_count * sizeof(usage_record_t));
+    u_cnt = usage_count;
     usage_dirty = false;
+    do_usage = true;
   }
   if (policy_dirty) {
-    nvs_set_blob(nvs, "policies", device_policies, policy_count * sizeof(device_policy_t));
+    memcpy(snap_policies, device_policies, policy_count * sizeof(device_policy_t));
+    p_cnt = policy_count;
     policy_dirty = false;
+    do_policy = true;
   }
   if (names_dirty) {
-    nvs_set_blob(nvs, "names", device_names, name_count * sizeof(device_name_t));
+    memcpy(snap_names, device_names, name_count * sizeof(device_name_t));
+    n_cnt = name_count;
     names_dirty = false;
+    do_names = true;
   }
   if (speeds_dirty) {
-    nvs_set_blob(nvs, "speeds", device_speeds, speed_count * sizeof(device_speed_t));
+    memcpy(snap_speeds, device_speeds, speed_count * sizeof(device_speed_t));
+    s_cnt = speed_count;
     speeds_dirty = false;
+    do_speeds = true;
   }
   if (bindings_dirty) {
-    nvs_set_blob(nvs, "bindings", device_bindings, binding_count * sizeof(device_binding_t));
+    memcpy(snap_bindings, device_bindings, binding_count * sizeof(device_binding_t));
+    b_cnt = binding_count;
     bindings_dirty = false;
+    do_bindings = true;
   }
   if (meter_state_dirty) {
-    nvs_set_u16(nvs, "period_days", meter_period_days);
-    nvs_set_u32(nvs, "elapsed_s", meter_period_elapsed_s);
-    nvs_set_u64(nvs, "main_quota", main_quota_bytes);
-    nvs_set_str(nvs, "q_start", quota_start_date);
-    nvs_set_str(nvs, "q_end", quota_end_date);
+    snap_period_days = meter_period_days;
+    snap_elapsed_s = meter_period_elapsed_s;
+    snap_main_quota = main_quota_bytes;
+    strncpy(snap_q_start, quota_start_date, sizeof(snap_q_start) - 1);
+    strncpy(snap_q_end, quota_end_date, sizeof(snap_q_end) - 1);
     meter_state_dirty = false;
+    do_state = true;
   }
   device_catalog_dirty = false;
   portEXIT_CRITICAL(&data_mux);
+
+  nvs_handle_t nvs;
+  if (nvs_open("meter", NVS_READWRITE, &nvs) != ESP_OK) return;
+
+  if (do_usage && u_cnt > 0) nvs_set_blob(nvs, "records", snap_usage, u_cnt * sizeof(usage_record_t));
+  if (do_policy && p_cnt > 0) nvs_set_blob(nvs, "policies", snap_policies, p_cnt * sizeof(device_policy_t));
+  if (do_names && n_cnt > 0) nvs_set_blob(nvs, "names", snap_names, n_cnt * sizeof(device_name_t));
+  if (do_speeds && s_cnt > 0) nvs_set_blob(nvs, "speeds", snap_speeds, s_cnt * sizeof(device_speed_t));
+  if (do_bindings && b_cnt > 0) nvs_set_blob(nvs, "bindings", snap_bindings, b_cnt * sizeof(device_binding_t));
+  if (do_state) {
+    nvs_set_u16(nvs, "period_days", snap_period_days);
+    nvs_set_u32(nvs, "elapsed_s", snap_elapsed_s);
+    nvs_set_u64(nvs, "main_quota", snap_main_quota);
+    nvs_set_str(nvs, "q_start", snap_q_start);
+    nvs_set_str(nvs, "q_end", snap_q_end);
+  }
 
   nvs_commit(nvs);
   nvs_close(nvs);

@@ -432,8 +432,8 @@ void wifi_manager_init(void) {
 
   ESP_ERROR_CHECK(esp_wifi_set_ps(esp_wifi_power_save ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE));
 
-  // Max TX Power: 20 dBm (80 * 0.25 dBm)
-  esp_wifi_set_max_tx_power(80);
+  // Max TX Power: 18.0 dBm (72 * 0.25 dBm) - prevents USB current surge voltage dips
+  esp_wifi_set_max_tx_power(72);
 
   // Bandwidth & Protocol Tuning with Wi-Fi 6 (802.11ax) acceleration
   if (bmode == WIFI_BAND_MODE_AUTO) {

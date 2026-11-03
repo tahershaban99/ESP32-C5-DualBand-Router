@@ -21,7 +21,51 @@
 #include "driver/gpio.h"
 #define BOOT_BUTTON_GPIO 0
 
+char last_reset_reason_str[96] = "تشغيل طبيعي (Power-On)";
+int last_reset_code = 0;
+
+static void evaluate_reset_reason(void) {
+  esp_reset_reason_t reason = esp_reset_reason();
+  last_reset_code = (int)reason;
+  switch (reason) {
+    case ESP_RST_POWERON:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "تشغيل طبيعي بعد توصيل الكهرباء (Power-on Reset)");
+      break;
+    case ESP_RST_SW:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "إعادة تشغيل برمجية طبيعية (Software Restart)");
+      break;
+    case ESP_RST_PANIC:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "خطأ برمجي استثنائي في النظام (Software Panic / Exception)");
+      break;
+    case ESP_RST_INT_WDT:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "تعليق مقاطعات المعالج (Interrupt Watchdog Timeout)");
+      break;
+    case ESP_RST_TASK_WDT:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "تعليق إحدى مهام النظام (Task Watchdog Timeout)");
+      break;
+    case ESP_RST_WDT:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "مؤقت المراقبة العام (Hardware Watchdog Reset)");
+      break;
+    case ESP_RST_DEEPSLEEP:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "استيقاظ من وضع السكون (Deep-sleep Wakeup)");
+      break;
+    case ESP_RST_BROWNOUT:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "انخفاض الجهد الكهربي (Brownout Reset - هبوط فولت منفذ USB)");
+      break;
+    case ESP_RST_SDIO:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "إعادة تشغيل عبر مدخل SDIO");
+      break;
+    default:
+      snprintf(last_reset_reason_str, sizeof(last_reset_reason_str), "إعادة تشغيل غير محددة (كود: %d)", (int)reason);
+      break;
+  }
+  ESP_LOGI(ROUTER_TAG, "=================================================");
+  ESP_LOGI(ROUTER_TAG, "Hardware Boot Reason: %s (Code %d)", last_reset_reason_str, last_reset_code);
+  ESP_LOGI(ROUTER_TAG, "=================================================");
+}
+
 void app_main(void) {
+  evaluate_reset_reason();
 #if defined(CONFIG_BT_ENABLED)
   // Reclaim Bluetooth controller DRAM memory if BT is compiled in
   esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);

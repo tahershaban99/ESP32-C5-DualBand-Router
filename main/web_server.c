@@ -342,10 +342,12 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   used = append_json_string(buf, sizeof(buf), used, ap_ssid);
   if (used < sizeof(buf) - 1) {
     used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-        ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\"",
+        ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\","
+        "\"last_reset_reason\":\"%s\",\"last_reset_code\":%d",
         telegram_enabled ? "true" : "false", telegram_interactive ? "true" : "false",
         telegram_chat_id, telegram_thresholds,
-        auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str);
+        auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str,
+        last_reset_reason_str, last_reset_code);
   }
 
   // Output discovered Telegram users list for dropdown linking
