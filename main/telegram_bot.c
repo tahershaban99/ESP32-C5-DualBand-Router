@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -26,6 +27,21 @@
 
 static int64_t last_update_id = 0;
 static bool telegram_busy = false;
+static SemaphoreHandle_t tg_http_mux = NULL;
+
+static bool tg_http_lock(TickType_t wait_ticks) {
+  if (!tg_http_mux) {
+    tg_http_mux = xSemaphoreCreateMutex();
+  }
+  if (!tg_http_mux) return false;
+  return (xSemaphoreTake(tg_http_mux, wait_ticks) == pdTRUE);
+}
+
+static void tg_http_unlock(void) {
+  if (tg_http_mux) {
+    xSemaphoreGive(tg_http_mux);
+  }
+}
 
 // Persistent Interactive Keyboards
 static const char *TG_ADMIN_KEYBOARD =
@@ -146,12 +162,18 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
     return false;
   }
 
+  if (!tg_http_lock(pdMS_TO_TICKS(15000))) {
+    ESP_LOGW(TG_TAG, "Cannot send message: Telegram HTTP client locked by another task");
+    return false;
+  }
+
   char url[180];
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage", telegram_token);
 
   char *escaped_text = (char *)malloc(2048);
   if (!escaped_text) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for escaped_text");
+    tg_http_unlock();
     return false;
   }
   json_escape(text, escaped_text, 2048);
@@ -160,6 +182,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
   if (!body) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for sendMessage body");
     free(escaped_text);
+    tg_http_unlock();
     return false;
   }
 
@@ -177,9 +200,8 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
   esp_http_client_config_t config = {
       .url = url,
       .method = HTTP_METHOD_POST,
-      .timeout_ms = 8000,
+      .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
-      .skip_cert_common_name_check = true,
       .buffer_size = 512,
       .buffer_size_tx = 2800,
   };
@@ -188,6 +210,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
   if (!client) {
     ESP_LOGE(TG_TAG, "Failed to initialize HTTP client for sendMessage");
     free(body);
+    tg_http_unlock();
     return false;
   }
 
@@ -198,6 +221,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
   int status = esp_http_client_get_status_code(client);
   esp_http_client_cleanup(client);
   free(body);
+  tg_http_unlock();
 
   if (err == ESP_OK && (status == 200 || status == 201)) {
     ESP_LOGI(TG_TAG, "Telegram message sent successfully to %s", chat_id);
@@ -210,6 +234,10 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
 
 bool telegram_answer_callback_query(const char *callback_query_id, const char *text) {
   if (!telegram_token[0] || !callback_query_id || !callback_query_id[0]) return false;
+
+  if (!tg_http_lock(pdMS_TO_TICKS(8000))) {
+    return false;
+  }
 
   char url[180];
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/answerCallbackQuery", telegram_token);
@@ -228,19 +256,22 @@ bool telegram_answer_callback_query(const char *callback_query_id, const char *t
       .method = HTTP_METHOD_POST,
       .timeout_ms = 6000,
       .crt_bundle_attach = esp_crt_bundle_attach,
-      .skip_cert_common_name_check = true,
       .buffer_size = 256,
       .buffer_size_tx = 300,
   };
  
   esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) return false;
+  if (!client) {
+    tg_http_unlock();
+    return false;
+  }
 
   esp_http_client_set_header(client, "Content-Type", "application/json");
   esp_http_client_set_post_field(client, body, strlen(body));
 
   esp_err_t err = esp_http_client_perform(client);
   esp_http_client_cleanup(client);
+  tg_http_unlock();
   return (err == ESP_OK);
 }
 
@@ -261,6 +292,13 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
     return -2;
   }
 
+  if (!tg_http_lock(pdMS_TO_TICKS(15000))) {
+    if (out_err && max_err > 0) {
+      snprintf(out_err, max_err, "محرك التيليجرام مشغول حالياً، يرجى إعادة المحاولة بعد لحظات.");
+    }
+    return -5;
+  }
+
   // Extract first admin ID
   char first_admin[48] = {0};
   char copy[140];
@@ -273,6 +311,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
     strncpy(first_admin, tok, sizeof(first_admin) - 1);
   }
   if (!first_admin[0]) {
+    tg_http_unlock();
     if (out_err && max_err > 0) {
       snprintf(out_err, max_err, "معرف المشرف Chat ID غير صالح!");
     }
@@ -289,6 +328,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
 
   char *escaped_text = (char *)malloc(2048);
   if (!escaped_text) {
+    tg_http_unlock();
     if (out_err && max_err > 0) snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
     return -2;
   }
@@ -297,6 +337,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   char *body = (char *)malloc(2800);
   if (!body) {
     free(escaped_text);
+    tg_http_unlock();
     if (out_err && max_err > 0) snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
     return -2;
   }
@@ -310,7 +351,6 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
       .method = HTTP_METHOD_POST,
       .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
-      .skip_cert_common_name_check = true,
       .buffer_size = 512,
       .buffer_size_tx = 2400,
   };
@@ -318,6 +358,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) {
     free(body);
+    tg_http_unlock();
     if (out_err && max_err > 0) {
       snprintf(out_err, max_err, "فشل إنشاء عميل الاتصال HTTP");
     }
@@ -331,6 +372,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
   int status = esp_http_client_get_status_code(client);
   esp_http_client_cleanup(client);
   free(body);
+  tg_http_unlock();
 
   if (err == ESP_OK && (status == 200 || status == 201)) {
     if (out_err && max_err > 0) {
@@ -1352,37 +1394,41 @@ static void telegram_task(void *pvParameters) {
 
     char url[220];
     snprintf(url, sizeof(url),
-             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=5&limit=5",
+             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=2&limit=5",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 12000,
+        .timeout_ms = 8000,
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .skip_cert_common_name_check = true,
         .buffer_size = 2048,
         .buffer_size_tx = 512,
     };
 
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (!client) {
-      vTaskDelay(pdMS_TO_TICKS(4000));
+    if (!tg_http_lock(pdMS_TO_TICKS(4000))) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
       continue;
     }
 
-    esp_err_t err = esp_http_client_open(client, 0);
-    if (err == ESP_OK) {
-      esp_http_client_fetch_headers(client);
-      int total_read = 0;
-      while (total_read < 4090) {
-        int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
-        if (r <= 0) break;
-        total_read += r;
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    int total_read = 0;
+    if (client) {
+      esp_err_t err = esp_http_client_open(client, 0);
+      if (err == ESP_OK) {
+        esp_http_client_fetch_headers(client);
+        while (total_read < 4090) {
+          int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
+          if (r <= 0) break;
+          total_read += r;
+        }
+        rx_buffer[total_read] = 0;
       }
-      rx_buffer[total_read] = 0;
+      esp_http_client_cleanup(client);
+    }
+    tg_http_unlock();
 
-      if (total_read > 0) {
+    if (total_read > 0) {
         char *ptr = rx_buffer;
         while ((ptr = strstr(ptr, "\"update_id\":")) != NULL) {
           ptr += 12;
@@ -1616,17 +1662,7 @@ static void telegram_task(void *pvParameters) {
             // -----------------------------------------------------------------
             char potential_ip[256] = {0};
             bool has_link_cmd = false;
-            if (strncmp(cmd_text, "/link", 5) == 0) {
-              has_link_cmd = true;
-              const char *p = cmd_text + 5;
-              while (*p == ' ') p++;
-              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
-            } else if (strncmp(cmd_text, "ربط", 6) == 0 || strncmp(cmd_text, "ربط", 3) == 0) {
-              has_link_cmd = true;
-              const char *p = strstr(cmd_text, "ربط") + strlen("ربط");
-              while (*p == ' ') p++;
-              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
-            } else if (strstr(cmd_text, "🔗 ربط جهازي") != NULL) {
+            if (strstr(cmd_text, "ربط جهازي") != NULL || strstr(cmd_text, "🔗") != NULL) {
               char ask_ip[500];
               snprintf(ask_ip, sizeof(ask_ip),
                        "🔗 <b>ربط جهازك بالبوت لمتابعة الاستهلاك:</b>\n\n"
@@ -1637,6 +1673,16 @@ static void telegram_task(void *pvParameters) {
                        sender_chat_id);
               telegram_send_message_with_keyboard(sender_chat_id, ask_ip, TG_UNLINKED_KEYBOARD);
               continue;
+            } else if (strncmp(cmd_text, "/link", 5) == 0) {
+              has_link_cmd = true;
+              const char *p = cmd_text + 5;
+              while (*p == ' ') p++;
+              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
+            } else if (strncmp(cmd_text, "ربط", 6) == 0 || strncmp(cmd_text, "ربط", 3) == 0) {
+              has_link_cmd = true;
+              const char *p = strstr(cmd_text, "ربط") + strlen("ربط");
+              while (*p == ' ') p++;
+              snprintf(potential_ip, sizeof(potential_ip), "%s", p);
             } else if (!is_admin) {
               // If not admin, check if the whole text is an IP address
               snprintf(potential_ip, sizeof(potential_ip), "%s", cmd_text);
@@ -1919,8 +1965,6 @@ static void telegram_task(void *pvParameters) {
           }
         }
       }
-    }
-    esp_http_client_cleanup(client);
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
   free(rx_buffer);
