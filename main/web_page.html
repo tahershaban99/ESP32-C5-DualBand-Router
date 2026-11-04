@@ -1244,7 +1244,7 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 
 <nav class="tabs">
   <button class="tab-btn active" onclick="switchTab('tab-devices', this)">👥 الأجهزة والسرعات</button>
-  <button class="tab-btn" onclick="switchTab('tab-period', this)">🌐 باقة النت والدورة</button>
+  <button class="tab-btn" onclick="switchTab('tab-period', this)">🎯 باقة الإنترنت والاستهلاك</button>
   <button class="tab-btn" onclick="switchTab('tab-telegram', this)">بوت وتنبيهات التيليجرام 🤖</button>
   <button class="tab-btn" onclick="switchTab('tab-reboot', this)">📊 المراقبة وإعادة التشغيل (الريستارت)</button>
     <button class="tab-btn" onclick="switchTab('tab-settings', this)">⚙️ إعدادات الجهاز والوايفاي</button>
@@ -1330,79 +1330,102 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 <!-- TAB 2: MAIN ISP QUOTA -->
 <section id="tab-period" class="tab-content">
   <div class="card-section glass">
-    <h2>🌐 إعدادات باقة النت الأساسية (حسب الرزنامة)</h2>
-    <p class="note">أدخل سعة الباقة الإجمالية من شركة النت (بالـ GB) وتاريخ البداية والنهاية لحساب الرصيد المتبقي ومتابعة نصيب كل جهاز.</p>
-    <div class="form-group"><label>سعة باقة النت الأساسية (GB) - مثال 140 أو 200 أو 250:</label>
-      <input id="cfg_main_quota_gb" type="number" min="0" step="0.1" placeholder="مثال: 140">
-    </div>
-    <div class="form-row-2">
-      <div class="form-group"><label>تاريخ بداية الباقة (Start Date):</label><input id="cfg_start_date" type="date"></div>
-      <div class="form-group"><label>تاريخ نهاية / تجديد الباقة (End Date):</label><input id="cfg_end_date" type="date"></div>
-    </div>
-    <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)">💾 حفظ إعدادات الباقة الأساسية</button>
-  </div>
-
-      <!-- METER SCALING & GB STANDARD CARD -->
-    <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.35);background:rgba(16, 185, 129, 0.03);margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-        <h2 style="margin:0;color:#fff">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
-        <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b></span>
-      </div>
-      <p class="note" style="margin-bottom:16px">حدد النسبة المئوية لاحتساب استهلاك بايتات التحميل والرفع في العداد، ومعيار حساب الجيجابايت ليتطابق بدقة مع عداد شركة الإنترنت أو أنظمة التشغيل.</p>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">
-        <!-- 1. METER SCALING PERCENTAGE -->
-        <div class="form-group">
-          <label style="font-weight:600;margin-bottom:6px;display:block">نسبة احتساب العداد (Meter Scaling):</label>
-          <select id="cfg_meter_scale" onchange="onMeterScaleChange(this.value)">
-            <option value="110">110% (زيادة 10% لاحتساب ترويسات الحزم Overhead والتحوط الإضافي)</option>
-            <option value="105">105% (زيادة 5% للتحوط المسبق مع شركات الاتصالات)</option>
-            <option value="100" selected>100% (حساب حقيقي دقيق 1:1 - ملف 100MB يُحسب 100MB بالضبط) [الافتراضي]</option>
-            <option value="95">95% (تخفيض 5% لتجاوز حزم الشبكة التكرارية Re-transmissions)</option>
-            <option value="90">90% (تخفيض 10% عن الحجم الفعلي)</option>
-            <option value="85">85% (تخفيض 15% لتوفير الباقة)</option>
-            <option value="80">80% (تخفيض 20% لتوفير الباقة)</option>
-            <option value="75">75% (تخفيض 25% - ربع الحجم معفي)</option>
-            <option value="70">70% (تخفيض 30%)</option>
-            <option value="50">50% (تخفيض 50% - احتساب نصف الاستهلاك الفعلي 1:2)</option>
-          </select>
+    <h2 style="margin-bottom:16px">🎯 إعدادات ومراقبة باقة الإنترنت الرئيسية (ISP Quota)</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:20px;align-items:stretch">
+      <!-- RIGHT COLUMN: QUOTA CONFIGURATION INPUTS -->
+      <div style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">
+        <div class="form-group" style="margin:0">
+          <label>سعة الباقة الإجمالية (GB):</label>
+          <input id="cfg_main_quota_gb" type="number" min="0" step="0.1" placeholder="140">
         </div>
-
-        <!-- 2. GIGABYTE STANDARD (1024 MB vs 1000 MB) -->
-        <div class="form-group">
-          <label style="font-weight:600;margin-bottom:6px;display:block">معيار احتساب الجيجابايت (GB Unit Calculation):</label>
-          <select id="cfg_gb_std" onchange="onGbStandardChange(this.value)">
-            <option value="1024" selected>1024 MB = 1 GiB (معيار أنظمة التشغيل والكمبيوتر Binary) [الافتراضي]</option>
-            <option value="1000">1000 MB = 1 GB (معيار باقات شركات الإنترنت ISP - 1000 ميجا للجيجا لمطابقة عداد الشركة)</option>
-          </select>
+        <div class="form-group" style="margin:0">
+          <label>تاريخ بداية الدورة / الباقة:</label>
+          <input id="cfg_start_date" type="date">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>تاريخ التجديد القادم:</label>
+          <input id="cfg_end_date" type="date">
+        </div>
+        <div style="display:flex;justify-content:flex-start;margin-top:4px">
+          <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)" style="padding:10px 22px;background:linear-gradient(135deg,#f97316,#ea580c);border:none;box-shadow:0 4px 14px rgba(249,115,22,0.35)">💾 حفظ إعدادات الباقة</button>
         </div>
       </div>
 
-      <div style="background:rgba(0,0,0,0.22);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
-        ℹ️ <b>توضيح الفرق بين المعيارين:</b><br>
-        • <b>معيار 1024 MB (ثنائي):</b> 1 جيجا = 1,073,741,824 بايت، وهو المعيار البرمجي الدقيق المستخدم في أنظمة التشغيل (ويندوز، لينكس).<br>
-        • <b>معيار 1000 MB (عشري):</b> 1 جيجا = 1,000,000,000 بايت (1000 ميجا)، وهو المعيار التجاري المعتمد لدى شركات الاتصالات والراوترات لمطابقة استهلاك الباقة الرسمية.
-      </div>
+      <!-- LEFT COLUMN: LIVE CONSUMPTION & PROGRESS WIDGET -->
+      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">إجمالي المستهلك:</span>
+          <b id="isp-used-txt" style="font-size:1.1rem;color:#fff">0.00 GB (0.0%)</b>
+        </div>
 
-      <div style="display:flex;justify-content:flex-end">
-        <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
-          💾 حفظ وتطبيق إعدادات المعايرة
+        <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:6px;overflow:hidden">
+          <div id="isp-quota-bar" style="height:100%;width:0%;background:var(--green);border-radius:6px;transition:width 0.4s ease,background 0.4s ease"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">الرصيد المتبقي:</span>
+          <b id="isp-rem-txt" style="font-size:1.05rem;color:var(--green)">-- GB</b>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">الوقت المتبقي حتى التجديد:</span>
+          <b id="isp-time-txt" style="font-size:0.98rem;color:#38bdf8">--</b>
+        </div>
+
+        <button type="button" class="danger-btn" onclick="resetMainQuota()" style="width:100%;padding:11px;border-radius:8px;font-weight:700;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.28);margin-top:4px">
+          🔄 تصفير عدادات الاستهلاك لدورة جديدة
         </button>
       </div>
     </div>
+  </div>
 
-  <div class="card-section glass">
-    <h2>⏳ دورة العداد الاحتياطية بالأيام</h2>
-    <p id="period_info" class="note">جاري تحميل بيانات الفترة...</p>
-    <form onsubmit="submitPeriodDays(event)">
-      <div class="form-group"><label>مدة الدورة التنازلية بالأيام (من 1 إلى 365):</label>
-        <input id="period_days" type="number" min="1" max="365" value="30" required>
+  <!-- METER SCALING & GB STANDARD CARD -->
+  <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.35);background:rgba(16, 185, 129, 0.03);margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0;color:#fff">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
+      <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b></span>
+    </div>
+    <p class="note" style="margin-bottom:16px">حدد النسبة المئوية لاحتساب استهلاك بايتات التحميل والرفع في العداد، ومعيار حساب الجيجابايت ليتطابق بدقة مع عداد شركة الإنترنت أو أنظمة التشغيل.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">
+      <!-- 1. METER SCALING PERCENTAGE -->
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:6px;display:block">نسبة احتساب العداد (Meter Scaling):</label>
+        <select id="cfg_meter_scale" onchange="onMeterScaleChange(this.value)">
+          <option value="110">110% (زيادة 10% لاحتساب ترويسات الحزم Overhead والتحوط الإضافي)</option>
+          <option value="105">105% (زيادة 5% للتحوط المسبق مع شركات الاتصالات)</option>
+          <option value="100" selected>100% (حساب حقيقي دقيق 1:1 - ملف 100MB يُحسب 100MB بالضبط) [الافتراضي]</option>
+          <option value="95">95% (تخفيض 5% لتجاوز حزم الشبكة التكرارية Re-transmissions)</option>
+          <option value="90">90% (تخفيض 10% عن الحجم الفعلي)</option>
+          <option value="85">85% (تخفيض 15% لتوفير الباقة)</option>
+          <option value="80">80% (تخفيض 20% لتوفير الباقة)</option>
+          <option value="75">75% (تخفيض 25% - ربع الحجم معفي)</option>
+          <option value="70">70% (تخفيض 30%)</option>
+          <option value="50">50% (تخفيض 50% - احتساب نصف الاستهلاك الفعلي 1:2)</option>
+        </select>
       </div>
-      <button class="primary-btn" type="submit">تطبيق المدة بالأيام</button>
-    </form>
-    <hr style="border:none;border-top:1px solid var(--glass-border);margin:18px 0">
-    <button type="button" class="danger-btn" onclick="resetMainQuota()">🔄 تصفير جميع العدادات وإعادة دورة الباقة</button>
-    <p class="note" style="margin-top:8px">ملاحظة: تصفير العداد يبدأ دورة جديدة ويصفر استهلاك الأجهزة، ويرفع الحظر، ويعيد تفعيل إشعارات التيليجرام.</p>
+
+      <!-- 2. GIGABYTE STANDARD (1024 MB vs 1000 MB) -->
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:6px;display:block">معيار احتساب الجيجابايت (GB Unit Calculation):</label>
+        <select id="cfg_gb_std" onchange="onGbStandardChange(this.value)">
+          <option value="1024" selected>1024 MB = 1 GiB (معيار أنظمة التشغيل والكمبيوتر Binary) [الافتراضي]</option>
+          <option value="1000">1000 MB = 1 GB (معيار باقات شركات الإنترنت ISP - 1000 ميجا للجيجا لمطابقة عداد الشركة)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="background:rgba(0,0,0,0.22);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
+      ℹ️ <b>توضيح الفرق بين المعيارين:</b><br>
+      • <b>معيار 1024 MB (ثنائي):</b> 1 جيجا = 1,073,741,824 بايت، وهو المعيار البرمجي الدقيق المستخدم في أنظمة التشغيل (ويندوز، لينكس).<br>
+      • <b>معيار 1000 MB (عشري):</b> 1 جيجا = 1,000,000,000 بايت (1000 ميجا)، وهو المعيار التجاري المعتمد لدى شركات الاتصالات والراوترات لمطابقة استهلاك الباقة الرسمية.
+    </div>
+
+    <div style="display:flex;justify-content:flex-start">
+      <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
+        💾 حفظ وتطبيق إعدادات المعايرة
+      </button>
+    </div>
   </div>
 </section>
 
@@ -2677,16 +2700,68 @@ async function refreshData() {
     let actCnt = data.active_clients || 0;
     document.getElementById('active-clients-str').textContent = actCnt + ' / 12 متصل';
 
-    // Main Quota Summary
-    let totalUsedGB = ((data.total_up + data.total_down) / 1000000000).toFixed(2);
+    // Sync GB Standard & Meter Scale early so quota calculations use active standard
+    if (data.meter_scale_pct) meterScalePct = data.meter_scale_pct;
+    if (data.gb_standard) gbStandard = data.gb_standard;
+
+    // Main Quota Summary & ISP Quota Live Monitor
+    let qDiv = (gbStandard === 1000) ? 1000000000 : 1073741824;
+    let usedGBNum = (data.total_up + data.total_down) / qDiv;
+    let totalUsedGB = usedGBNum.toFixed(2);
     let mainCapGB = data.main_quota_gb > 0 ? data.main_quota_gb.toFixed(2) : '--';
     document.getElementById('quota-summary-val').textContent = totalUsedGB + ' / ' + mainCapGB + ' GB';
-    let pct = (data.main_quota_gb > 0) ? Math.min(100, (totalUsedGB / data.main_quota_gb) * 100) : 0;
+    let pct = (data.main_quota_gb > 0) ? Math.min(100, (usedGBNum / data.main_quota_gb) * 100) : 0;
     let bar = document.getElementById('quota-summary-bar');
     bar.style.width = pct + '%';
     if (pct > 90) bar.style.background = 'var(--red)';
-    else if (pct > 75) bar.style.background = 'var(--amber)';
+    else if (pct >= 75) bar.style.background = 'var(--amber)';
     else bar.style.background = 'var(--accent-grad)';
+
+    // Update Tab 2 ISP Quota Live Monitor Widget
+    let ispUsedEl = document.getElementById('isp-used-txt');
+    if (ispUsedEl) ispUsedEl.textContent = totalUsedGB + ' GB (' + pct.toFixed(1) + '%)';
+    let ispBarEl = document.getElementById('isp-quota-bar');
+    if (ispBarEl) {
+      ispBarEl.style.width = pct + '%';
+      if (pct > 90) ispBarEl.style.background = 'var(--red)';
+      else if (pct >= 75) ispBarEl.style.background = 'var(--amber)';
+      else ispBarEl.style.background = 'var(--green)';
+    }
+    let ispRemEl = document.getElementById('isp-rem-txt');
+    if (ispRemEl) {
+      if (data.main_quota_gb > 0) {
+        let remGB = Math.max(0, data.main_quota_gb - usedGBNum).toFixed(2);
+        ispRemEl.textContent = remGB + ' GB';
+        ispRemEl.style.color = (pct > 90) ? 'var(--red)' : (pct >= 75 ? 'var(--amber)' : 'var(--green)');
+      } else {
+        ispRemEl.textContent = 'غير محدد';
+        ispRemEl.style.color = 'var(--muted)';
+      }
+    }
+    let ispTimeEl = document.getElementById('isp-time-txt');
+    if (ispTimeEl) {
+      if (data.q_end) {
+        let endMs = new Date(data.q_end + 'T23:59:59').getTime();
+        let diffMs = endMs - Date.now();
+        if (!isNaN(diffMs)) {
+          if (diffMs > 0) {
+            let rDays = Math.floor(diffMs / 86400000);
+            let rHours = Math.floor((diffMs % 86400000) / 3600000);
+            ispTimeEl.textContent = rDays + ' يوم و ' + rHours + ' ساعة';
+          } else {
+            ispTimeEl.textContent = 'حان موعد التجديد';
+          }
+        } else {
+          ispTimeEl.textContent = data.q_end;
+        }
+      } else {
+        let totSec = (data.period_days || 30) * 86400;
+        let remSec = Math.max(0, totSec - (data.elapsed_s || 0));
+        let rDays = Math.floor(remSec / 86400);
+        let rHours = Math.floor((remSec % 86400) / 3600);
+        ispTimeEl.textContent = rDays + ' يوم و ' + rHours + ' ساعة';
+      }
+    }
 
     // System Metrics
     document.getElementById('free-heap-kb').textContent = Math.round(data.free_heap / 1024) + ' KB';
