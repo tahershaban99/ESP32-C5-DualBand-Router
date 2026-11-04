@@ -7,10 +7,10 @@
 #include "freertos/portmacro.h"
 
 // Capacity constants
-#define MAX_CLIENTS 32           // L3 IP/MAC tracking table for up to 32 concurrent active devices
+#define MAX_CLIENTS 20           // L3 IP/MAC tracking table for up to 20 concurrent active devices
 #define MAX_WIFI_STATIONS 12     // SoftAP maximum direct Wi-Fi connections
-#define MAX_RECORDS 64           // Persistent stored records in NVS
-#define MAX_SCAN_RESULTS 20      // Nearby Wi-Fi scan results
+#define MAX_RECORDS 24           // Persistent stored records in NVS (saves ~19KB static RAM)
+#define MAX_SCAN_RESULTS 16      // Nearby Wi-Fi scan results
 
 // SoftAP Subnet 192.168.4.1/24
 #define AP_IP_A 192

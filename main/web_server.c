@@ -1138,9 +1138,9 @@ static esp_err_t ota_check_handler(httpd_req_t *req) {
 void web_server_start(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.lru_purge_enable = true;
-  config.max_open_sockets = 7;
-  config.stack_size = 10240; // 10KB stack for ESP-IDF v6.1 HTTPD to prevent stack overflow
-  config.max_uri_handlers = 32;
+  config.max_open_sockets = 6;
+  config.stack_size = 8192; // 8KB stack for ESP-IDF v6.1 HTTPD (saves 2KB RAM)
+  config.max_uri_handlers = 26;
   config.core_id = 0; // ESP32-C5 Unicore (Core 0)
 
   httpd_uri_t uris[] = {

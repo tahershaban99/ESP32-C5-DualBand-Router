@@ -11,7 +11,7 @@ typedef struct {
   uint32_t last_seen_s;
 } tg_discovered_user_t;
 
-#define MAX_DISCOVERED_TG_USERS 16
+#define MAX_DISCOVERED_TG_USERS 8
 
 void telegram_bot_init(void);
 void telegram_check_quota_alerts(void);

@@ -769,68 +769,91 @@ void meter_load_usage(void) {
   meter_period_elapsed_s = 0;
   nvs_handle_t nvs;
   if (nvs_open("meter", NVS_READONLY, &nvs) == ESP_OK) {
-    size_t size = sizeof(usage_records);
-    if (nvs_get_blob(nvs, "records", usage_records, &size) == ESP_OK &&
-        size <= sizeof(usage_records) && size % sizeof(usage_record_t) == 0) {
-      usage_count = size / sizeof(usage_record_t);
-      if (usage_count > MAX_RECORDS) usage_count = MAX_RECORDS;
-    }
-    size = sizeof(device_policies);
-    if (nvs_get_blob(nvs, "policies", device_policies, &size) == ESP_OK) {
-      if (size <= sizeof(device_policies) && size % sizeof(device_policy_t) == 0) {
-        policy_count = size / sizeof(device_policy_t);
-        if (policy_count > MAX_RECORDS) policy_count = MAX_RECORDS;
-      } else if (size % 18 == 0) {
-        // Backward-compatible migration from earlier 18-byte packed struct (with alert_flags)
-        size_t old_cnt = size / 18;
-        if (old_cnt > MAX_RECORDS) old_cnt = MAX_RECORDS;
-        uint8_t raw[18 * MAX_RECORDS];
-        memcpy(raw, device_policies, old_cnt * 18);
-        for (size_t k = 0; k < old_cnt; ++k) {
-          uint8_t *p = raw + (k * 18);
-          memcpy(device_policies[k].mac, p, 6);
-          memcpy(&device_policies[k].quota_bytes, p + 6, 8);
-          device_policies[k].blocked = (bool)p[14];
-          device_policies[k].gaming_mode = (bool)p[15];
-          memcpy(&device_policies[k].alert_flags, p + 16, 2);
-          memset(device_policies[k].telegram_chat_id, 0, sizeof(device_policies[k].telegram_chat_id));
+    size_t size = 0;
+    if (nvs_get_blob(nvs, "records", NULL, &size) == ESP_OK && size > 0 && size % sizeof(usage_record_t) == 0) {
+      if (size <= sizeof(usage_records)) {
+        if (nvs_get_blob(nvs, "records", usage_records, &size) == ESP_OK) {
+          usage_count = size / sizeof(usage_record_t);
         }
-        policy_count = old_cnt;
-      } else if (size % 16 == 0) {
-        // Backward-compatible migration from earlier 16-byte packed struct
-        size_t old_cnt = size / 16;
-        if (old_cnt > MAX_RECORDS) old_cnt = MAX_RECORDS;
-        uint8_t raw[16 * MAX_RECORDS];
-        memcpy(raw, device_policies, old_cnt * 16);
-        for (size_t k = 0; k < old_cnt; ++k) {
-          uint8_t *p = raw + (k * 16);
-          memcpy(device_policies[k].mac, p, 6);
-          memcpy(&device_policies[k].quota_bytes, p + 6, 8);
-          device_policies[k].blocked = (bool)p[14];
-          device_policies[k].gaming_mode = (bool)p[15];
-          device_policies[k].alert_flags = 0;
-          memset(device_policies[k].telegram_chat_id, 0, sizeof(device_policies[k].telegram_chat_id));
+      } else {
+        void *tmp = malloc(size);
+        if (tmp && nvs_get_blob(nvs, "records", tmp, &size) == ESP_OK) {
+          usage_count = MAX_RECORDS;
+          memcpy(usage_records, tmp, sizeof(usage_records));
+          usage_dirty = true;
         }
-        policy_count = old_cnt;
+        if (tmp) free(tmp);
       }
     }
-    size = sizeof(device_names);
-    if (nvs_get_blob(nvs, "names", device_names, &size) == ESP_OK &&
-        size <= sizeof(device_names) && size % sizeof(device_name_t) == 0) {
-      name_count = size / sizeof(device_name_t);
-      if (name_count > MAX_RECORDS) name_count = MAX_RECORDS;
+
+    size = 0;
+    if (nvs_get_blob(nvs, "policies", NULL, &size) == ESP_OK && size > 0) {
+      if (size % sizeof(device_policy_t) == 0) {
+        if (size <= sizeof(device_policies)) {
+          if (nvs_get_blob(nvs, "policies", device_policies, &size) == ESP_OK) {
+            policy_count = size / sizeof(device_policy_t);
+          }
+        } else {
+          void *tmp = malloc(size);
+          if (tmp && nvs_get_blob(nvs, "policies", tmp, &size) == ESP_OK) {
+            policy_count = MAX_RECORDS;
+            memcpy(device_policies, tmp, sizeof(device_policies));
+            policy_dirty = true;
+          }
+          if (tmp) free(tmp);
+        }
+      }
     }
-    size = sizeof(device_speeds);
-    if (nvs_get_blob(nvs, "speeds", device_speeds, &size) == ESP_OK &&
-        size <= sizeof(device_speeds) && size % sizeof(device_speed_t) == 0) {
-      speed_count = size / sizeof(device_speed_t);
-      if (speed_count > MAX_RECORDS) speed_count = MAX_RECORDS;
+
+    size = 0;
+    if (nvs_get_blob(nvs, "names", NULL, &size) == ESP_OK && size > 0 && size % sizeof(device_name_t) == 0) {
+      if (size <= sizeof(device_names)) {
+        if (nvs_get_blob(nvs, "names", device_names, &size) == ESP_OK) {
+          name_count = size / sizeof(device_name_t);
+        }
+      } else {
+        void *tmp = malloc(size);
+        if (tmp && nvs_get_blob(nvs, "names", tmp, &size) == ESP_OK) {
+          name_count = MAX_RECORDS;
+          memcpy(device_names, tmp, sizeof(device_names));
+          names_dirty = true;
+        }
+        if (tmp) free(tmp);
+      }
     }
-    size = sizeof(device_bindings);
-    if (nvs_get_blob(nvs, "bindings", device_bindings, &size) == ESP_OK &&
-        size <= sizeof(device_bindings) && size % sizeof(device_binding_t) == 0) {
-      binding_count = size / sizeof(device_binding_t);
-      if (binding_count > MAX_RECORDS) binding_count = MAX_RECORDS;
+
+    size = 0;
+    if (nvs_get_blob(nvs, "speeds", NULL, &size) == ESP_OK && size > 0 && size % sizeof(device_speed_t) == 0) {
+      if (size <= sizeof(device_speeds)) {
+        if (nvs_get_blob(nvs, "speeds", device_speeds, &size) == ESP_OK) {
+          speed_count = size / sizeof(device_speed_t);
+        }
+      } else {
+        void *tmp = malloc(size);
+        if (tmp && nvs_get_blob(nvs, "speeds", tmp, &size) == ESP_OK) {
+          speed_count = MAX_RECORDS;
+          memcpy(device_speeds, tmp, sizeof(device_speeds));
+          speeds_dirty = true;
+        }
+        if (tmp) free(tmp);
+      }
+    }
+
+    size = 0;
+    if (nvs_get_blob(nvs, "bindings", NULL, &size) == ESP_OK && size > 0 && size % sizeof(device_binding_t) == 0) {
+      if (size <= sizeof(device_bindings)) {
+        if (nvs_get_blob(nvs, "bindings", device_bindings, &size) == ESP_OK) {
+          binding_count = size / sizeof(device_binding_t);
+        }
+      } else {
+        void *tmp = malloc(size);
+        if (tmp && nvs_get_blob(nvs, "bindings", tmp, &size) == ESP_OK) {
+          binding_count = MAX_RECORDS;
+          memcpy(device_bindings, tmp, sizeof(device_bindings));
+          bindings_dirty = true;
+        }
+        if (tmp) free(tmp);
+      }
     }
 
     nvs_get_u16(nvs, "period_days", &meter_period_days);
@@ -916,13 +939,6 @@ void meter_save_usage(void) {
     return;
   }
 
-  // Snapshots for non-blocking flash writes outside critical section
-  static usage_record_t snap_usage[MAX_RECORDS];
-  static device_policy_t snap_policies[MAX_RECORDS];
-  static device_name_t snap_names[MAX_RECORDS];
-  static device_speed_t snap_speeds[MAX_RECORDS];
-  static device_binding_t snap_bindings[MAX_RECORDS];
-
   bool do_usage = false, do_policy = false, do_names = false, do_speeds = false, do_bindings = false, do_state = false;
   size_t u_cnt = 0, p_cnt = 0, n_cnt = 0, s_cnt = 0, b_cnt = 0;
   uint16_t snap_period_days = 0;
@@ -931,35 +947,55 @@ void meter_save_usage(void) {
   char snap_q_start[16] = {0}, snap_q_end[16] = {0};
 
   portENTER_CRITICAL(&data_mux);
-  if (usage_dirty) {
-    memcpy(snap_usage, usage_records, usage_count * sizeof(usage_record_t));
+  do_usage = usage_dirty;       u_cnt = usage_count;
+  do_policy = policy_dirty;     p_cnt = policy_count;
+  do_names = names_dirty;       n_cnt = name_count;
+  do_speeds = speeds_dirty;     s_cnt = speed_count;
+  do_bindings = bindings_dirty; b_cnt = binding_count;
+  do_state = meter_state_dirty;
+  portEXIT_CRITICAL(&data_mux);
+
+  usage_record_t *snap_usage = (do_usage && u_cnt > 0) ? malloc(u_cnt * sizeof(usage_record_t)) : NULL;
+  device_policy_t *snap_policies = (do_policy && p_cnt > 0) ? malloc(p_cnt * sizeof(device_policy_t)) : NULL;
+  device_name_t *snap_names = (do_names && n_cnt > 0) ? malloc(n_cnt * sizeof(device_name_t)) : NULL;
+  device_speed_t *snap_speeds = (do_speeds && s_cnt > 0) ? malloc(s_cnt * sizeof(device_speed_t)) : NULL;
+  device_binding_t *snap_bindings = (do_bindings && b_cnt > 0) ? malloc(b_cnt * sizeof(device_binding_t)) : NULL;
+
+  portENTER_CRITICAL(&data_mux);
+  if (snap_usage && usage_count <= u_cnt) {
     u_cnt = usage_count;
+    memcpy(snap_usage, usage_records, u_cnt * sizeof(usage_record_t));
     usage_dirty = false;
-    do_usage = true;
+  } else {
+    do_usage = false;
   }
-  if (policy_dirty) {
-    memcpy(snap_policies, device_policies, policy_count * sizeof(device_policy_t));
+  if (snap_policies && policy_count <= p_cnt) {
     p_cnt = policy_count;
+    memcpy(snap_policies, device_policies, p_cnt * sizeof(device_policy_t));
     policy_dirty = false;
-    do_policy = true;
+  } else {
+    do_policy = false;
   }
-  if (names_dirty) {
-    memcpy(snap_names, device_names, name_count * sizeof(device_name_t));
+  if (snap_names && name_count <= n_cnt) {
     n_cnt = name_count;
+    memcpy(snap_names, device_names, n_cnt * sizeof(device_name_t));
     names_dirty = false;
-    do_names = true;
+  } else {
+    do_names = false;
   }
-  if (speeds_dirty) {
-    memcpy(snap_speeds, device_speeds, speed_count * sizeof(device_speed_t));
+  if (snap_speeds && speed_count <= s_cnt) {
     s_cnt = speed_count;
+    memcpy(snap_speeds, device_speeds, s_cnt * sizeof(device_speed_t));
     speeds_dirty = false;
-    do_speeds = true;
+  } else {
+    do_speeds = false;
   }
-  if (bindings_dirty) {
-    memcpy(snap_bindings, device_bindings, binding_count * sizeof(device_binding_t));
+  if (snap_bindings && binding_count <= b_cnt) {
     b_cnt = binding_count;
+    memcpy(snap_bindings, device_bindings, b_cnt * sizeof(device_binding_t));
     bindings_dirty = false;
-    do_bindings = true;
+  } else {
+    do_bindings = false;
   }
   if (meter_state_dirty) {
     snap_period_days = meter_period_days;
@@ -974,22 +1010,27 @@ void meter_save_usage(void) {
   portEXIT_CRITICAL(&data_mux);
 
   nvs_handle_t nvs;
-  if (nvs_open("meter", NVS_READWRITE, &nvs) != ESP_OK) return;
-
-  if (do_usage && u_cnt > 0) nvs_set_blob(nvs, "records", snap_usage, u_cnt * sizeof(usage_record_t));
-  if (do_policy && p_cnt > 0) nvs_set_blob(nvs, "policies", snap_policies, p_cnt * sizeof(device_policy_t));
-  if (do_names && n_cnt > 0) nvs_set_blob(nvs, "names", snap_names, n_cnt * sizeof(device_name_t));
-  if (do_speeds && s_cnt > 0) nvs_set_blob(nvs, "speeds", snap_speeds, s_cnt * sizeof(device_speed_t));
-  if (do_bindings && b_cnt > 0) nvs_set_blob(nvs, "bindings", snap_bindings, b_cnt * sizeof(device_binding_t));
-  if (do_state) {
-    nvs_set_u16(nvs, "period_days", snap_period_days);
-    nvs_set_u32(nvs, "elapsed_s", snap_elapsed_s);
-    nvs_set_u64(nvs, "main_quota", snap_main_quota);
-    nvs_set_str(nvs, "q_start", snap_q_start);
-    nvs_set_str(nvs, "q_end", snap_q_end);
+  if (nvs_open("meter", NVS_READWRITE, &nvs) == ESP_OK) {
+    if (do_usage && snap_usage && u_cnt > 0) nvs_set_blob(nvs, "records", snap_usage, u_cnt * sizeof(usage_record_t));
+    if (do_policy && snap_policies && p_cnt > 0) nvs_set_blob(nvs, "policies", snap_policies, p_cnt * sizeof(device_policy_t));
+    if (do_names && snap_names && n_cnt > 0) nvs_set_blob(nvs, "names", snap_names, n_cnt * sizeof(device_name_t));
+    if (do_speeds && snap_speeds && s_cnt > 0) nvs_set_blob(nvs, "speeds", snap_speeds, s_cnt * sizeof(device_speed_t));
+    if (do_bindings && snap_bindings && b_cnt > 0) nvs_set_blob(nvs, "bindings", snap_bindings, b_cnt * sizeof(device_binding_t));
+    if (do_state) {
+      nvs_set_u16(nvs, "period_days", snap_period_days);
+      nvs_set_u32(nvs, "elapsed_s", snap_elapsed_s);
+      nvs_set_u64(nvs, "main_quota", snap_main_quota);
+      nvs_set_str(nvs, "q_start", snap_q_start);
+      nvs_set_str(nvs, "q_end", snap_q_end);
+    }
+    nvs_commit(nvs);
+    nvs_close(nvs);
   }
 
-  nvs_commit(nvs);
-  nvs_close(nvs);
+  if (snap_usage) free(snap_usage);
+  if (snap_policies) free(snap_policies);
+  if (snap_names) free(snap_names);
+  if (snap_speeds) free(snap_speeds);
+  if (snap_bindings) free(snap_bindings);
 }
 

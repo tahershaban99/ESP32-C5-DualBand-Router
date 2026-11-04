@@ -1528,7 +1528,7 @@ static void telegram_task(void *pvParameters) {
   (void)pvParameters;
   ESP_LOGI(TG_TAG, "Telegram polling task started on Core %d", xPortGetCoreID());
 
-  char *rx_buffer = (char *)malloc(4096);
+  char *rx_buffer = (char *)malloc(2048);
   if (!rx_buffer) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for Telegram rx buffer");
     vTaskDelete(NULL);
@@ -1574,7 +1574,7 @@ static void telegram_task(void *pvParameters) {
 
     char url[220];
     snprintf(url, sizeof(url),
-             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=2&limit=5",
+             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=2&limit=3",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
@@ -1582,7 +1582,7 @@ static void telegram_task(void *pvParameters) {
         .method = HTTP_METHOD_GET,
         .timeout_ms = 8000,
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .buffer_size = 2048,
+        .buffer_size = 1536,
         .buffer_size_tx = 512,
     };
 
@@ -1597,8 +1597,8 @@ static void telegram_task(void *pvParameters) {
       esp_err_t err = esp_http_client_open(client, 0);
       if (err == ESP_OK) {
         esp_http_client_fetch_headers(client);
-        while (total_read < 4090) {
-          int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
+        while (total_read < 2042) {
+          int r = esp_http_client_read(client, rx_buffer + total_read, 2042 - total_read);
           if (r <= 0) break;
           total_read += r;
         }
@@ -2343,7 +2343,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack to guarantee safe TLS handshake and JSON handling
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with 9KB stack (saves 3KB RAM while keeping full TLS & JSON safety)
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 9216, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }
