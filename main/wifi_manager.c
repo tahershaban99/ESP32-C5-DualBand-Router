@@ -212,16 +212,7 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
   } else if (base == IP_EVENT && id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
     const ip_event_assigned_ip_to_client_t *event = (const ip_event_assigned_ip_to_client_t *)data;
     if (event) {
-      portENTER_CRITICAL(&data_mux);
-      for (size_t i = 0; i < MAX_CLIENTS; ++i) {
-        if (memcmp(active_clients[i].mac, event->mac, 6) == 0) {
-          active_clients[i].ip = event->ip.addr;
-          break;
-        }
-      }
-      portEXIT_CRITICAL(&data_mux);
       meter_sync_device_on_dhcp(event->mac, event->ip.addr);
-      meter_set_device_binding(event->mac, event->ip.addr);
       ESP_LOGI(ROUTER_TAG, "Station assigned IP " IPSTR " -> MAC %02X:%02X:%02X:%02X:%02X:%02X",
                IP2STR(&event->ip),
                event->mac[0], event->mac[1], event->mac[2], event->mac[3], event->mac[4], event->mac[5]);
@@ -245,7 +236,7 @@ void wifi_manager_refresh_clients(void) {
     fresh[i].last_seen_s = now_s;
     uint8_t prev_aid = 0;
     for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-      if (memcmp(active_clients[k].mac, fresh[i].mac, 6) == 0 && active_clients[k].aid != 0) {
+      if (memcmp(active_clients[k].mac, fresh[i].mac, 6) == 0 && active_clients[k].aid != 0 && active_clients[k].aid != 0xFF) {
         prev_aid = active_clients[k].aid;
         break;
       }
@@ -253,9 +244,11 @@ void wifi_manager_refresh_clients(void) {
     fresh[i].aid = (prev_aid != 0) ? prev_aid : (uint8_t)(i + 1);
   }
   esp_netif_dhcps_get_clients_by_mac(ap_netif, count, ip_list);
-  for (size_t i = 0; i < count; ++i) fresh[i].ip = ip_list[i].ip.addr;
+  for (size_t i = 0; i < count; ++i) {
+    fresh[i].ip = ip_list[i].ip.addr;
+  }
 
-  // Query lwIP ARP table for devices using a static IP or bridged
+  // Query lwIP ARP table for devices using a static IP or connected via Range Extender (Proxy-ARP / Bridge)
   for (size_t a = 0; a < ARP_TABLE_SIZE; ++a) {
     ip4_addr_t *arp_ip = NULL;
     struct netif *arp_netif = NULL;
@@ -263,30 +256,87 @@ void wifi_manager_refresh_clients(void) {
     if (etharp_get_entry(a, &arp_ip, &arp_netif, &arp_eth) && arp_ip && arp_eth && arp_ip->addr != 0) {
       uint32_t ip4 = arp_ip->addr;
       if ((ip4 & 0x00FFFFFF) == 0x0004A8C0 && (ip4 >> 24) != 1 && valid_device_mac(arp_eth->addr)) {
-        // 1. Check if this matches an existing STA from wifi_list
+        // 1. Skip if this IP is already assigned in fresh[]
         bool matched = false;
         for (size_t k = 0; k < count; ++k) {
-          if (memcmp(fresh[k].mac, arp_eth->addr, 6) == 0) {
-            fresh[k].ip = ip4;
+          if (fresh[k].ip == ip4) {
+            fresh[k].last_seen_s = now_s;
             matched = true;
             break;
           }
         }
-        // 2. If not matched, check if IP is already in fresh
+        if (matched) continue;
+
+        // 2. Check if DHCP binding table knows the true client MAC for this IP
+        // (Critical for Wi-Fi Range Extenders where ARP eth_addr is the Extender's MAC
+        // while DHCP chaddr recorded the actual phone/laptop MAC!)
+        uint8_t bound_mac[6] = {0};
+        bool has_bound_mac = false;
+        portENTER_CRITICAL(&data_mux);
+        for (size_t b = 0; b < binding_count; ++b) {
+          if (device_bindings[b].bound_ip == ip4 && valid_device_mac(device_bindings[b].mac)) {
+            memcpy(bound_mac, device_bindings[b].mac, 6);
+            has_bound_mac = true;
+            break;
+          }
+        }
+        portEXIT_CRITICAL(&data_mux);
+
+        if (has_bound_mac) {
+          for (size_t k = 0; k < count; ++k) {
+            if (memcmp(fresh[k].mac, bound_mac, 6) == 0) {
+              if (fresh[k].ip == 0) {
+                fresh[k].ip = ip4;
+                matched = true;
+              }
+              break;
+            }
+          }
+          if (!matched && count < MAX_CLIENTS) {
+            memcpy(fresh[count].mac, bound_mac, 6);
+            fresh[count].ip = ip4;
+            fresh[count].aid = 0xFF; // Bridged / Range Extender client
+            fresh[count].rssi = -55;
+            fresh[count].last_seen_s = now_s;
+            count++;
+            matched = true;
+          }
+        }
+
+        // 3. If not in DHCP bindings, check if arp_eth->addr matches a direct STA without an IP yet
         if (!matched) {
           for (size_t k = 0; k < count; ++k) {
-            if (fresh[k].ip == ip4) {
+            if (memcmp(fresh[k].mac, arp_eth->addr, 6) == 0 && fresh[k].ip == 0) {
+              fresh[k].ip = ip4;
               matched = true;
               break;
             }
           }
         }
-        // 3. New bridged / secondary device: use its REAL hardware MAC
+
+        // 4. New bridged / Range Extender client not in DHCP bindings
         if (!matched && count < MAX_CLIENTS) {
-          memcpy(fresh[count].mac, arp_eth->addr, 6);
+          bool mac_already_used = false;
+          for (size_t k = 0; k < count; ++k) {
+            if (memcmp(fresh[k].mac, arp_eth->addr, 6) == 0) {
+              mac_already_used = true;
+              break;
+            }
+          }
+          if (!mac_already_used) {
+            memcpy(fresh[count].mac, arp_eth->addr, 6);
+          } else {
+            // Range Extender Proxy-ARP with static IP: synthesize unique per-IP MAC
+            fresh[count].mac[0] = 0x02;
+            fresh[count].mac[1] = 0xE0;
+            fresh[count].mac[2] = 192;
+            fresh[count].mac[3] = 168;
+            fresh[count].mac[4] = 4;
+            fresh[count].mac[5] = ((const uint8_t *)&ip4)[3];
+          }
           fresh[count].ip = ip4;
           fresh[count].aid = 0xFF; // Virtual/bridged client
-          fresh[count].rssi = -60;
+          fresh[count].rssi = -58;
           fresh[count].last_seen_s = now_s;
           count++;
         }
@@ -295,6 +345,124 @@ void wifi_manager_refresh_clients(void) {
   }
 
   portENTER_CRITICAL(&data_mux);
+  // Sync latest packet timestamps from fast_device_pool before preserving bridged clients
+  for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+    if (active_clients[k].ip != 0 && fast_device_pool[k].ip == active_clients[k].ip) {
+      if (fast_device_pool[k].last_seen_s > active_clients[k].last_seen_s) {
+        active_clients[k].last_seen_s = fast_device_pool[k].last_seen_s;
+      }
+    }
+  }
+
+  // Also consume any pending_discovered_ip detected by meter_ip4_canforward
+  uint32_t disc_ip = pending_discovered_ip;
+  if (disc_ip != 0) {
+    pending_discovered_ip = 0;
+    uint8_t disc_oct = ((const uint8_t *)&disc_ip)[3];
+    if (disc_oct >= 2 && disc_oct <= 254) {
+      bool already_in_fresh = false;
+      for (size_t m = 0; m < count; ++m) {
+        if (fresh[m].ip == disc_ip) {
+          fresh[m].last_seen_s = now_s;
+          already_in_fresh = true;
+          break;
+        }
+      }
+      if (!already_in_fresh && count < MAX_CLIENTS) {
+        uint8_t owner_mac[6] = {0};
+        for (size_t b = 0; b < binding_count; ++b) {
+          if (device_bindings[b].bound_ip == disc_ip && valid_device_mac(device_bindings[b].mac)) {
+            memcpy(owner_mac, device_bindings[b].mac, 6);
+            break;
+          }
+        }
+        if (!valid_device_mac(owner_mac)) {
+          owner_mac[0] = 0x02;
+          owner_mac[1] = 0xE0;
+          owner_mac[2] = 192;
+          owner_mac[3] = 168;
+          owner_mac[4] = 4;
+          owner_mac[5] = disc_oct;
+        }
+        bool mac_assigned = false;
+        for (size_t m = 0; m < count; ++m) {
+          if (memcmp(fresh[m].mac, owner_mac, 6) == 0) {
+            if (fresh[m].ip == 0) {
+              fresh[m].ip = disc_ip;
+              mac_assigned = true;
+            } else {
+              owner_mac[0] = 0x02;
+              owner_mac[1] = 0xE0;
+              owner_mac[2] = 192;
+              owner_mac[3] = 168;
+              owner_mac[4] = 4;
+              owner_mac[5] = disc_oct;
+            }
+            break;
+          }
+        }
+        if (!mac_assigned) {
+          memcpy(fresh[count].mac, owner_mac, 6);
+          fresh[count].ip = disc_ip;
+          fresh[count].aid = 0xFF;
+          fresh[count].rssi = -58;
+          fresh[count].last_seen_s = now_s;
+          count++;
+        }
+      }
+    }
+  }
+
+  // Carry over active Range Extender / bridged clients (aid == 0xFF) that were seen
+  // within BRIDGED_CLIENT_TIMEOUT_S even if lwIP's small ARP cache rotated their entry out
+  for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+    if (active_clients[k].aid == 0xFF && active_clients[k].ip != 0 &&
+        valid_device_mac(active_clients[k].mac) &&
+        (now_s <= active_clients[k].last_seen_s ||
+         (now_s - active_clients[k].last_seen_s) <= BRIDGED_CLIENT_TIMEOUT_S)) {
+      bool ip_found = false;
+      for (size_t m = 0; m < count; ++m) {
+        if (fresh[m].ip == active_clients[k].ip) {
+          if (active_clients[k].last_seen_s > fresh[m].last_seen_s) {
+            fresh[m].last_seen_s = active_clients[k].last_seen_s;
+          }
+          if (fresh[m].mac[0] == 0x02 && fresh[m].mac[1] == 0xE0 &&
+              !(active_clients[k].mac[0] == 0x02 && active_clients[k].mac[1] == 0xE0)) {
+            memcpy(fresh[m].mac, active_clients[k].mac, 6);
+          }
+          ip_found = true;
+          break;
+        }
+      }
+      if (!ip_found && count < MAX_CLIENTS) {
+        active_client_t cand = active_clients[k];
+        // Upgrade fallback 02:E0 MAC if a DHCP binding now exists for this IP
+        if (cand.mac[0] == 0x02 && cand.mac[1] == 0xE0) {
+          for (size_t b = 0; b < binding_count; ++b) {
+            if (device_bindings[b].bound_ip == cand.ip &&
+                valid_device_mac(device_bindings[b].mac)) {
+              memcpy(cand.mac, device_bindings[b].mac, 6);
+              break;
+            }
+          }
+        }
+        bool mac_exists = false;
+        for (size_t m = 0; m < count; ++m) {
+          if (memcmp(fresh[m].mac, cand.mac, 6) == 0) {
+            if (fresh[m].ip == 0) {
+              fresh[m].ip = cand.ip;
+            }
+            mac_exists = true;
+            break;
+          }
+        }
+        if (!mac_exists) {
+          fresh[count++] = cand;
+        }
+      }
+    }
+  }
+
   memcpy(active_clients, fresh, sizeof(fresh));
   for (size_t i = 0; i < count; ++i) {
     meter_find_usage_locked(fresh[i].mac, true);

@@ -48,6 +48,7 @@ char quota_start_date[12] = {0};
 char quota_end_date[12] = {0};
 
 int32_t reboot_countdown_s = -1;
+volatile uint32_t pending_discovered_ip = 0;
 static int last_fired_hour = -1;
 static int last_fired_min = -1;
 
@@ -518,18 +519,63 @@ bool meter_delete_device(const uint8_t mac[6]) {
 void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip) {
   if (!valid_device_mac(physical_mac) || ip == 0) return;
 
+  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
   bool need_save = false;
   portENTER_CRITICAL(&data_mux);
 
-  meter_find_usage_locked(physical_mac, true);
-  meter_find_policy_locked(physical_mac, true);
+  uint8_t target_mac[6];
+  memcpy(target_mac, physical_mac, 6);
 
-  // Update physical MAC binding
+  // If a Range Extender rewrote DHCP chaddr to its own MAC and that MAC already
+  // owns a different active IP, synthesize a per-IP virtual MAC so each client
+  // behind the extender remains an independent device.
+  for (size_t i = 0; i < MAX_CLIENTS; ++i) {
+    if (memcmp(active_clients[i].mac, physical_mac, 6) == 0 &&
+        active_clients[i].aid != 0 && active_clients[i].ip != 0 &&
+        active_clients[i].ip != ip) {
+      target_mac[0] = 0x02;
+      target_mac[1] = 0xE0;
+      target_mac[2] = 192;
+      target_mac[3] = 168;
+      target_mac[4] = 4;
+      target_mac[5] = ((const uint8_t *)&ip)[3];
+      break;
+    }
+  }
+
+  // If this IP previously used a fallback 02:E0:C0:A8:04:XX MAC before DHCP
+  // revealed the true hardware MAC, migrate its accumulated bytes seamlessly.
+  if (!(target_mac[0] == 0x02 && target_mac[1] == 0xE0)) {
+    uint8_t fallback_mac[6] = {0x02, 0xE0, 192, 168, 4, ((const uint8_t *)&ip)[3]};
+    int fb_u = meter_find_usage_locked(fallback_mac, false);
+    int real_u = meter_find_usage_locked(target_mac, true);
+    if (fb_u >= 0 && real_u >= 0 && fb_u != real_u) {
+      usage_records[real_u].upload_bytes += usage_records[fb_u].upload_bytes;
+      usage_records[real_u].download_bytes += usage_records[fb_u].download_bytes;
+      for (size_t j = (size_t)fb_u; j + 1 < usage_count; ++j) {
+        usage_records[j] = usage_records[j + 1];
+        device_live_speeds[j] = device_live_speeds[j + 1];
+      }
+      --usage_count;
+      memset(&usage_records[usage_count], 0, sizeof(usage_record_t));
+      memset(&device_live_speeds[usage_count], 0, sizeof(device_live_speed_t));
+      usage_dirty = true;
+      need_save = true;
+    }
+  } else {
+    meter_find_usage_locked(target_mac, true);
+  }
+  meter_find_policy_locked(target_mac, true);
+
+  // Update MAC-to-IP binding and clear any stale binding that pointed to this IP
   int b_idx = -1;
   for (size_t b = 0; b < binding_count; ++b) {
-    if (memcmp(device_bindings[b].mac, physical_mac, 6) == 0) {
+    if (memcmp(device_bindings[b].mac, target_mac, 6) == 0) {
       b_idx = (int)b;
-      break;
+    } else if (device_bindings[b].bound_ip == ip) {
+      device_bindings[b].bound_ip = 0;
+      bindings_dirty = true;
+      need_save = true;
     }
   }
   if (b_idx >= 0) {
@@ -539,18 +585,56 @@ void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip) {
       need_save = true;
     }
   } else if (binding_count < MAX_RECORDS) {
-    memcpy(device_bindings[binding_count].mac, physical_mac, 6);
+    memcpy(device_bindings[binding_count].mac, target_mac, 6);
     device_bindings[binding_count].bound_ip = ip;
     ++binding_count;
     bindings_dirty = true;
     need_save = true;
   }
 
-  // Map to active clients slot
+  // Clear this IP from any other slot in active_clients
   for (size_t i = 0; i < MAX_CLIENTS; ++i) {
-    if (memcmp(active_clients[i].mac, physical_mac, 6) == 0) {
+    if (active_clients[i].ip == ip && memcmp(active_clients[i].mac, target_mac, 6) != 0) {
+      if (active_clients[i].aid == 0xFF) {
+        memset(&active_clients[i], 0, sizeof(active_clients[i]));
+      } else {
+        active_clients[i].ip = 0;
+      }
+    }
+  }
+
+  // Map to active clients slot (or allocate a bridged 0xFF slot for Range Extender clients!)
+  bool mapped = false;
+  size_t free_slot = MAX_CLIENTS;
+  size_t oldest_bridged = MAX_CLIENTS;
+  uint32_t oldest_seen = UINT32_MAX;
+
+  for (size_t i = 0; i < MAX_CLIENTS; ++i) {
+    if (memcmp(active_clients[i].mac, target_mac, 6) == 0) {
       active_clients[i].ip = ip;
+      active_clients[i].last_seen_s = now_s;
+      if (active_clients[i].aid == 0) active_clients[i].aid = 0xFF;
+      if (active_clients[i].rssi == 0) active_clients[i].rssi = -55;
+      mapped = true;
       break;
+    }
+    if (free_slot == MAX_CLIENTS && !valid_device_mac(active_clients[i].mac)) {
+      free_slot = i;
+    }
+    if (active_clients[i].aid == 0xFF && active_clients[i].last_seen_s < oldest_seen) {
+      oldest_seen = active_clients[i].last_seen_s;
+      oldest_bridged = i;
+    }
+  }
+
+  if (!mapped) {
+    size_t target_slot = (free_slot < MAX_CLIENTS) ? free_slot : oldest_bridged;
+    if (target_slot < MAX_CLIENTS) {
+      memcpy(active_clients[target_slot].mac, target_mac, 6);
+      active_clients[target_slot].ip = ip;
+      active_clients[target_slot].aid = 0xFF; // Bridged / Range Extender client
+      active_clients[target_slot].rssi = -55;
+      active_clients[target_slot].last_seen_s = now_s;
     }
   }
 
@@ -602,7 +686,8 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
   uint8_t octet = ((uint8_t *)&target_local_ip)[3];
   dev_fast_entry_t *dev = ip_lookup[octet];
   if (dev == NULL) {
-    return -1; // Fast-forward unmapped packet without overhead or lock contention
+    pending_discovered_ip = target_local_ip;
+    return -1; // Fast-forward unmapped packet and queue zero-overhead L3 discovery
   }
 
   int64_t now_us = esp_timer_get_time();
@@ -718,15 +803,66 @@ void meter_tick_second(uint32_t elapsed_s) {
   total_cur_up_bps = agg_up_bps;
   total_cur_down_bps = agg_down_bps;
 
-  // Age out inactive bridged devices
+  // Sync live packet timestamps from fast_device_pool and age out inactive bridged devices
   uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
   for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+    if (active_clients[k].ip != 0 && fast_device_pool[k].ip == active_clients[k].ip) {
+      if (fast_device_pool[k].last_seen_s > active_clients[k].last_seen_s) {
+        active_clients[k].last_seen_s = fast_device_pool[k].last_seen_s;
+      }
+    }
     if (active_clients[k].aid == 0xFF && active_clients[k].ip != 0) {
-      if (now_s - active_clients[k].last_seen_s > BRIDGED_CLIENT_TIMEOUT_S) {
+      if (now_s > active_clients[k].last_seen_s &&
+          (now_s - active_clients[k].last_seen_s) > BRIDGED_CLIENT_TIMEOUT_S) {
         uint8_t oct = ((uint8_t *)&active_clients[k].ip)[3];
         ip_lookup[oct] = NULL;
         memset(&active_clients[k], 0, sizeof(active_clients[k]));
         memset(&fast_device_pool[k], 0, sizeof(fast_device_pool[k]));
+      }
+    }
+  }
+
+  // Auto-discover active Range Extender / bridged clients from live L3 traffic
+  uint32_t disc_ip = pending_discovered_ip;
+  if (disc_ip != 0) {
+    pending_discovered_ip = 0;
+    uint8_t disc_oct = ((const uint8_t *)&disc_ip)[3];
+    if (disc_oct >= 2 && disc_oct <= 254 && ip_lookup[disc_oct] == NULL) {
+      uint8_t owner_mac[6] = {0};
+      for (size_t b = 0; b < binding_count; ++b) {
+        if (device_bindings[b].bound_ip == disc_ip && valid_device_mac(device_bindings[b].mac)) {
+          memcpy(owner_mac, device_bindings[b].mac, 6);
+          break;
+        }
+      }
+      if (!valid_device_mac(owner_mac)) {
+        owner_mac[0] = 0x02;
+        owner_mac[1] = 0xE0;
+        owner_mac[2] = 192;
+        owner_mac[3] = 168;
+        owner_mac[4] = 4;
+        owner_mac[5] = disc_oct;
+      }
+      size_t slot = MAX_CLIENTS;
+      for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+        if (memcmp(active_clients[k].mac, owner_mac, 6) == 0 &&
+            (active_clients[k].ip == 0 || active_clients[k].ip == disc_ip)) {
+          slot = k;
+          break;
+        }
+        if (slot == MAX_CLIENTS && !valid_device_mac(active_clients[k].mac)) {
+          slot = k;
+        }
+      }
+      if (slot < MAX_CLIENTS) {
+        memcpy(active_clients[slot].mac, owner_mac, 6);
+        active_clients[slot].ip = disc_ip;
+        if (active_clients[slot].aid == 0) active_clients[slot].aid = 0xFF;
+        if (active_clients[slot].rssi == 0) active_clients[slot].rssi = -58;
+        active_clients[slot].last_seen_s = now_s;
+        meter_find_usage_locked(owner_mac, true);
+        meter_find_policy_locked(owner_mac, true);
+        meter_rebuild_fast_lookup();
       }
     }
   }

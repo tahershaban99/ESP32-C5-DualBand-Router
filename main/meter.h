@@ -32,6 +32,7 @@ extern char quota_end_date[12];
 
 extern int32_t reboot_countdown_s;
 extern bool device_catalog_dirty;
+extern volatile uint32_t pending_discovered_ip;
 
 void meter_load_usage(void);
 void meter_save_usage(void);
