@@ -457,7 +457,7 @@ void wifi_manager_init(void) {
 
     wifi_bandwidths_t bws = {
       .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
-      .ghz_5g = WIFI_BW20,
+      .ghz_5g = (wifi_protocol_mode == 0) ? WIFI_BW20 : WIFI_BW40,
     };
     esp_wifi_set_bandwidths(WIFI_IF_AP, &bws);
     esp_wifi_set_bandwidths(WIFI_IF_STA, &bws);
@@ -465,10 +465,11 @@ void wifi_manager_init(void) {
              ap_config.ap.channel, MAX_WIFI_STATIONS);
   } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
     uint8_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
+    wifi_bandwidth_t bw_5g = (wifi_protocol_mode == 0) ? WIFI_BW20 : WIFI_BW40;
     esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, bw_5g);
     esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, bw_5g);
     ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11anacax Wi-Fi 6, Ch 36, max_conn=%d)", MAX_WIFI_STATIONS);
   } else {
     uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;

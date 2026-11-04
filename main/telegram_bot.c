@@ -1384,11 +1384,11 @@ static void telegram_task(void *pvParameters) {
     // Check automated quota alerts safely within telegram_task
     telegram_check_quota_alerts();
 
-    // Anti-Congestion Priority: If user is actively performing extreme speed test (>25 Mbps),
-    // briefly yield polling so wire forwarding achieves wire-speed throughput without packet latency!
+    // Anti-Congestion Priority: If user is actively browsing/streaming/testing speed (>3 Mbps),
+    // yield polling so packet forwarding achieves wire-speed throughput without TLS contention or latency!
     uint32_t traffic_bps = total_cur_down_bps + total_cur_up_bps;
-    if (traffic_bps > 25000000) {
-      vTaskDelay(pdMS_TO_TICKS(2000));
+    if (traffic_bps > 3000000) {
+      vTaskDelay(pdMS_TO_TICKS(3000));
       continue;
     }
 
