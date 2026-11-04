@@ -196,12 +196,16 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     wifi_manager_init_sntp();
     uint8_t primary_ch = 1;
     wifi_second_chan_t sec_ch = WIFI_SECOND_CHAN_NONE;
-    if (esp_wifi_get_channel(&primary_ch, &sec_ch) == ESP_OK && primary_ch > 11) {
-      wifi_bandwidth_t cur_bw = WIFI_BW20;
-      if (esp_wifi_get_bandwidth(WIFI_IF_AP, &cur_bw) == ESP_OK && cur_bw == WIFI_BW40) {
-        ESP_LOGW(ROUTER_TAG, "Upstream AP is on Channel %u > 11; clamping AP/STA bandwidth to HT20 to prevent client disconnections", (unsigned)primary_ch);
-        esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
-        esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20);
+    if (esp_wifi_get_channel(&primary_ch, &sec_ch) == ESP_OK) {
+      ESP_LOGI(ROUTER_TAG, "Operating on Channel %u (%s)",
+               (unsigned)primary_ch, (primary_ch >= 36) ? "5GHz Band" : "2.4GHz Band");
+      if (primary_ch > 11 && primary_ch <= 14) {
+        wifi_bandwidth_t cur_bw = WIFI_BW20;
+        if (esp_wifi_get_bandwidth(WIFI_IF_AP, &cur_bw) == ESP_OK && cur_bw == WIFI_BW40) {
+          ESP_LOGW(ROUTER_TAG, "Upstream AP is on 2.4GHz Channel %u > 11; clamping bandwidth to HT20", (unsigned)primary_ch);
+          esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+          esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20);
+        }
       }
     }
     ESP_LOGI(ROUTER_TAG, "Upstream connected; NAPT result=%s", esp_err_to_name(err));
@@ -404,8 +408,19 @@ void wifi_manager_init(void) {
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ASSIGNED_IP_TO_CLIENT, &on_wifi_event, NULL));
 
   // Determine Wi-Fi Band Mode for ESP32-C5:
-  // Always keep hardware in AUTO (or 2G_ONLY if mode==1) so SoftAP broadcasts on universal 2.4GHz Ch 1
-  wifi_band_mode_t bmode = (wifi_band_mode == 1) ? WIFI_BAND_MODE_2G_ONLY : WIFI_BAND_MODE_AUTO;
+  // 1 = 2.4GHz Only, 2 = 5GHz Only, 3 = Dual-Band Auto (2.4G + 5G)
+  wifi_band_mode_t bmode = WIFI_BAND_MODE_AUTO;
+  if (wifi_band_mode == 1) bmode = WIFI_BAND_MODE_2G_ONLY;
+  else if (wifi_band_mode == 2) bmode = WIFI_BAND_MODE_5G_ONLY;
+
+  // Set country policy to MANUAL with worldwide channels so 5GHz SoftAP + STA work seamlessly on all channels (36..165)
+  wifi_country_t country = {
+    .cc = "01",
+    .schan = 1,
+    .nchan = 13,
+    .policy = WIFI_COUNTRY_POLICY_MANUAL,
+  };
+  esp_wifi_set_country(&country);
 
   wifi_config_t ap_config = {0};
   const char *selected_ap_ssid = has_saved_config ? ap_ssid : SETUP_SSID;
@@ -415,8 +430,8 @@ void wifi_manager_init(void) {
   memcpy(ap_config.ap.password, selected_ap_pass,
          strnlen(selected_ap_pass, sizeof(ap_config.ap.password) - 1));
 
-  // Broadcast SoftAP on 2.4GHz Channel 1 for 100% compatibility with all phones & laptops
-  ap_config.ap.channel = 1;
+  // Default SoftAP channel: 36 if 5G_ONLY, else 1 (automatically follows STA channel when STA connects to 5GHz/2.4GHz)
+  ap_config.ap.channel = (bmode == WIFI_BAND_MODE_5G_ONLY) ? 36 : 1;
 
   ap_config.ap.max_connection = MAX_WIFI_STATIONS; // 12 max direct Wi-Fi connections
   if (strlen(selected_ap_pass) < 8) {
@@ -424,9 +439,10 @@ void wifi_manager_init(void) {
   } else {
     ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
   }
+  ap_config.ap.pmf_cfg.capable = true;
   ap_config.ap.pmf_cfg.required = false;
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-  // Set band mode BEFORE esp_wifi_set_config(WIFI_IF_AP) in case NVS persisted 5G_ONLY from earlier
+  // Set band mode BEFORE esp_wifi_set_config(WIFI_IF_AP)
   esp_wifi_set_band_mode(bmode);
   if (esp_wifi_set_config(WIFI_IF_AP, &ap_config) != ESP_OK) {
     // Fallback if driver requires start() before band switch
@@ -448,12 +464,13 @@ void wifi_manager_init(void) {
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
   }
   ESP_ERROR_CHECK(esp_wifi_start());
+  esp_wifi_set_country(&country);
 
   // Apply Wi-Fi Band Mode after esp_wifi_start()
   esp_err_t band_err = esp_wifi_set_band_mode(bmode);
   ESP_LOGI(ROUTER_TAG, "Wi-Fi band mode set to %d (%s) [result: %s]",
            (int)bmode,
-           (bmode == WIFI_BAND_MODE_2G_ONLY) ? "2.4GHz Only" : "Dual-Band Auto (SoftAP 2.4G + STA 2.4G/5G)",
+           (bmode == WIFI_BAND_MODE_2G_ONLY) ? "2.4GHz Only" : (bmode == WIFI_BAND_MODE_5G_ONLY) ? "5GHz Only" : "Dual-Band Auto (2.4G + 5G)",
            esp_err_to_name(band_err));
 
   ESP_ERROR_CHECK(esp_wifi_set_ps(esp_wifi_power_save ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE));
@@ -463,19 +480,14 @@ void wifi_manager_init(void) {
 
   // Bandwidth & Protocol Tuning with Wi-Fi 6 (802.11ax) acceleration
   if (bmode == WIFI_BAND_MODE_AUTO) {
-    // SoftAP: 2.4GHz (11b/g/n/ax) ensures universal visibility to all phones/laptops/devices
-    wifi_protocols_t ap_protos = {
-      .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
-      .ghz_5g = 0,
-    };
-    esp_wifi_set_protocols(WIFI_IF_AP, &ap_protos);
-
-    // STA: Dual-Band (2.4G + 5G) connects to either 2.4G or 5G upstream Wi-Fi
-    wifi_protocols_t sta_protos = {
+    // Enable BOTH 2.4GHz and 5GHz protocols on SoftAP and STA!
+    // Because ESP32-C5 shares a single radio, when STA connects to a 5GHz router, SoftAP also operates on 5GHz!
+    wifi_protocols_t dual_protos = {
       .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
       .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX,
     };
-    esp_wifi_set_protocols(WIFI_IF_STA, &sta_protos);
+    esp_wifi_set_protocols(WIFI_IF_AP, &dual_protos);
+    esp_wifi_set_protocols(WIFI_IF_STA, &dual_protos);
 
     wifi_bandwidths_t ap_bws = {
       .ghz_2g = WIFI_BW20,
@@ -483,12 +495,21 @@ void wifi_manager_init(void) {
     };
     wifi_bandwidths_t sta_bws = {
       .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
-      .ghz_5g = WIFI_BW20,
+      .ghz_5g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
     };
     esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
     esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (SoftAP 2.4G 11bgnax Ch %d + STA Dual-Band 2.4G/5G, max_conn=%d)",
-             ap_config.ap.channel, MAX_WIFI_STATIONS);
+    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (AP+STA 2.4G/5G 11a/b/g/n/ac/ax, max_conn=%d)",
+             MAX_WIFI_STATIONS);
+  } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
+    uint16_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
+    wifi_bandwidth_t bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
+    esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+    esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, bw);
+    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11a/n/ac/ax Wi-Fi 6, Ch 36, max_conn=%d)",
+             MAX_WIFI_STATIONS);
   } else {
     uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
     wifi_bandwidth_t bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
