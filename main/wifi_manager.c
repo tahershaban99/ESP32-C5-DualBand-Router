@@ -78,6 +78,10 @@ void wifi_manager_advertise_uplink_dns(void) {
   esp_netif_dhcps_start(ap_netif);
 }
 
+static uint32_t sta_fail_count = 0;
+static uint32_t next_sta_reconnect_s = 0;
+static bool sta_connected_now = false;
+
 static void wifi_manager_init_sntp(void) {
   if (!esp_sntp_enabled()) {
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -138,6 +142,11 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
       }
     }
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
+    // Pause any background STA scan for 8s so the connecting client completes WPA2 + DHCP handshake without channel hopping
+    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+    if (now_s + 8 > next_sta_reconnect_s) {
+      next_sta_reconnect_s = now_s + 8;
+    }
     handle_ap_station_connected((const wifi_event_ap_staconnected_t *)data);
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STADISCONNECTED) {
     handle_ap_station_disconnected((const wifi_event_ap_stadisconnected_t *)data);
@@ -148,23 +157,34 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     uint8_t reason = disc ? disc->reason : 0;
     ESP_LOGW(ROUTER_TAG, "STA disconnected from '%s', reason=%u", router_ssid, (unsigned)reason);
     esp_netif_napt_disable(ap_netif);
-    if (has_saved_config && !scan_running) {
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      esp_wifi_connect();
+    sta_connected_now = false;
+    sta_fail_count++;
+    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+    uint32_t backoff_s = (sta_fail_count <= 2) ? 4 : 15;
+    if (now_s + backoff_s > next_sta_reconnect_s) {
+      next_sta_reconnect_s = now_s + backoff_s;
     }
-  } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED && sta_static_enabled) {
-    esp_netif_set_default_netif(sta_netif);
-    esp_netif_ip_info_t info = {0};
-    if (esp_netif_get_ip_info(sta_netif, &info) == ESP_OK && info.ip.addr != 0) {
-      esp_netif_dns_info_t dns = {0};
-      if (!sta_dns_text[0] || esp_netif_str_to_ip4(sta_dns_text, &dns.ip.u_addr.ip4) != ESP_OK)
-        dns.ip.u_addr.ip4 = info.gw;
-      esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns);
-      wifi_manager_advertise_uplink_dns();
-      esp_netif_napt_enable(ap_netif);
-      ESP_LOGI(ROUTER_TAG, "Static uplink active at " IPSTR, IP2STR(&info.ip));
+  } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED) {
+    sta_connected_now = true;
+    sta_fail_count = 0;
+    next_sta_reconnect_s = 0;
+    if (sta_static_enabled) {
+      esp_netif_set_default_netif(sta_netif);
+      esp_netif_ip_info_t info = {0};
+      if (esp_netif_get_ip_info(sta_netif, &info) == ESP_OK && info.ip.addr != 0) {
+        esp_netif_dns_info_t dns = {0};
+        if (!sta_dns_text[0] || esp_netif_str_to_ip4(sta_dns_text, &dns.ip.u_addr.ip4) != ESP_OK)
+          dns.ip.u_addr.ip4 = info.gw;
+        esp_netif_set_dns_info(sta_netif, ESP_NETIF_DNS_MAIN, &dns);
+        wifi_manager_advertise_uplink_dns();
+        esp_netif_napt_enable(ap_netif);
+        ESP_LOGI(ROUTER_TAG, "Static uplink active at " IPSTR, IP2STR(&info.ip));
+      }
     }
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+    sta_connected_now = true;
+    sta_fail_count = 0;
+    next_sta_reconnect_s = 0;
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
     ESP_LOGI(ROUTER_TAG, "Upstream WAN connected! Got IP: " IPSTR ", Gateway: " IPSTR,
              IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.gw));
@@ -278,6 +298,12 @@ void wifi_manager_refresh_clients(void) {
   }
   meter_rebuild_fast_lookup();
   portEXIT_CRITICAL(&data_mux);
+
+  // Non-blocking STA reconnect handler: avoids stalling sys_evt or starving SoftAP association
+  if (has_saved_config && !scan_running && !sta_connected_now && next_sta_reconnect_s > 0 && now_s >= next_sta_reconnect_s) {
+    next_sta_reconnect_s = now_s + 15;
+    esp_wifi_connect();
+  }
 }
 
 bool wifi_manager_start_scan(void) {
@@ -377,15 +403,9 @@ void wifi_manager_init(void) {
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_wifi_event, NULL));
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ASSIGNED_IP_TO_CLIENT, &on_wifi_event, NULL));
 
-  // Determine Wi-Fi Band Mode for ESP32-C5
-  wifi_band_mode_t bmode = WIFI_BAND_MODE_AUTO;
-  if (wifi_band_mode == 1) {
-    bmode = WIFI_BAND_MODE_2G_ONLY;
-  } else if (wifi_band_mode == 2) {
-    bmode = WIFI_BAND_MODE_5G_ONLY;
-  } else {
-    bmode = WIFI_BAND_MODE_AUTO;
-  }
+  // Determine Wi-Fi Band Mode for ESP32-C5:
+  // Always keep hardware in AUTO (or 2G_ONLY if mode==1) so SoftAP broadcasts on universal 2.4GHz Ch 1
+  wifi_band_mode_t bmode = (wifi_band_mode == 1) ? WIFI_BAND_MODE_2G_ONLY : WIFI_BAND_MODE_AUTO;
 
   wifi_config_t ap_config = {0};
   const char *selected_ap_ssid = has_saved_config ? ap_ssid : SETUP_SSID;
@@ -395,12 +415,8 @@ void wifi_manager_init(void) {
   memcpy(ap_config.ap.password, selected_ap_pass,
          strnlen(selected_ap_pass, sizeof(ap_config.ap.password) - 1));
 
-  if (bmode == WIFI_BAND_MODE_5G_ONLY) {
-    ap_config.ap.channel = 36;
-  } else {
-    // Both 2.4GHz Only and Dual-Band Auto broadcast SoftAP on 2.4GHz Channel 1
-    ap_config.ap.channel = 1;
-  }
+  // Broadcast SoftAP on 2.4GHz Channel 1 for 100% compatibility with all phones & laptops
+  ap_config.ap.channel = 1;
 
   ap_config.ap.max_connection = MAX_WIFI_STATIONS; // 12 max direct Wi-Fi connections
   if (strlen(selected_ap_pass) < 8) {
@@ -410,7 +426,14 @@ void wifi_manager_init(void) {
   }
   ap_config.ap.pmf_cfg.required = false;
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+  // Set band mode BEFORE esp_wifi_set_config(WIFI_IF_AP) in case NVS persisted 5G_ONLY from earlier
+  esp_wifi_set_band_mode(bmode);
+  if (esp_wifi_set_config(WIFI_IF_AP, &ap_config) != ESP_OK) {
+    // Fallback if driver requires start() before band switch
+    ESP_ERROR_CHECK(esp_wifi_start());
+    esp_wifi_set_band_mode(bmode);
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+  }
 
   if (has_saved_config) {
     wifi_config_t sta_config = {0};
@@ -419,7 +442,7 @@ void wifi_manager_init(void) {
     memcpy(sta_config.sta.password, router_password,
            strnlen(router_password, sizeof(sta_config.sta.password) - 1));
     sta_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
-    sta_config.sta.failure_retry_cnt = 5;
+    sta_config.sta.failure_retry_cnt = 2;
     sta_config.sta.pmf_cfg.capable = true;
     sta_config.sta.pmf_cfg.required = false;
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
@@ -430,8 +453,7 @@ void wifi_manager_init(void) {
   esp_err_t band_err = esp_wifi_set_band_mode(bmode);
   ESP_LOGI(ROUTER_TAG, "Wi-Fi band mode set to %d (%s) [result: %s]",
            (int)bmode,
-           (bmode == WIFI_BAND_MODE_5G_ONLY) ? "5GHz Only" :
-           (bmode == WIFI_BAND_MODE_2G_ONLY) ? "2.4GHz Only" : "Dual-Band Auto",
+           (bmode == WIFI_BAND_MODE_2G_ONLY) ? "2.4GHz Only" : "Dual-Band Auto (SoftAP 2.4G + STA 2.4G/5G)",
            esp_err_to_name(band_err));
 
   ESP_ERROR_CHECK(esp_wifi_set_ps(esp_wifi_power_save ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE));
@@ -455,27 +477,23 @@ void wifi_manager_init(void) {
     };
     esp_wifi_set_protocols(WIFI_IF_STA, &sta_protos);
 
-    wifi_bandwidths_t bws = {
-      .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
-      .ghz_5g = (wifi_protocol_mode == 0) ? WIFI_BW20 : WIFI_BW40,
+    wifi_bandwidths_t ap_bws = {
+      .ghz_2g = WIFI_BW20,
+      .ghz_5g = WIFI_BW20,
     };
-    esp_wifi_set_bandwidths(WIFI_IF_AP, &bws);
-    esp_wifi_set_bandwidths(WIFI_IF_STA, &bws);
+    wifi_bandwidths_t sta_bws = {
+      .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
+      .ghz_5g = WIFI_BW20,
+    };
+    esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
+    esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
     ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (SoftAP 2.4G 11bgnax Ch %d + STA Dual-Band 2.4G/5G, max_conn=%d)",
              ap_config.ap.channel, MAX_WIFI_STATIONS);
-  } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
-    uint8_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
-    wifi_bandwidth_t bw_5g = (wifi_protocol_mode == 0) ? WIFI_BW20 : WIFI_BW40;
-    esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, bw_5g);
-    esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, bw_5g);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11anacax Wi-Fi 6, Ch 36, max_conn=%d)", MAX_WIFI_STATIONS);
   } else {
     uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
     wifi_bandwidth_t bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
     esp_wifi_set_protocol(WIFI_IF_AP, proto_2g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, bw);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
     esp_wifi_set_protocol(WIFI_IF_STA, proto_2g);
     esp_wifi_set_bandwidth(WIFI_IF_STA, bw);
     ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz Only (11bgnax Wi-Fi 6, bw=%s, Ch 1, max_conn=%d)",
