@@ -1306,7 +1306,7 @@ static void telegram_task(void *pvParameters) {
   (void)pvParameters;
   ESP_LOGI(TG_TAG, "Telegram polling task started on Core %d", xPortGetCoreID());
 
-  char *rx_buffer = (char *)malloc(2560);
+  char *rx_buffer = (char *)malloc(4096);
   if (!rx_buffer) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for Telegram rx buffer");
     vTaskDelete(NULL);
@@ -1342,11 +1342,11 @@ static void telegram_task(void *pvParameters) {
     // Check automated quota alerts safely within telegram_task
     telegram_check_quota_alerts();
 
-    // Anti-Congestion Priority: If user is actively downloading/testing speed (>5 Mbps),
-    // back off polling to eliminate TLS buffer memory competition and guarantee wire-speed throughput!
+    // Anti-Congestion Priority: If user is actively performing extreme speed test (>25 Mbps),
+    // briefly yield polling so wire forwarding achieves wire-speed throughput without packet latency!
     uint32_t traffic_bps = total_cur_down_bps + total_cur_up_bps;
-    if (traffic_bps > 5000000) {
-      vTaskDelay(pdMS_TO_TICKS(10000));
+    if (traffic_bps > 25000000) {
+      vTaskDelay(pdMS_TO_TICKS(2000));
       continue;
     }
 
@@ -1375,8 +1375,8 @@ static void telegram_task(void *pvParameters) {
     if (err == ESP_OK) {
       esp_http_client_fetch_headers(client);
       int total_read = 0;
-      while (total_read < 2550) {
-        int r = esp_http_client_read(client, rx_buffer + total_read, 2550 - total_read);
+      while (total_read < 4090) {
+        int r = esp_http_client_read(client, rx_buffer + total_read, 4090 - total_read);
         if (r <= 0) break;
         total_read += r;
       }
@@ -1725,7 +1725,7 @@ static void telegram_task(void *pvParameters) {
                 send_user_quota_report(sender_chat_id, linked_indices, linked_count);
               }
               // 2. Speed
-              else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة") || strstr(cmd_text, "سرعتي")) {
+              else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة") || strstr(cmd_text, "سرعتي") || strstr(cmd_text, "السرعة")) {
                 send_user_speed_report(sender_chat_id, linked_indices, linked_count);
               }
               // 3. Status
@@ -1865,8 +1865,8 @@ static void telegram_task(void *pvParameters) {
                   telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 }
               }
-              // 6. Command: /speed, سرعة
-              else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة")) {
+              // 6. Command: /speed, سرعة, السرعة
+              else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة") || strstr(cmd_text, "السرعة")) {
                 send_admin_speed_report(sender_chat_id, linked_indices, linked_count, &ap_info);
               }
               // 7. Command: /ota, تحديث
@@ -1928,7 +1928,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with optimized 8KB stack (saves 4KB RAM)
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack to guarantee safe TLS handshake and JSON handling
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }
