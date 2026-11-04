@@ -19,6 +19,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "esp_netif.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/inet.h"
 #include "lwip/etharp.h"
@@ -688,9 +689,14 @@ void telegram_check_quota_alerts(void) {
   }
   if (telegram_busy) return;
 
-  // Only check and send alerts if STA is actively connected to internet
+  // Only check and send alerts if STA is actively connected to internet AND has obtained a valid IPv4 address
   wifi_ap_record_t ap_info;
   if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+    return;
+  }
+  esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  esp_netif_ip_info_t sta_ip = {0};
+  if (!sta || esp_netif_get_ip_info(sta, &sta_ip) != ESP_OK || sta_ip.ip.addr == 0) {
     return;
   }
 
@@ -838,13 +844,6 @@ void telegram_check_quota_alerts(void) {
       if (th_val > 0 && th_val <= 100) {
         uint16_t mask = (1U << th_idx);
         if (dev_pct >= (uint32_t)th_val && !(pol.alert_flags & mask)) {
-          portENTER_CRITICAL(&data_mux);
-          int p_cur = meter_find_policy_locked(pol.mac, false);
-          if (p_cur >= 0) {
-            device_policies[p_cur].alert_flags |= mask;
-          }
-          portEXIT_CRITICAL(&data_mux);
-
           double dev_used_gb = (double)dev_used / gb_div;
           double dev_total_gb = (double)pol.quota_bytes / gb_div;
           double dev_rem_gb = (dev_total_gb > dev_used_gb) ? (dev_total_gb - dev_used_gb) : 0.0;
@@ -868,18 +867,22 @@ void telegram_check_quota_alerts(void) {
           telegram_busy = true;
 
           // Dispatch to linked owner with TG_USER_KEYBOARD, and CC to all admins
+          bool sent_ok = false;
           if (pol.telegram_chat_id[0]) {
-            telegram_send_message_with_keyboard(pol.telegram_chat_id, alert_msg, TG_USER_KEYBOARD);
+            sent_ok = telegram_send_message_with_keyboard(pol.telegram_chat_id, alert_msg, TG_USER_KEYBOARD);
             char cc_msg[650];
             snprintf(cc_msg, sizeof(cc_msg), "📢 <b>[تنبيه إداري: استهلاك باقة جهاز (%u%%)]</b>\n\n%s", th_val, alert_msg);
             telegram_broadcast_admins(cc_msg);
           } else {
             // No personal chat_id: alert all admins
             telegram_broadcast_admins(alert_msg);
+            sent_ok = true;
           }
 
           telegram_busy = false;
-          meter_save_usage();
+          if (sent_ok) {
+            meter_set_device_alert_flag(pol.mac, mask);
+          }
           return; // Send one alert per check
         }
       }
@@ -1243,8 +1246,16 @@ static void send_admin_speed_report(const char *chat_id, const int *linked_indic
 }
 
 static void send_admin_devices_report(const char *chat_id) {
-  char reply[1500] = "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n";
-  char kb_buttons[1200] = {0};
+  char *reply = (char *)calloc(1, 1500);
+  char *kb_buttons = (char *)calloc(1, 1200);
+  char *kb_json = (char *)calloc(1, 1350);
+  if (!reply || !kb_buttons || !kb_json) {
+    if (reply) free(reply);
+    if (kb_buttons) free(kb_buttons);
+    if (kb_json) free(kb_json);
+    return;
+  }
+  strcpy(reply, "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
   uint16_t count = 0;
   double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
@@ -1331,7 +1342,7 @@ static void send_admin_devices_report(const char *chat_id) {
              is_vip ? " 🎮 <b>VIP</b>" : "",
              (double)cur_down / 1000000.0, (double)cur_up / 1000000.0,
              (double)dev_used / gb_div, q_info);
-    if (strlen(reply) + strlen(dev_line) < sizeof(reply) - 100) strcat(reply, dev_line);
+    if (strlen(reply) + strlen(dev_line) < 1400) strcat(reply, dev_line);
 
     if (count <= 8) {
       char row[260];
@@ -1341,7 +1352,7 @@ static void send_admin_devices_report(const char *chat_id) {
                kb_buttons[0] ? "," : "", name, p_idx,
                is_blocked ? "✅ فك حظر" : "🚫 حظر",
                is_blocked ? "ubp" : "blkp", p_idx);
-      if (strlen(kb_buttons) + strlen(row) < sizeof(kb_buttons) - 90) strcat(kb_buttons, row);
+      if (strlen(kb_buttons) + strlen(row) < 1100) strcat(kb_buttons, row);
     }
   }
   portEXIT_CRITICAL(&data_mux);
@@ -1356,11 +1367,13 @@ static void send_admin_devices_report(const char *chat_id) {
   char refresh_btn[140];
   snprintf(refresh_btn, sizeof(refresh_btn), "%s[{\"text\":\"🔄 تحديث قائمة الأجهزة\",\"callback_data\":\"adm_devices\"}]",
            kb_buttons[0] ? "," : "");
-  if (strlen(kb_buttons) + strlen(refresh_btn) < sizeof(kb_buttons) - 20) strcat(kb_buttons, refresh_btn);
+  if (strlen(kb_buttons) + strlen(refresh_btn) < 1180) strcat(kb_buttons, refresh_btn);
 
-  char kb_json[1350];
-  snprintf(kb_json, sizeof(kb_json), "{\"inline_keyboard\":[%s]}", kb_buttons);
+  snprintf(kb_json, 1350, "{\"inline_keyboard\":[%s]}", kb_buttons);
+  free(kb_buttons);
   telegram_send_message_with_keyboard(chat_id, reply, kb_json);
+  free(reply);
+  free(kb_json);
 }
 
 static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
@@ -1369,8 +1382,14 @@ static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
     return;
   }
 
-  char rep[950];
-  format_single_device_report(p_idx, rep, sizeof(rep));
+  char *rep = (char *)calloc(1, 950);
+  char *kb = (char *)calloc(1, 1050);
+  if (!rep || !kb) {
+    if (rep) free(rep);
+    if (kb) free(kb);
+    return;
+  }
+  format_single_device_report(p_idx, rep, 950);
 
   bool is_blk = false, is_vip = false;
   portENTER_CRITICAL(&data_mux);
@@ -1378,8 +1397,7 @@ static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
   is_vip = device_policies[p_idx].gaming_mode;
   portEXIT_CRITICAL(&data_mux);
 
-  char kb[1050];
-  snprintf(kb, sizeof(kb),
+  snprintf(kb, 1050,
            "{\"inline_keyboard\":["
            "[{\"text\":\"➕ +1 GB\",\"callback_data\":\"addq:%d:1\"},"
            "{\"text\":\"➕ +5 GB\",\"callback_data\":\"addq:%d:5\"},"
@@ -1398,9 +1416,18 @@ static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
            is_blk ? "ubp" : "blkp", p_idx);
 
   telegram_send_message_with_keyboard(chat_id, rep, kb);
+  free(rep);
+  free(kb);
 }
 
 static void send_admin_reboot_menu(const char *chat_id) {
+  char *msg = (char *)calloc(1, 750);
+  char *kb = (char *)calloc(1, 1050);
+  if (!msg || !kb) {
+    if (msg) free(msg);
+    if (kb) free(kb);
+    return;
+  }
   char sched_str[120];
   if (auto_reboot_enabled) {
     int h12 = auto_reboot_hour % 12;
@@ -1411,16 +1438,14 @@ static void send_admin_reboot_menu(const char *chat_id) {
     snprintf(sched_str, sizeof(sched_str), "⚪ غير مفعل حالياً");
   }
 
-  char msg[750];
-  snprintf(msg, sizeof(msg),
+  snprintf(msg, 750,
            "🔄 <b>إدارة إعادة تشغيل الراوتر والجدولة اليومية:</b>\n\n"
            "⏰ <b>الموعد المجدول حالياً:</b> %s\n\n"
            "👇 اختر من القائمة بالأسفل <b>إعادة التشغيل الفوري</b> أو ضبط <b>موعد إعادة تشغيل يومي تلقائي</b> لتنظيف الذاكرة:\n"
            "💡 <i>لتحديد أي وقت مخصص، أرسل مثلاً:</i> <code>/reboot_time 04:30</code>",
            sched_str);
 
-  char kb[1050];
-  snprintf(kb, sizeof(kb),
+  snprintf(kb, 1050,
            "{\"inline_keyboard\":["
            "[{\"text\":\"🔴 إعادة تشغيل الراوتر الآن فوراً\",\"callback_data\":\"reboot_confirm\"}],"
            "[{\"text\":\"%s🕐 1:00 ص\",\"callback_data\":\"rbs:1\"},"
@@ -1439,6 +1464,8 @@ static void send_admin_reboot_menu(const char *chat_id) {
            (auto_reboot_enabled && auto_reboot_hour == 21 && auto_reboot_min == 0) ? "✅ " : "");
 
   telegram_send_message_with_keyboard(chat_id, msg, kb);
+  free(msg);
+  free(kb);
 }
 
 static void send_admin_status_report(const char *chat_id, const wifi_ap_record_t *ap_info) {
@@ -1536,9 +1563,18 @@ static void telegram_task(void *pvParameters) {
   }
 
   while (true) {
-    // Wait for Wi-Fi STA connection
+    // Wait for Wi-Fi STA connection and valid IPv4 address from DHCP
     wifi_ap_record_t ap_info;
-        // Post-Boot Alert for Daily Scheduled Auto-Reboot
+    esp_netif_ip_info_t sta_ip = {0};
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK || !sta_netif ||
+        esp_netif_get_ip_info(sta_netif, &sta_ip) != ESP_OK ||
+        sta_ip.ip.addr == 0 || !telegram_token[0]) {
+      vTaskDelay(pdMS_TO_TICKS(3000));
+      continue;
+    }
+
+    // Post-Boot Alert for Daily Scheduled Auto-Reboot
     if (config_get_scheduled_reboot_flag()) {
       config_set_scheduled_reboot_flag(false);
       if (telegram_enabled && telegram_token[0] && telegram_chat_id[0]) {
@@ -1554,11 +1590,6 @@ static void telegram_task(void *pvParameters) {
                  auto_reboot_hour, auto_reboot_min, auto_reboot_tz_offset);
         telegram_broadcast_admins(reboot_msg);
       }
-    }
-
-    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK || !telegram_token[0]) {
-      vTaskDelay(pdMS_TO_TICKS(3000));
-      continue;
     }
 
     // Check automated quota alerts safely within telegram_task
@@ -2343,7 +2374,7 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 9KB stack (saves 3KB RAM while keeping full TLS & JSON safety)
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 9216, NULL, 4, NULL, 0);
+  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack to guarantee safe TLS handshake and JSON handling
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL, 0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }

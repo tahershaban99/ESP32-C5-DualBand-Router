@@ -362,6 +362,18 @@ void meter_add_device_quota(const uint8_t mac[6], int64_t add_bytes) {
   meter_save_usage();
 }
 
+void meter_set_device_alert_flag(const uint8_t mac[6], uint16_t mask) {
+  if (!valid_device_mac(mac)) return;
+  portENTER_CRITICAL(&data_mux);
+  int idx = meter_find_policy_locked(mac, false);
+  if (idx >= 0) {
+    device_policies[idx].alert_flags |= mask;
+    policy_dirty = true;
+  }
+  portEXIT_CRITICAL(&data_mux);
+  meter_save_usage();
+}
+
 void meter_set_device_telegram(const uint8_t mac[6], const char *chat_id) {
   if (!valid_device_mac(mac)) return;
   portENTER_CRITICAL(&data_mux);
