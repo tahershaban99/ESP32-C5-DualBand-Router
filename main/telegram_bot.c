@@ -28,6 +28,7 @@
 
 static int64_t last_update_id = 0;
 static bool telegram_busy = false;
+static bool awaiting_custom_reboot_time = false;
 static SemaphoreHandle_t tg_http_mux = NULL;
 
 static bool tg_http_lock(TickType_t wait_ticks) {
@@ -232,6 +233,78 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
     ESP_LOGW(TG_TAG, "Failed to send Telegram message to %s: err=%s, status=%d", chat_id, esp_err_to_name(err), status);
     return false;
   }
+}
+
+static bool telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id, const char *text, const char *inline_keyboard_json) {
+  if (message_id <= 0) {
+    return telegram_send_message_with_keyboard(chat_id, text, inline_keyboard_json);
+  }
+  if (!telegram_token[0] || !chat_id || !chat_id[0] || !text || !text[0]) {
+    return false;
+  }
+
+  if (!tg_http_lock(pdMS_TO_TICKS(10000))) {
+    return false;
+  }
+
+  char url[180];
+  snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/editMessageText", telegram_token);
+
+  char *escaped_text = (char *)malloc(2048);
+  if (!escaped_text) {
+    tg_http_unlock();
+    return telegram_send_message_with_keyboard(chat_id, text, inline_keyboard_json);
+  }
+  json_escape(text, escaped_text, 2048);
+
+  char *body = (char *)malloc(2800);
+  if (!body) {
+    free(escaped_text);
+    tg_http_unlock();
+    return telegram_send_message_with_keyboard(chat_id, text, inline_keyboard_json);
+  }
+
+  if (inline_keyboard_json && inline_keyboard_json[0]) {
+    snprintf(body, 2800,
+             "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64 ",\"text\":\"%s\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
+             chat_id, message_id, escaped_text, inline_keyboard_json);
+  } else {
+    snprintf(body, 2800,
+             "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64 ",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
+             chat_id, message_id, escaped_text);
+  }
+  free(escaped_text);
+
+  esp_http_client_config_t config = {
+      .url = url,
+      .method = HTTP_METHOD_POST,
+      .timeout_ms = 8000,
+      .crt_bundle_attach = esp_crt_bundle_attach,
+      .buffer_size = 512,
+      .buffer_size_tx = 2800,
+  };
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (!client) {
+    free(body);
+    tg_http_unlock();
+    return telegram_send_message_with_keyboard(chat_id, text, inline_keyboard_json);
+  }
+
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_http_client_set_post_field(client, body, strlen(body));
+
+  esp_err_t err = esp_http_client_perform(client);
+  int status = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  free(body);
+  tg_http_unlock();
+
+  if (err == ESP_OK && (status == 200 || status == 201 || status == 400)) {
+    // Note: status 400 in editMessageText usually means "message is not modified" (already up to date)
+    return true;
+  }
+  return telegram_send_message_with_keyboard(chat_id, text, inline_keyboard_json);
 }
 
 bool telegram_answer_callback_query(const char *callback_query_id, const char *text) {
@@ -974,21 +1047,30 @@ static void json_decode_string(const char *src, char *dst, size_t max_dst) {
 // -----------------------------------------------------------------------------
 // Interactive Report Generators (Linked Users & Network Administrators)
 // -----------------------------------------------------------------------------
-static void send_user_quota_report(const char *chat_id, const int *linked_indices, size_t linked_count) {
+static void send_user_quota_report(const char *chat_id, int64_t edit_msg_id, const int *linked_indices, size_t linked_count) {
   if (linked_count == 1) {
-    char dev_rep[950];
-    format_single_device_report(linked_indices[0], dev_rep, sizeof(dev_rep));
+    char *dev_rep = (char *)calloc(1, 950);
+    if (!dev_rep) return;
+    format_single_device_report(linked_indices[0], dev_rep, 950);
     const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 تحديث استهلاك باقتي\",\"callback_data\":\"user_quota\"}]]}";
-    telegram_send_message_with_keyboard(chat_id, dev_rep, kb);
+    telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, dev_rep, kb);
+    free(dev_rep);
   } else if (linked_count > 1) {
-    char sum_rep[1000], kb_rep[600];
-    format_multi_device_summary(linked_indices, linked_count, sum_rep, sizeof(sum_rep), kb_rep, sizeof(kb_rep));
-    telegram_send_message_with_keyboard(chat_id, sum_rep, kb_rep);
+    char *sum_rep = (char *)calloc(1, 1000);
+    char *kb_rep = (char *)calloc(1, 600);
+    if (sum_rep && kb_rep) {
+      format_multi_device_summary(linked_indices, linked_count, sum_rep, 1000, kb_rep, 600);
+      telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, sum_rep, kb_rep);
+    }
+    if (sum_rep) free(sum_rep);
+    if (kb_rep) free(kb_rep);
   }
 }
 
-static void send_user_speed_report(const char *chat_id, const int *linked_indices, size_t linked_count) {
-  char spd_rep[750] = "⚡ <b>تقرير سرعة أجهزتك اللحظية:</b>\n\n";
+static void send_user_speed_report(const char *chat_id, int64_t edit_msg_id, const int *linked_indices, size_t linked_count) {
+  char *spd_rep = (char *)calloc(1, 750);
+  if (!spd_rep) return;
+  strcpy(spd_rep, "⚡ <b>تقرير سرعة أجهزتك اللحظية:</b>\n\n");
   portENTER_CRITICAL(&data_mux);
   for (size_t li = 0; li < linked_count; ++li) {
     int p_idx = linked_indices[li];
@@ -1017,16 +1099,19 @@ static void send_user_speed_report(const char *chat_id, const int *linked_indice
                "• <b>%s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة مفتوحة 🚀)\n",
                d_name, (double)c_down / 1000000.0, (double)c_up / 1000000.0);
     }
-    if (strlen(spd_rep) + strlen(lbuf) < sizeof(spd_rep) - 20) strcat(spd_rep, lbuf);
+    if (strlen(spd_rep) + strlen(lbuf) < 730) strcat(spd_rep, lbuf);
   }
   portEXIT_CRITICAL(&data_mux);
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 فحص وتحديث السرعة\",\"callback_data\":\"user_speed\"}]]}";
-  telegram_send_message_with_keyboard(chat_id, spd_rep, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, spd_rep, kb);
+  free(spd_rep);
 }
 
-static void send_user_status_report(const char *chat_id, const int *linked_indices, size_t linked_count) {
-  char st_rep[750] = "🌐 <b>فحص حالة اتصال أجهزتك:</b>\n\n";
+static void send_user_status_report(const char *chat_id, int64_t edit_msg_id, const int *linked_indices, size_t linked_count) {
+  char *st_rep = (char *)calloc(1, 750);
+  if (!st_rep) return;
+  strcpy(st_rep, "🌐 <b>فحص حالة اتصال أجهزتك:</b>\n\n");
   portENTER_CRITICAL(&data_mux);
   for (size_t li = 0; li < linked_count; ++li) {
     int p_idx = linked_indices[li];
@@ -1058,15 +1143,16 @@ static void send_user_status_report(const char *chat_id, const int *linked_indic
       snprintf(lbuf, sizeof(lbuf),
                "• <b>%s</b>: ⚪ غير متصل بالشبكة حالياً\n", d_name);
     }
-    if (strlen(st_rep) + strlen(lbuf) < sizeof(st_rep) - 20) strcat(st_rep, lbuf);
+    if (strlen(st_rep) + strlen(lbuf) < 730) strcat(st_rep, lbuf);
   }
   portEXIT_CRITICAL(&data_mux);
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 تحديث حالة الاتصال\",\"callback_data\":\"user_status\"}]]}";
-  telegram_send_message_with_keyboard(chat_id, st_rep, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, st_rep, kb);
+  free(st_rep);
 }
 
-static void send_admin_quota_report(const char *chat_id, const int *linked_indices, size_t linked_count) {
+static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id, const int *linked_indices, size_t linked_count) {
   uint64_t total_up = 0, total_down = 0;
   uint32_t live_up = 0, live_down = 0;
   uint16_t active_cnt = 0;
@@ -1104,10 +1190,11 @@ static void send_admin_quota_report(const char *chat_id, const int *linked_indic
     }
   }
 
-  char reply[1200];
+  char *reply = (char *)calloc(1, 1200);
+  if (!reply) return;
   if (main_cap_gb > 0) {
     if (rem_days >= 0) {
-      snprintf(reply, sizeof(reply),
+      snprintf(reply, 1200,
                "📊 <b>تقرير باقة الإنترنت العامة (الراوتر):</b>\n\n"
                "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB (%.1f%%)\n"
                "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
@@ -1118,7 +1205,7 @@ static void send_admin_quota_report(const char *chat_id, const int *linked_indic
                quota_end_date, (long)rem_days, (long)rem_hours, active_cnt,
                (double)live_down / 1000000.0, (double)live_up / 1000000.0);
     } else {
-      snprintf(reply, sizeof(reply),
+      snprintf(reply, 1200,
                "📊 <b>تقرير باقة الإنترنت العامة (الراوتر):</b>\n\n"
                "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB (%.1f%%)\n"
                "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
@@ -1129,7 +1216,7 @@ static void send_admin_quota_report(const char *chat_id, const int *linked_indic
                (double)live_down / 1000000.0, (double)live_up / 1000000.0);
     }
   } else {
-    snprintf(reply, sizeof(reply),
+    snprintf(reply, 1200,
              "📊 <b>إجمالي استهلاك راوتر ESP32:</b>\n\n"
              "📥 <b>إجمالي التحميل:</b> %.2f GB\n"
              "📤 <b>إجمالي الرفع:</b> %.2f GB\n"
@@ -1175,7 +1262,7 @@ static void send_admin_quota_report(const char *chat_id, const int *linked_indic
                    "   • المستهلك: %.2f GB (استهلاك مفتوح ♾️)\n",
                    my_name, my_used_gb);
         }
-        if (strlen(reply) + strlen(my_sec) < sizeof(reply) - 80) {
+        if (strlen(reply) + strlen(my_sec) < 1120) {
           strcat(reply, my_sec);
         }
       }
@@ -1183,10 +1270,11 @@ static void send_admin_quota_report(const char *chat_id, const int *linked_indic
   }
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 تحديث استهلاك الباقة\",\"callback_data\":\"adm_quota\"}]]}";
-  telegram_send_message_with_keyboard(chat_id, reply, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb);
+  free(reply);
 }
 
-static void send_admin_speed_report(const char *chat_id, const int *linked_indices, size_t linked_count, const wifi_ap_record_t *ap_info) {
+static void send_admin_speed_report(const char *chat_id, int64_t edit_msg_id, const int *linked_indices, size_t linked_count, const wifi_ap_record_t *ap_info) {
   uint32_t live_up = total_cur_up_bps;
   uint32_t live_down = total_cur_down_bps;
   uint16_t active_cnt = 0;
@@ -1199,8 +1287,9 @@ static void send_admin_speed_report(const char *chat_id, const int *linked_indic
   }
   portEXIT_CRITICAL(&data_mux);
 
-  char reply[800];
-  snprintf(reply, sizeof(reply),
+  char *reply = (char *)calloc(1, 800);
+  if (!reply) return;
+  snprintf(reply, 800,
            "⚡ <b>فحص سرعة شبكة الراوتر اللحظية:</b>\n\n"
            "🚀 <b>السرعة الإجمالية:</b> ⬇️ %.2f Mbps | ⬆️ %.2f Mbps\n"
            "👥 <b>الأجهزة المتصلة:</b> %u / 12 متصل\n"
@@ -1234,7 +1323,7 @@ static void send_admin_speed_report(const char *chat_id, const int *linked_indic
                  "\n📱 <b>سرعة جهازك الشخصي (%s):</b>\n"
                  "   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps\n",
                  my_name, (double)my_down / 1000000.0, (double)my_up / 1000000.0);
-        if (strlen(reply) + strlen(my_spd) < sizeof(reply) - 80) {
+        if (strlen(reply) + strlen(my_spd) < 720) {
           strcat(reply, my_spd);
         }
       }
@@ -1242,10 +1331,11 @@ static void send_admin_speed_report(const char *chat_id, const int *linked_indic
   }
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 فحص وتحديث السرعة\",\"callback_data\":\"adm_speed\"}]]}";
-  telegram_send_message_with_keyboard(chat_id, reply, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb);
+  free(reply);
 }
 
-static void send_admin_devices_report(const char *chat_id) {
+static void send_admin_devices_report(const char *chat_id, int64_t edit_msg_id) {
   char *reply = (char *)calloc(1, 1500);
   char *kb_buttons = (char *)calloc(1, 1200);
   char *kb_json = (char *)calloc(1, 1350);
@@ -1371,12 +1461,12 @@ static void send_admin_devices_report(const char *chat_id) {
 
   snprintf(kb_json, 1350, "{\"inline_keyboard\":[%s]}", kb_buttons);
   free(kb_buttons);
-  telegram_send_message_with_keyboard(chat_id, reply, kb_json);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb_json);
   free(reply);
   free(kb_json);
 }
 
-static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
+static void send_admin_device_control_menu(const char *chat_id, int64_t edit_msg_id, int p_idx) {
   if (p_idx < 0 || (size_t)p_idx >= policy_count) {
     telegram_send_message(chat_id, "⚠️ لم يتم العثور على بيانات هذا الجهاز.");
     return;
@@ -1415,14 +1505,14 @@ static void send_admin_device_control_menu(const char *chat_id, int p_idx) {
            is_blk ? "✅ إلغاء حظر الجهاز" : "🚫 حظر الجهاز من الإنترنت",
            is_blk ? "ubp" : "blkp", p_idx);
 
-  telegram_send_message_with_keyboard(chat_id, rep, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, rep, kb);
   free(rep);
   free(kb);
 }
 
-static void send_admin_reboot_menu(const char *chat_id) {
+static void send_admin_reboot_menu(const char *chat_id, int64_t edit_msg_id) {
   char *msg = (char *)calloc(1, 750);
-  char *kb = (char *)calloc(1, 1050);
+  char *kb = (char *)calloc(1, 1150);
   if (!msg || !kb) {
     if (msg) free(msg);
     if (kb) free(kb);
@@ -1441,11 +1531,10 @@ static void send_admin_reboot_menu(const char *chat_id) {
   snprintf(msg, 750,
            "🔄 <b>إدارة إعادة تشغيل الراوتر والجدولة اليومية:</b>\n\n"
            "⏰ <b>الموعد المجدول حالياً:</b> %s\n\n"
-           "👇 اختر من القائمة بالأسفل <b>إعادة التشغيل الفوري</b> أو ضبط <b>موعد إعادة تشغيل يومي تلقائي</b> لتنظيف الذاكرة:\n"
-           "💡 <i>لتحديد أي وقت مخصص، أرسل مثلاً:</i> <code>/reboot_time 04:30</code>",
+           "👇 اختر من القائمة بالأسفل <b>إعادة التشغيل الفوري</b> أو ضبط <b>موعد إعادة تشغيل يومي تلقائي</b> لتنظيف الذاكرة:",
            sched_str);
 
-  snprintf(kb, 1050,
+  snprintf(kb, 1150,
            "{\"inline_keyboard\":["
            "[{\"text\":\"🔴 إعادة تشغيل الراوتر الآن فوراً\",\"callback_data\":\"reboot_confirm\"}],"
            "[{\"text\":\"%s🕐 1:00 ص\",\"callback_data\":\"rbs:1\"},"
@@ -1454,6 +1543,7 @@ static void send_admin_reboot_menu(const char *chat_id) {
            "[{\"text\":\"%s🕐 1:00 م\",\"callback_data\":\"rbs:13\"},"
            "{\"text\":\"%s🕕 6:00 م\",\"callback_data\":\"rbs:18\"},"
            "{\"text\":\"%s🕘 9:00 م\",\"callback_data\":\"rbs:21\"}],"
+           "[{\"text\":\"⏰ كتابة وقت مخصص للريستارت\",\"callback_data\":\"rbs:custom\"}],"
            "[{\"text\":\"❌ إلغاء جدولة إعادة التشغيل التلقائي\",\"callback_data\":\"rbs:off\"}]"
            "]}",
            (auto_reboot_enabled && auto_reboot_hour == 1 && auto_reboot_min == 0) ? "✅ " : "",
@@ -1463,12 +1553,12 @@ static void send_admin_reboot_menu(const char *chat_id) {
            (auto_reboot_enabled && auto_reboot_hour == 18 && auto_reboot_min == 0) ? "✅ " : "",
            (auto_reboot_enabled && auto_reboot_hour == 21 && auto_reboot_min == 0) ? "✅ " : "");
 
-  telegram_send_message_with_keyboard(chat_id, msg, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, msg, kb);
   free(msg);
   free(kb);
 }
 
-static void send_admin_status_report(const char *chat_id, const wifi_ap_record_t *ap_info) {
+static void send_admin_status_report(const char *chat_id, int64_t edit_msg_id, const wifi_ap_record_t *ap_info) {
   uint32_t uptime_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
   uint32_t days = uptime_s / 86400;
   uint32_t hours = (uptime_s % 86400) / 3600;
@@ -1491,8 +1581,14 @@ static void send_admin_status_report(const char *chat_id, const wifi_ap_record_t
     snprintf(sched_str, sizeof(sched_str), "%d:%02d %s يومياً", h12, auto_reboot_min, (auto_reboot_hour < 12) ? "ص" : "م");
   }
 
-  char reply[850];
-  snprintf(reply, sizeof(reply),
+  char *reply = (char *)calloc(1, 850);
+  char *kb = (char *)calloc(1, 550);
+  if (!reply || !kb) {
+    if (reply) free(reply);
+    if (kb) free(kb);
+    return;
+  }
+  snprintf(reply, 850,
            "⚙️ <b>حالة نظام راوتر ESP32 والتحكم بالمعالج:</b>\n\n"
            "⏱️ <b>مدة التشغيل:</b> %lu يوم و %lu ساعة و %lu دقيقة\n"
            "🧠 <b>الذاكرة الحرة (RAM):</b> %lu KB\n"
@@ -1509,8 +1605,7 @@ static void send_admin_status_report(const char *chat_id, const wifi_ap_record_t
            ap_info ? (int)ap_info->rssi : 0, active_cnt,
            (double)total_cur_down_bps / 1000000.0, (double)total_cur_up_bps / 1000000.0);
 
-  char kb[550];
-  snprintf(kb, sizeof(kb),
+  snprintf(kb, 550,
            "{\"inline_keyboard\":["
            "[{\"text\":\"%s🔋 80 MHz (توفير)\",\"callback_data\":\"cpu:80\"},"
            "{\"text\":\"%s⚡ 160 MHz (متوازن)\",\"callback_data\":\"cpu:160\"},"
@@ -1520,7 +1615,9 @@ static void send_admin_status_report(const char *chat_id, const wifi_ap_record_t
            (esp_cpu_freq_mhz == 80) ? "✅ " : "",
            (esp_cpu_freq_mhz == 160) ? "✅ " : "",
            (esp_cpu_freq_mhz == 240) ? "✅ " : "");
-  telegram_send_message_with_keyboard(chat_id, reply, kb);
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb);
+  free(reply);
+  free(kb);
 }
 
 static void telegram_ack_offset_before_reboot(void) {
@@ -1605,7 +1702,7 @@ static void telegram_task(void *pvParameters) {
 
     char url[220];
     snprintf(url, sizeof(url),
-             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=2&limit=3",
+             "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64 "&timeout=2&limit=1",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
@@ -1628,10 +1725,39 @@ static void telegram_task(void *pvParameters) {
       esp_err_t err = esp_http_client_open(client, 0);
       if (err == ESP_OK) {
         esp_http_client_fetch_headers(client);
-        while (total_read < 2042) {
-          int r = esp_http_client_read(client, rx_buffer + total_read, 2042 - total_read);
+        char chunk[256];
+        while (true) {
+          int r = esp_http_client_read(client, chunk, sizeof(chunk));
           if (r <= 0) break;
-          total_read += r;
+          if (total_read + r <= 2042) {
+            memcpy(rx_buffer + total_read, chunk, (size_t)r);
+            total_read += r;
+          } else {
+            // Sliding window: keep the first 350 bytes (update_id, callback_query id, from.id, message.message_id)
+            // and slide the tail (which holds callback_data / text at the end of a long inline keyboard JSON)
+            const int head_keep = 350;
+            const int tail_max = 2042 - head_keep;
+            if (total_read < head_keep) {
+              int copy_head = head_keep - total_read;
+              if (copy_head > r) copy_head = r;
+              memcpy(rx_buffer + total_read, chunk, (size_t)copy_head);
+              total_read += copy_head;
+              int rem = r - copy_head;
+              if (rem > 0) {
+                memcpy(rx_buffer + head_keep, chunk + copy_head, (size_t)rem);
+                total_read += rem;
+              }
+            } else {
+              int cur_tail = total_read - head_keep;
+              int drop = (cur_tail + r) - tail_max;
+              if (drop > 0) {
+                memmove(rx_buffer + head_keep, rx_buffer + head_keep + drop, (size_t)(cur_tail - drop));
+                cur_tail -= drop;
+              }
+              memcpy(rx_buffer + head_keep + cur_tail, chunk, (size_t)r);
+              total_read = head_keep + cur_tail + r;
+            }
+          }
         }
         rx_buffer[total_read] = 0;
       }
@@ -1658,6 +1784,7 @@ static void telegram_task(void *pvParameters) {
             char cb_id[64] = {0};
             char cb_sender[32] = {0};
             char cb_data[64] = {0};
+            int64_t cb_msg_id = 0;
 
             // Extract callback id
             char *id_p = strstr(cb_ptr, "\"id\":");
@@ -1673,9 +1800,9 @@ static void telegram_task(void *pvParameters) {
 
             // Extract sender from.id
             char *from_p = strstr(cb_ptr, "\"from\":");
-            if (from_p && from_p < cb_ptr + 150) {
+            if (from_p && from_p < cb_ptr + 180) {
               char *from_id_p = strstr(from_p, "\"id\":");
-              if (from_id_p && from_id_p < from_p + 100) {
+              if (from_id_p && from_id_p < from_p + 120) {
                 from_id_p += 5;
                 while (*from_id_p == ' ') from_id_p++;
                 size_t s_idx = 0;
@@ -1686,9 +1813,23 @@ static void telegram_task(void *pvParameters) {
               }
             }
 
-            // Extract callback data
-            char *data_p = strstr(cb_ptr, "\"data\":");
-            if (data_p && (!next_up || data_p < next_up)) {
+            // Extract callback message_id so we can edit the message in-place!
+            char *msg_id_p = strstr(cb_ptr, "\"message_id\":");
+            if (msg_id_p && (!next_up || msg_id_p < next_up)) {
+              msg_id_p += 13;
+              while (*msg_id_p == ' ') msg_id_p++;
+              cb_msg_id = strtoll(msg_id_p, NULL, 10);
+            }
+
+            // Extract callback data (always search from the end or last occurrence of "data":)
+            char *data_p = NULL;
+            char *search_d = cb_ptr;
+            while ((search_d = strstr(search_d, "\"data\":")) != NULL) {
+              if (next_up && search_d >= next_up) break;
+              data_p = search_d;
+              search_d += 7;
+            }
+            if (data_p) {
               data_p += 7;
               while (*data_p == ' ') data_p++;
               if (*data_p == '"') data_p++;
@@ -1696,7 +1837,8 @@ static void telegram_task(void *pvParameters) {
             }
 
             if (cb_sender[0] && cb_data[0]) {
-              ESP_LOGI(TG_TAG, "Callback query received: data='%s' from chat=%s", cb_data, cb_sender);
+              awaiting_custom_reboot_time = false;
+              ESP_LOGI(TG_TAG, "Callback query received: data='%s' from chat=%s (msg_id=%" PRIi64 ")", cb_data, cb_sender, cb_msg_id);
 
               // Gather linked devices for this callback sender
               int cb_linked_indices[MAX_RECORDS];
@@ -1713,24 +1855,24 @@ static void telegram_task(void *pvParameters) {
               bool answered_toast = false;
 
               if (strcmp(cb_data, "user_quota") == 0) {
-                send_user_quota_report(cb_sender, cb_linked_indices, cb_linked_count);
+                send_user_quota_report(cb_sender, cb_msg_id, cb_linked_indices, cb_linked_count);
               } else if (strcmp(cb_data, "user_speed") == 0) {
-                send_user_speed_report(cb_sender, cb_linked_indices, cb_linked_count);
+                send_user_speed_report(cb_sender, cb_msg_id, cb_linked_indices, cb_linked_count);
               } else if (strcmp(cb_data, "user_status") == 0) {
-                send_user_status_report(cb_sender, cb_linked_indices, cb_linked_count);
+                send_user_status_report(cb_sender, cb_msg_id, cb_linked_indices, cb_linked_count);
               } else if (strcmp(cb_data, "adm_quota") == 0 && is_cb_admin) {
-                send_admin_quota_report(cb_sender, cb_linked_indices, cb_linked_count);
+                send_admin_quota_report(cb_sender, cb_msg_id, cb_linked_indices, cb_linked_count);
               } else if (strcmp(cb_data, "adm_speed") == 0 && is_cb_admin) {
-                send_admin_speed_report(cb_sender, cb_linked_indices, cb_linked_count, &ap_info);
+                send_admin_speed_report(cb_sender, cb_msg_id, cb_linked_indices, cb_linked_count, &ap_info);
               } else if (strcmp(cb_data, "adm_devices") == 0 && is_cb_admin) {
-                send_admin_devices_report(cb_sender);
+                send_admin_devices_report(cb_sender, cb_msg_id);
               } else if (strcmp(cb_data, "adm_status") == 0 && is_cb_admin) {
-                send_admin_status_report(cb_sender, &ap_info);
+                send_admin_status_report(cb_sender, cb_msg_id, &ap_info);
               } else if (strcmp(cb_data, "adm_reboot") == 0 && is_cb_admin) {
-                send_admin_reboot_menu(cb_sender);
+                send_admin_reboot_menu(cb_sender, cb_msg_id);
               } else if (strncmp(cb_data, "mdev:", 5) == 0 && is_cb_admin) {
                 int p_idx = atoi(cb_data + 5);
-                send_admin_device_control_menu(cb_sender, p_idx);
+                send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
               } else if (strncmp(cb_data, "addq:", 5) == 0 && is_cb_admin) {
                 int p_idx = -1, add_gb = 0;
                 if (sscanf(cb_data + 5, "%d:%d", &p_idx, &add_gb) == 2 && p_idx >= 0 && (size_t)p_idx < policy_count) {
@@ -1748,7 +1890,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, toast);
                     answered_toast = true;
                   }
-                  send_admin_device_control_menu(cb_sender, p_idx);
+                  send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
                 }
               } else if (strncmp(cb_data, "rstu:", 5) == 0 && is_cb_admin) {
                 int p_idx = atoi(cb_data + 5);
@@ -1762,7 +1904,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, "🔄 تم تصفير استهلاك الجهاز وفك الحظر!");
                     answered_toast = true;
                   }
-                  send_admin_device_control_menu(cb_sender, p_idx);
+                  send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
                 }
               } else if (strncmp(cb_data, "vip:", 4) == 0 && is_cb_admin) {
                 int p_idx = atoi(cb_data + 4);
@@ -1778,7 +1920,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, !cur_vip ? "🎮 تم تفعيل وضع الأولوية VIP للجهاز!" : "⚪ تم إلغاء وضع VIP للجهاز.");
                     answered_toast = true;
                   }
-                  send_admin_device_control_menu(cb_sender, p_idx);
+                  send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
                 }
               } else if (strncmp(cb_data, "blkp:", 5) == 0 && is_cb_admin) {
                 int p_idx = atoi(cb_data + 5);
@@ -1792,7 +1934,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, "🚫 تم حظر الجهاز من الإنترنت!");
                     answered_toast = true;
                   }
-                  send_admin_device_control_menu(cb_sender, p_idx);
+                  send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
                 }
               } else if (strncmp(cb_data, "ubp:", 4) == 0 && is_cb_admin) {
                 int p_idx = atoi(cb_data + 4);
@@ -1806,7 +1948,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, "✅ تم فك حظر الجهاز بنجاح!");
                     answered_toast = true;
                   }
-                  send_admin_device_control_menu(cb_sender, p_idx);
+                  send_admin_device_control_menu(cb_sender, cb_msg_id, p_idx);
                 }
               } else if (strncmp(cb_data, "cpu:", 4) == 0 && is_cb_admin) {
                 int freq = atoi(cb_data + 4);
@@ -1818,33 +1960,49 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, toast);
                     answered_toast = true;
                   }
-                  send_admin_status_report(cb_sender, &ap_info);
+                  send_admin_status_report(cb_sender, cb_msg_id, &ap_info);
                 }
               } else if (strncmp(cb_data, "rbs:", 4) == 0 && is_cb_admin) {
                 const char *arg = cb_data + 4;
-                if (strcmp(arg, "off") == 0) {
-                  config_save_auto_reboot(false, auto_reboot_hour, auto_reboot_min, auto_reboot_tz_offset);
-                  meter_reset_reboot_fired_state();
+                if (strcmp(arg, "custom") == 0) {
+                  awaiting_custom_reboot_time = true;
                   if (cb_id[0]) {
-                    telegram_answer_callback_query(cb_id, "❌ تم إلغاء جدولة إعادة التشغيل اليومية.");
+                    telegram_answer_callback_query(cb_id, "⏰ أرسل الوقت الآن في المحادثة (مثلاً 04:30)");
                     answered_toast = true;
                   }
+                  const char *custom_prompt =
+                      "⏰ <b>ضبط وقت مخصص لإعادة التشغيل اليومية:</b>\n\n"
+                      "أرسل الساعة والدقيقة الآن مباشرة في رسالة (بنظام 24 ساعة)، أمثلة:\n"
+                      "• <code>03:30</code> (للساعة 3:30 فجراً)\n"
+                      "• <code>05:00</code> (للساعة 5:00 صباحاً)\n"
+                      "• <code>14:30</code> (للساعة 2:30 ظهراً)";
+                  const char *back_kb = "{\"inline_keyboard\":[[{\"text\":\"🔙 رجوع لقائمة إعادة التشغيل\",\"callback_data\":\"adm_reboot\"}]]}";
+                  telegram_edit_or_send_with_keyboard(cb_sender, cb_msg_id, custom_prompt, back_kb);
                 } else {
-                  int hr = atoi(arg);
-                  if (hr >= 0 && hr < 24) {
-                    config_save_auto_reboot(true, (uint8_t)hr, 0, auto_reboot_tz_offset);
+                  if (strcmp(arg, "off") == 0) {
+                    config_save_auto_reboot(false, auto_reboot_hour, auto_reboot_min, auto_reboot_tz_offset);
                     meter_reset_reboot_fired_state();
                     if (cb_id[0]) {
-                      int h12 = hr % 12;
-                      if (h12 == 0) h12 = 12;
-                      char toast[96];
-                      snprintf(toast, sizeof(toast), "⏰ تم تفعيل إعادة التشغيل يومياً الساعة %d:00 %s!", h12, (hr < 12) ? "صباحاً" : "مساءً");
-                      telegram_answer_callback_query(cb_id, toast);
+                      telegram_answer_callback_query(cb_id, "❌ تم إلغاء جدولة إعادة التشغيل اليومية.");
                       answered_toast = true;
                     }
+                  } else {
+                    int hr = atoi(arg);
+                    if (hr >= 0 && hr < 24) {
+                      config_save_auto_reboot(true, (uint8_t)hr, 0, auto_reboot_tz_offset);
+                      meter_reset_reboot_fired_state();
+                      if (cb_id[0]) {
+                        int h12 = hr % 12;
+                        if (h12 == 0) h12 = 12;
+                        char toast[96];
+                        snprintf(toast, sizeof(toast), "⏰ تم تفعيل إعادة التشغيل يومياً الساعة %d:00 %s!", h12, (hr < 12) ? "صباحاً" : "مساءً");
+                        telegram_answer_callback_query(cb_id, toast);
+                        answered_toast = true;
+                      }
+                    }
                   }
+                  send_admin_reboot_menu(cb_sender, cb_msg_id);
                 }
-                send_admin_reboot_menu(cb_sender);
               } else if (strncmp(cb_data, "blk:", 4) == 0 && is_cb_admin) {
                 const char *tip = cb_data + 4;
                 uint8_t t_mac[6] = {0};
@@ -1856,7 +2014,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, "🚫 تم حظر الجهاز بنجاح!");
                     answered_toast = true;
                   }
-                  send_admin_devices_report(cb_sender);
+                  send_admin_devices_report(cb_sender, cb_msg_id);
                 }
               } else if (strncmp(cb_data, "unblk:", 6) == 0 && is_cb_admin) {
                 const char *tip = cb_data + 6;
@@ -1869,7 +2027,7 @@ static void telegram_task(void *pvParameters) {
                     telegram_answer_callback_query(cb_id, "✅ تم إلغاء حظر الجهاز!");
                     answered_toast = true;
                   }
-                  send_admin_devices_report(cb_sender);
+                  send_admin_devices_report(cb_sender, cb_msg_id);
                 }
               } else if (strcmp(cb_data, "reboot_confirm") == 0 && is_cb_admin) {
                 if (cb_id[0]) {
@@ -1884,13 +2042,21 @@ static void telegram_task(void *pvParameters) {
                 esp_restart();
               } else if (strncmp(cb_data, "dev_idx:", 8) == 0) {
                 int dev_i = atoi(cb_data + 8);
-                char rep[900];
-                format_single_device_report(dev_i, rep, sizeof(rep));
-                telegram_send_message(cb_sender, rep);
+                char *rep = (char *)calloc(1, 900);
+                if (rep) {
+                  format_single_device_report(dev_i, rep, 900);
+                  telegram_edit_or_send_with_keyboard(cb_sender, cb_msg_id, rep, NULL);
+                  free(rep);
+                }
               } else if (strcmp(cb_data, "dev_all") == 0) {
-                char sum_rep[1000], kb_rep[600];
-                format_multi_device_summary(cb_linked_indices, cb_linked_count, sum_rep, sizeof(sum_rep), kb_rep, sizeof(kb_rep));
-                telegram_send_message_with_keyboard(cb_sender, sum_rep, kb_rep);
+                char *sum_rep = (char *)calloc(1, 1000);
+                char *kb_rep = (char *)calloc(1, 600);
+                if (sum_rep && kb_rep) {
+                  format_multi_device_summary(cb_linked_indices, cb_linked_count, sum_rep, 1000, kb_rep, 600);
+                  telegram_edit_or_send_with_keyboard(cb_sender, cb_msg_id, sum_rep, kb_rep);
+                }
+                if (sum_rep) free(sum_rep);
+                if (kb_rep) free(kb_rep);
               }
 
               if (cb_id[0] && !answered_toast) {
@@ -2099,15 +2265,15 @@ static void telegram_task(void *pvParameters) {
             if (!is_admin && linked_count > 0) {
               // 1. Quota
               if (strstr(cmd_text, "/quota") || strstr(cmd_text, "استهلاك") || strstr(cmd_text, "باقة") || strstr(cmd_text, "باقتي") || strstr(cmd_text, "كوتا")) {
-                send_user_quota_report(sender_chat_id, linked_indices, linked_count);
+                send_user_quota_report(sender_chat_id, 0, linked_indices, linked_count);
               }
               // 2. Speed
               else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة") || strstr(cmd_text, "سرعتي") || strstr(cmd_text, "السرعة")) {
-                send_user_speed_report(sender_chat_id, linked_indices, linked_count);
+                send_user_speed_report(sender_chat_id, 0, linked_indices, linked_count);
               }
               // 3. Status
               else if (strstr(cmd_text, "/status") || strstr(cmd_text, "اتصالي") || strstr(cmd_text, "فحص") || strstr(cmd_text, "حالة")) {
-                send_user_status_report(sender_chat_id, linked_indices, linked_count);
+                send_user_status_report(sender_chat_id, 0, linked_indices, linked_count);
               }
               // 4. User Help / Default
               else {
@@ -2129,47 +2295,68 @@ static void telegram_task(void *pvParameters) {
             // CASE 3: ADMINISTRATOR (Full Router Management Capabilities)
             // =================================================================
             if (is_admin) {
+              // 0. Check if admin is currently typing a custom reboot time (after tapping rbs:custom)
+              if (awaiting_custom_reboot_time) {
+                int c_hr = -1, c_mn = 0;
+                const char *tp = cmd_text;
+                while (*tp == ' ') tp++;
+                if (sscanf(tp, "%d:%d", &c_hr, &c_mn) >= 1 && c_hr >= 0 && c_hr < 24 && c_mn >= 0 && c_mn < 60 &&
+                    (*tp >= '0' && *tp <= '9')) {
+                  awaiting_custom_reboot_time = false;
+                  config_save_auto_reboot(true, (uint8_t)c_hr, (uint8_t)c_mn, auto_reboot_tz_offset);
+                  meter_reset_reboot_fired_state();
+                  send_admin_reboot_menu(sender_chat_id, 0);
+                  continue;
+                }
+                // If the message is another command button, reset the awaiting flag and handle the command normally
+                awaiting_custom_reboot_time = false;
+              }
+
               // 1. Command: /quota, استهلاك, باقة, كوتا, الباقة
               if (strstr(cmd_text, "/quota") || strstr(cmd_text, "استهلاك") || strstr(cmd_text, "باقة") || strstr(cmd_text, "باقي") || strstr(cmd_text, "كوتا") || strstr(cmd_text, "الباقة")) {
-                send_admin_quota_report(sender_chat_id, linked_indices, linked_count);
+                send_admin_quota_report(sender_chat_id, 0, linked_indices, linked_count);
               }
               // 2. Command: /devices, أجهزة, الأجهزة, المتصلين
               else if (strstr(cmd_text, "/devices") || strstr(cmd_text, "الأجهزة") || strstr(cmd_text, "أجهزة") || strstr(cmd_text, "اجهزة") || strstr(cmd_text, "المتصلين") || strstr(cmd_text, "متصل")) {
-                send_admin_devices_report(sender_chat_id);
+                send_admin_devices_report(sender_chat_id, 0);
               }
               // 3. Command: /all, الكل
               else if (strstr(cmd_text, "/all") || strstr(cmd_text, "الكل") || strstr(cmd_text, "كافة")) {
-                char reply[1200] = "📋 <b>سجل كافة أجهزة الشبكة المسجلة:</b>\n\n";
-                portENTER_CRITICAL(&data_mux);
-                for (size_t p = 0; p < policy_count; ++p) {
-                  char d_name[DEVICE_NAME_BYTES] = "جهاز";
-                  int n_idx = meter_find_name_locked(device_policies[p].mac, false);
-                  if (n_idx >= 0 && device_names[n_idx].name[0]) {
-                    strncpy(d_name, device_names[n_idx].name, sizeof(d_name) - 1);
-                  }
-                  int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
-                  uint64_t dev_used = (u_idx >= 0) ? (usage_records[u_idx].upload_bytes + usage_records[u_idx].download_bytes) : 0;
-                  double u_gb = (double)dev_used / 1000000000.0;
-                  double q_gb = (double)device_policies[p].quota_bytes / 1000000000.0;
+                char *reply = (char *)calloc(1, 1200);
+                if (reply) {
+                  strcpy(reply, "📋 <b>سجل كافة أجهزة الشبكة المسجلة:</b>\n\n");
+                  portENTER_CRITICAL(&data_mux);
+                  for (size_t p = 0; p < policy_count; ++p) {
+                    char d_name[DEVICE_NAME_BYTES] = "جهاز";
+                    int n_idx = meter_find_name_locked(device_policies[p].mac, false);
+                    if (n_idx >= 0 && device_names[n_idx].name[0]) {
+                      strncpy(d_name, device_names[n_idx].name, sizeof(d_name) - 1);
+                    }
+                    int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
+                    uint64_t dev_used = (u_idx >= 0) ? (usage_records[u_idx].upload_bytes + usage_records[u_idx].download_bytes) : 0;
+                    double u_gb = (double)dev_used / 1000000000.0;
+                    double q_gb = (double)device_policies[p].quota_bytes / 1000000000.0;
 
-                  char line[150];
-                  if (device_policies[p].quota_bytes > 0) {
-                    snprintf(line, sizeof(line), "• <b>%s</b>: %.2f / %.2f GB %s%s\n",
-                             d_name, u_gb, q_gb,
-                             device_policies[p].blocked ? "🔴" : "🟢",
-                             device_policies[p].telegram_chat_id[0] ? " [TG]" : "");
-                  } else {
-                    snprintf(line, sizeof(line), "• <b>%s</b>: %.2f GB %s%s\n",
-                             d_name, u_gb,
-                             device_policies[p].blocked ? "🔴" : "🟢",
-                             device_policies[p].telegram_chat_id[0] ? " [TG]" : "");
+                    char line[150];
+                    if (device_policies[p].quota_bytes > 0) {
+                      snprintf(line, sizeof(line), "• <b>%s</b>: %.2f / %.2f GB %s%s\n",
+                               d_name, u_gb, q_gb,
+                               device_policies[p].blocked ? "🔴" : "🟢",
+                               device_policies[p].telegram_chat_id[0] ? " [TG]" : "");
+                    } else {
+                      snprintf(line, sizeof(line), "• <b>%s</b>: %.2f GB %s%s\n",
+                               d_name, u_gb,
+                               device_policies[p].blocked ? "🔴" : "🟢",
+                               device_policies[p].telegram_chat_id[0] ? " [TG]" : "");
+                    }
+                    if (strlen(reply) + strlen(line) < 1170) {
+                      strcat(reply, line);
+                    }
                   }
-                  if (strlen(reply) + strlen(line) < sizeof(reply) - 30) {
-                    strcat(reply, line);
-                  }
+                  portEXIT_CRITICAL(&data_mux);
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
+                  free(reply);
                 }
-                portEXIT_CRITICAL(&data_mux);
-                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
               }
               // 4. Command: /block, حظر
               else if ((strstr(cmd_text, "/block") && !strstr(cmd_text, "/unblock")) ||
@@ -2244,7 +2431,7 @@ static void telegram_task(void *pvParameters) {
               }
               // 6. Command: /speed, سرعة, السرعة
               else if (strstr(cmd_text, "/speed") || strstr(cmd_text, "سرعة") || strstr(cmd_text, "السرعة")) {
-                send_admin_speed_report(sender_chat_id, linked_indices, linked_count, &ap_info);
+                send_admin_speed_report(sender_chat_id, 0, linked_indices, linked_count, &ap_info);
               }
               // 7. Command: /ota, تحديث
               else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "تحديث")) {
@@ -2315,7 +2502,7 @@ static void telegram_task(void *pvParameters) {
                            t_name, !cur_vip ? "✅ مفعل (أولوية قصوى وتجاوز حدود السرعة 🚀)" : "⚪ غير مفعل");
                   telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
                 } else {
-                  send_admin_devices_report(sender_chat_id);
+                  send_admin_devices_report(sender_chat_id, 0);
                 }
               }
               // 8. Command: /reboot_time HH:MM
@@ -2326,11 +2513,11 @@ static void telegram_task(void *pvParameters) {
                 if (strncmp(arg, "off", 3) == 0) {
                   config_save_auto_reboot(false, auto_reboot_hour, auto_reboot_min, auto_reboot_tz_offset);
                   meter_reset_reboot_fired_state();
-                  send_admin_reboot_menu(sender_chat_id);
+                  send_admin_reboot_menu(sender_chat_id, 0);
                 } else if (sscanf(arg, "%d:%d", &hr, &mn) >= 1 && hr >= 0 && hr < 24 && mn >= 0 && mn < 60) {
                   config_save_auto_reboot(true, (uint8_t)hr, (uint8_t)mn, auto_reboot_tz_offset);
                   meter_reset_reboot_fired_state();
-                  send_admin_reboot_menu(sender_chat_id);
+                  send_admin_reboot_menu(sender_chat_id, 0);
                 } else {
                   telegram_send_message_with_keyboard(sender_chat_id,
                       "⚠️ صيغة الوقت غير صحيحة. أرسل مثلاً:\n<code>/reboot_time 04:30</code> أو <code>/reboot_time 13:00</code>",
@@ -2339,29 +2526,32 @@ static void telegram_task(void *pvParameters) {
               }
               // 8.5. Command: /reboot, ريستارت, إعادة التشغيل
               else if (strstr(cmd_text, "/reboot") || strstr(cmd_text, "ريستارت") || strstr(cmd_text, "إعادة التشغيل") || strstr(cmd_text, "اعادة التشغيل") || strstr(cmd_text, "التشغيل")) {
-                send_admin_reboot_menu(sender_chat_id);
+                send_admin_reboot_menu(sender_chat_id, 0);
               }
               // 9. Command: /status, /cpu, حالة, تردد المعالج
               else if (strstr(cmd_text, "/status") || strstr(cmd_text, "/cpu") || strstr(cmd_text, "تردد") || strstr(cmd_text, "المعالج") || strstr(cmd_text, "حالة") || strstr(cmd_text, "الراوتر")) {
-                send_admin_status_report(sender_chat_id, &ap_info);
+                send_admin_status_report(sender_chat_id, 0, &ap_info);
               }
               // 10. Command: /help, /start, مساعدة
               else {
-                char reply[1250];
-                snprintf(reply, sizeof(reply),
-                         "👋 <b>مرحباً بك في لوحة تحكم راوتر ESP32 (المدير)</b> 🌐\n\n"
-                         "الأزرار والأوامر الإدارية المتاحة:\n"
-                         "📊 <b>استهلاك الباقة</b>: رصيد الباقة وباقات الأجهزة وموعد التجديد\n"
-                         "👥 <b>الأجهزة المتصلة</b>: التحكم بالأجهزة، زيادة الباقة (+GB)، تفعيل 🎮 VIP، والحظر\n"
-                         "⚡ <b>فحص السرعة</b>: السرعة اللحظية وعرض القناة وقوة الإشارة\n"
-                         "⚙️ <b>حالة الراوتر</b> / 🚀 <b>تردد المعالج</b>: الذاكرة وتغيير تردد المعالج (80/160/240 MHz)\n"
-                         "🔄 <b>إعادة التشغيل</b>: إعادة التشغيل الفوري أو الجدولة اليومية التلقائية\n"
-                         "📋 <b>مساعدة</b>: عرض هذا الدليل الإرشادي\n\n"
-                         "💡 <i>أوامر إضافية مباشرة:</i>\n"
-                         "• <code>/add_quota [IP] [GB]</code> لزيادة باقة جهاز\n"
-                         "• <code>/vip [IP]</code> لتفعيل/إلغاء وضع الـ VIP\n"
-                         "• <code>/reboot_time [HH:MM]</code> لضبط وقت ريستارت مخصص");
-                telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
+                char *reply = (char *)calloc(1, 1250);
+                if (reply) {
+                  snprintf(reply, 1250,
+                           "👋 <b>مرحباً بك في لوحة تحكم راوتر ESP32 (المدير)</b> 🌐\n\n"
+                           "الأزرار والأوامر الإدارية المتاحة:\n"
+                           "📊 <b>استهلاك الباقة</b>: رصيد الباقة وباقات الأجهزة وموعد التجديد\n"
+                           "👥 <b>الأجهزة المتصلة</b>: التحكم بالأجهزة، زيادة الباقة (+GB)، تفعيل 🎮 VIP، والحظر\n"
+                           "⚡ <b>فحص السرعة</b>: السرعة اللحظية وعرض القناة وقوة الإشارة\n"
+                           "⚙️ <b>حالة الراوتر</b> / 🚀 <b>تردد المعالج</b>: الذاكرة وتغيير تردد المعالج (80/160/240 MHz)\n"
+                           "🔄 <b>إعادة التشغيل</b>: إعادة التشغيل الفوري أو الجدولة اليومية التلقائية\n"
+                           "📋 <b>مساعدة</b>: عرض هذا الدليل الإرشادي\n\n"
+                           "💡 <i>أوامر إضافية مباشرة:</i>\n"
+                           "• <code>/add_quota [IP] [GB]</code> لزيادة باقة جهاز\n"
+                           "• <code>/vip [IP]</code> لتفعيل/إلغاء وضع الـ VIP\n"
+                           "• <code>/reboot_time [HH:MM]</code> لضبط وقت ريستارت مخصص");
+                  telegram_send_message_with_keyboard(sender_chat_id, reply, TG_ADMIN_KEYBOARD);
+                  free(reply);
+                }
               }
             }
           }
