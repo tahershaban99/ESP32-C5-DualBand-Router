@@ -343,10 +343,11 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   if (used < sizeof(buf) - 1) {
     used += (size_t)snprintf(buf + used, sizeof(buf) - used,
         ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\","
-        "\"last_reset_reason\":\"%s\",\"last_reset_code\":%d",
+        "\"ota_auto\":%s,\"last_reset_reason\":\"%s\",\"last_reset_code\":%d",
         telegram_enabled ? "true" : "false", telegram_interactive ? "true" : "false",
         telegram_chat_id, telegram_thresholds,
         auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str,
+        ota_auto_update_enabled ? "true" : "false",
         last_reset_reason_str, last_reset_code);
   }
 
@@ -1065,9 +1066,10 @@ static esp_err_t ota_status_handler(httpd_req_t *req) {
   snprintf(res, sizeof(res),
     "{\"version\":\"%s\",\"build_timestamp\":\"%s\","
     "\"running_partition\":\"%s\",\"target_partition\":\"%s\","
-    "\"state\":\"%s\",\"progress\":%u,\"written\":%" PRIu32 ",\"total\":%" PRIu32 ",\"error\":\"%s\"}",
+    "\"ota_auto\":%s,\"state\":\"%s\",\"progress\":%u,\"written\":%" PRIu32 ",\"total\":%" PRIu32 ",\"error\":\"%s\"}",
     info.current_version, info.build_timestamp,
     info.running_partition, info.target_partition,
+    ota_auto_update_enabled ? "true" : "false",
     state_str, (unsigned)info.progress_pct, info.written_bytes, info.total_bytes, info.error_msg);
 
   httpd_resp_set_type(req, "application/json; charset=utf-8");
@@ -1087,9 +1089,18 @@ static esp_err_t ota_update_handler(httpd_req_t *req) {
     return ota_updater_handle_stream(req);
   }
 
-  // Otherwise, handle form with URL for automated remote OTA
+  // Otherwise, handle form with URL for automated remote OTA or auto_update toggle
   char body[280];
   if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+
+  char auto_s[8] = {0};
+  form_value(body, "auto_update", auto_s, sizeof(auto_s));
+  if (auto_s[0] != 0) {
+    bool en = (atoi(auto_s) != 0 || strcmp(auto_s, "true") == 0);
+    config_save_ota_auto_update(en);
+    httpd_resp_set_type(req, "application/json; charset=utf-8");
+    return httpd_resp_sendstr(req, en ? "{\"ok\":true,\"ota_auto\":true}" : "{\"ok\":true,\"ota_auto\":false}");
+  }
 
   char url[220] = {0};
   form_value(body, "url", url, sizeof(url));
@@ -1108,8 +1119,6 @@ static esp_err_t ota_update_handler(httpd_req_t *req) {
 }
 
 static esp_err_t ota_check_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
-
   char ver[24] = {0};
   char url[256] = {0};
   char log[256] = {0};
@@ -1117,7 +1126,7 @@ static esp_err_t ota_check_handler(httpd_req_t *req) {
 
   esp_err_t err = ota_check_remote_version(ver, sizeof(ver), url, sizeof(url), log, sizeof(log), &update_avail);
 
-  char res[700];
+  char res[800];
   if (err == ESP_OK) {
     snprintf(res, sizeof(res),
       "{\"ok\":true,\"current_version\":\"%s\",\"latest_version\":\"%s\","

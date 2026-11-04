@@ -33,6 +33,7 @@ bool auto_reboot_enabled = false;
 uint8_t auto_reboot_hour = 3;  // Default 03:00 AM
 uint8_t auto_reboot_min = 0;
 int8_t auto_reboot_tz_offset = 2; // Default UTC+2 (Cairo/Jerusalem)
+bool ota_auto_update_enabled = true; // Default enabled: auto check & update from GitHub
 
 // Telegram Settings
 bool telegram_enabled = false;
@@ -142,6 +143,13 @@ void config_load(void) {
   int8_t loaded_rb_tz = 2;
   if (nvs_get_i8(nvs, "rb_tz", &loaded_rb_tz) == ESP_OK && loaded_rb_tz >= -12 && loaded_rb_tz <= 14) {
     auto_reboot_tz_offset = loaded_rb_tz;
+  }
+
+  uint8_t loaded_ota_auto = 1;
+  if (nvs_get_u8(nvs, "ota_auto", &loaded_ota_auto) == ESP_OK) {
+    ota_auto_update_enabled = (loaded_ota_auto != 0);
+  } else {
+    ota_auto_update_enabled = true;
   }
 
   // Telegram Settings
@@ -376,4 +384,14 @@ bool config_get_scheduled_reboot_flag(void) {
     nvs_close(nvs);
   }
   return (flag != 0);
+}
+
+void config_save_ota_auto_update(bool enabled) {
+  ota_auto_update_enabled = enabled;
+  nvs_handle_t nvs;
+  if (nvs_open("router", NVS_READWRITE, &nvs) == ESP_OK) {
+    nvs_set_u8(nvs, "ota_auto", enabled ? 1 : 0);
+    nvs_commit(nvs);
+    nvs_close(nvs);
+  }
 }

@@ -2,6 +2,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -141,9 +142,10 @@ esp_err_t ota_updater_handle_stream(httpd_req_t *req) {
 
     if (first_chunk) {
       first_chunk = false;
-      // ESP32 binary header verification (first byte must be 0xE7 magic number)
-      if ((uint8_t)buf[0] != 0xE7) {
-        ESP_LOGE(TAG, "Invalid firmware magic byte: 0x%02X (expected 0xE7)", (uint8_t)buf[0]);
+      // ESP32 binary header verification (first byte is 0xE9 magic number for ESP-IDF images, or 0xE7)
+      uint8_t magic = (uint8_t)buf[0];
+      if (magic != 0xE9 && magic != 0xE7) {
+        ESP_LOGE(TAG, "Invalid firmware magic byte: 0x%02X (expected 0xE9)", magic);
         esp_ota_abort(ota_handle);
         set_state(OTA_STATE_FAILED, 0, "Invalid binary magic byte (not ESP32 image)");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid firmware binary header");
@@ -217,9 +219,11 @@ static void ota_download_task(void *pvParameter) {
 
   esp_http_client_config_t config = {
     .url = s_target_url,
-    .timeout_ms = 15000,
+    .timeout_ms = 20000,
     .buffer_size = OTA_BUF_SIZE,
-    .skip_cert_common_name_check = true,
+    .buffer_size_tx = 1024,
+    .crt_bundle_attach = esp_crt_bundle_attach,
+    .max_redirection_count = 5,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -283,8 +287,9 @@ static void ota_download_task(void *pvParameter) {
 
     if (first) {
       first = false;
-      if ((uint8_t)buf[0] != 0xE7) {
-        ESP_LOGE(TAG, "Downloaded file is not a valid ESP32 firmware binary!");
+      uint8_t magic = (uint8_t)buf[0];
+      if (magic != 0xE9 && magic != 0xE7) {
+        ESP_LOGE(TAG, "Downloaded file is not a valid ESP32 firmware binary (magic=0x%02X)!", magic);
         esp_ota_abort(ota_handle);
         set_state(OTA_STATE_FAILED, 0, "Not a valid ESP32 firmware binary");
         break;
@@ -383,13 +388,14 @@ esp_err_t ota_check_remote_version(char *out_version, size_t ver_len,
   if (out_url) out_url[0] = 0;
   if (out_changelog) out_changelog[0] = 0;
 
-  const char *check_url = "https://raw.githubusercontent.com/tahershaban99/ESP32-Pro-Router-NAPT/main/version.json";
+  const char *check_url = "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/version.json";
 
   esp_http_client_config_t config = {
     .url = check_url,
-    .timeout_ms = 8000,
+    .timeout_ms = 10000,
     .buffer_size = 1024,
-    .skip_cert_common_name_check = true,
+    .buffer_size_tx = 512,
+    .crt_bundle_attach = esp_crt_bundle_attach,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
