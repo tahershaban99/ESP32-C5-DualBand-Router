@@ -215,6 +215,17 @@ void config_apply_performance(uint16_t cpu_freq, bool wifi_ps) {
   ESP_LOGI(ROUTER_TAG, "Wi-Fi Power Save mode set to: %s", wifi_ps ? "ENABLED (Min Modem)" : "DISABLED (Full Speed)");
 }
 
+void config_save_performance(uint16_t cpu_freq, bool wifi_ps) {
+  config_apply_performance(cpu_freq, wifi_ps);
+  nvs_handle_t nvs;
+  if (nvs_open("router", NVS_READWRITE, &nvs) == ESP_OK) {
+    nvs_set_u16(nvs, "cpu_mhz", esp_cpu_freq_mhz);
+    nvs_set_u8(nvs, "wifi_ps", esp_wifi_power_save ? 1 : 0);
+    nvs_commit(nvs);
+    nvs_close(nvs);
+  }
+}
+
 void config_save_meter_scale(uint8_t scale_pct, uint16_t gb_std) {
   if (scale_pct < 10 || scale_pct > 200) return;
   router_meter_scale_pct = scale_pct;

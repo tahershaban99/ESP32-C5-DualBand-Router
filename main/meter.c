@@ -333,6 +333,35 @@ void meter_set_device_gaming(const uint8_t mac[6], bool gaming) {
   meter_save_usage();
 }
 
+void meter_add_device_quota(const uint8_t mac[6], int64_t add_bytes) {
+  if (!valid_device_mac(mac)) return;
+  portENTER_CRITICAL(&data_mux);
+  int idx = meter_find_policy_locked(mac, true);
+  if (idx >= 0) {
+    if (add_bytes <= 0) {
+      device_policies[idx].quota_bytes = 0; // Unlimited
+    } else {
+      int u = meter_find_usage_locked(mac, false);
+      uint64_t cur_used = (u >= 0) ? (usage_records[u].upload_bytes + usage_records[u].download_bytes) : 0;
+      uint64_t base_q = device_policies[idx].quota_bytes;
+      // If device had no quota or already exceeded its old quota, add on top of max(base_q, cur_used) so it immediately gets the full added amount
+      if (base_q < cur_used) base_q = cur_used;
+      device_policies[idx].quota_bytes = base_q + (uint64_t)add_bytes;
+    }
+    device_policies[idx].alert_flags = 0;
+    device_policies[idx].blocked = false; // Auto-unblock immediately!
+    policy_dirty = true;
+    for (size_t s = 0; s < MAX_CLIENTS; ++s) {
+      if (memcmp(fast_device_pool[s].mac, mac, 6) == 0) {
+        fast_device_pool[s].blocked = false;
+        break;
+      }
+    }
+  }
+  portEXIT_CRITICAL(&data_mux);
+  meter_save_usage();
+}
+
 void meter_set_device_telegram(const uint8_t mac[6], const char *chat_id) {
   if (!valid_device_mac(mac)) return;
   portENTER_CRITICAL(&data_mux);

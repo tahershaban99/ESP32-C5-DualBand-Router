@@ -45,6 +45,7 @@ void config_save_all(void);
 void config_save_admin(const char *user, const char *pass);
 void config_reset_admin_default(void);
 void config_apply_performance(uint16_t freq_mhz, bool wifi_ps);
+void config_save_performance(uint16_t freq_mhz, bool wifi_ps);
 void config_save_auto_reboot(bool enabled, uint8_t hour, uint8_t min,
                              int8_t tz);
 void config_set_scheduled_reboot_flag(bool flag);

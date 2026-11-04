@@ -51,6 +51,7 @@ void meter_set_device_name(const uint8_t mac[6], const char *name);
 void meter_set_device_binding(const uint8_t mac[6], uint32_t ip);
 void meter_set_device_blocked(const uint8_t mac[6], bool blocked);
 void meter_set_device_gaming(const uint8_t mac[6], bool gaming);
+void meter_add_device_quota(const uint8_t mac[6], int64_t add_bytes);
 void meter_set_device_telegram(const uint8_t mac[6], const char *chat_id);
 void meter_reset_device_usage(const uint8_t mac[6]);
 bool meter_delete_device(const uint8_t mac[6]);
