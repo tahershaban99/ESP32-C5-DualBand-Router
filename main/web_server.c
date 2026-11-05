@@ -391,7 +391,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
 
     portENTER_CRITICAL(&data_mux);
     if (i < usage_count && valid_device_mac(usage_records[i].mac)) {
-      if (usage_records[i].mac[0] == 0x02 && usage_records[i].mac[1] == 0x00) {
+      if (usage_records[i].mac[0] == 0x02 &&
+          (usage_records[i].mac[1] == 0x00 || usage_records[i].mac[1] == 0xE0)) {
         portEXIT_CRITICAL(&data_mux);
         continue;
       }
@@ -451,7 +452,7 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     }
 
     int8_t rssi = (active_index >= 0) ? active[active_index].rssi : 0;
-    bool connected = (active_index >= 0 && active[active_index].aid != 0);
+    bool connected = (active_index >= 0 && active[active_index].aid != 0 && active[active_index].ip != 0);
     uint64_t quota = pol.quota_bytes;
     uint32_t upload_limit_bps = spd.upload_bps;
     uint32_t download_limit_bps = spd.download_bps;

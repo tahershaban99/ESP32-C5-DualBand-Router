@@ -44,6 +44,7 @@ int meter_find_policy_locked(const uint8_t mac[6], bool create);
 int meter_find_name_locked(const uint8_t mac[6], bool create);
 int meter_find_speed_locked(const uint8_t mac[6], bool create);
 int meter_find_binding_locked(const uint8_t mac[6], bool create);
+void meter_resolve_canonical_mac_locked(const uint8_t in_mac[6], bool is_direct_sta, uint8_t out_mac[6]);
 
 void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip);
 void meter_set_device_policy(const uint8_t mac[6], uint64_t quota_bytes, bool blocked, bool gaming_mode);

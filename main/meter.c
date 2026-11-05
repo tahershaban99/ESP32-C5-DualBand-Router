@@ -175,6 +175,151 @@ int meter_find_binding_locked(const uint8_t mac[6], bool create) {
   return (int)i;
 }
 
+static void meter_merge_mac_locked(const uint8_t old_mac[6], const uint8_t new_mac[6]) {
+  if (!valid_device_mac(old_mac) || !valid_device_mac(new_mac) || memcmp(old_mac, new_mac, 6) == 0) return;
+
+  // 1. Usage records
+  int old_u = meter_find_usage_locked(old_mac, false);
+  int new_u = meter_find_usage_locked(new_mac, false);
+  if (old_u >= 0 && new_u < 0) {
+    memcpy(usage_records[old_u].mac, new_mac, 6);
+    usage_dirty = true;
+    device_catalog_dirty = true;
+  } else if (old_u >= 0 && new_u >= 0 && old_u != new_u) {
+    usage_records[new_u].upload_bytes += usage_records[old_u].upload_bytes;
+    usage_records[new_u].download_bytes += usage_records[old_u].download_bytes;
+    for (size_t j = (size_t)old_u; j + 1 < usage_count; ++j) {
+      usage_records[j] = usage_records[j + 1];
+      device_live_speeds[j] = device_live_speeds[j + 1];
+    }
+    --usage_count;
+    memset(&usage_records[usage_count], 0, sizeof(usage_record_t));
+    memset(&device_live_speeds[usage_count], 0, sizeof(device_live_speed_t));
+    usage_dirty = true;
+    device_catalog_dirty = true;
+  }
+
+  // 2. Policies
+  int old_p = meter_find_policy_locked(old_mac, false);
+  int new_p = meter_find_policy_locked(new_mac, false);
+  if (old_p >= 0 && new_p < 0) {
+    memcpy(device_policies[old_p].mac, new_mac, 6);
+    policy_dirty = true;
+  } else if (old_p >= 0 && new_p >= 0 && old_p != new_p) {
+    if (device_policies[new_p].quota_bytes == 0 && device_policies[old_p].quota_bytes > 0) {
+      device_policies[new_p].quota_bytes = device_policies[old_p].quota_bytes;
+      device_policies[new_p].alert_flags = device_policies[old_p].alert_flags;
+    }
+    if (device_policies[old_p].blocked) device_policies[new_p].blocked = true;
+    if (device_policies[old_p].gaming_mode) device_policies[new_p].gaming_mode = true;
+    if (device_policies[new_p].telegram_chat_id[0] == 0 && device_policies[old_p].telegram_chat_id[0] != 0) {
+      memcpy(device_policies[new_p].telegram_chat_id, device_policies[old_p].telegram_chat_id,
+             sizeof(device_policies[new_p].telegram_chat_id));
+    }
+    for (size_t j = (size_t)old_p; j + 1 < policy_count; ++j) {
+      device_policies[j] = device_policies[j + 1];
+    }
+    --policy_count;
+    memset(&device_policies[policy_count], 0, sizeof(device_policy_t));
+    policy_dirty = true;
+  }
+
+  // 3. Names
+  int old_n = meter_find_name_locked(old_mac, false);
+  int new_n = meter_find_name_locked(new_mac, false);
+  if (old_n >= 0 && new_n < 0) {
+    memcpy(device_names[old_n].mac, new_mac, 6);
+    names_dirty = true;
+  } else if (old_n >= 0 && new_n >= 0 && old_n != new_n) {
+    if (device_names[new_n].name[0] == 0 && device_names[old_n].name[0] != 0) {
+      memcpy(device_names[new_n].name, device_names[old_n].name, sizeof(device_names[new_n].name));
+    }
+    for (size_t j = (size_t)old_n; j + 1 < name_count; ++j) {
+      device_names[j] = device_names[j + 1];
+    }
+    --name_count;
+    memset(&device_names[name_count], 0, sizeof(device_name_t));
+    names_dirty = true;
+  }
+
+  // 4. Speeds
+  int old_s = meter_find_speed_locked(old_mac, false);
+  int new_s = meter_find_speed_locked(new_mac, false);
+  if (old_s >= 0 && new_s < 0) {
+    memcpy(device_speeds[old_s].mac, new_mac, 6);
+    speeds_dirty = true;
+  } else if (old_s >= 0 && new_s >= 0 && old_s != new_s) {
+    if (device_speeds[new_s].upload_bps == 0 && device_speeds[new_s].download_bps == 0) {
+      device_speeds[new_s].upload_bps = device_speeds[old_s].upload_bps;
+      device_speeds[new_s].download_bps = device_speeds[old_s].download_bps;
+    }
+    for (size_t j = (size_t)old_s; j + 1 < speed_count; ++j) {
+      device_speeds[j] = device_speeds[j + 1];
+      speed_buckets[j] = speed_buckets[j + 1];
+    }
+    --speed_count;
+    memset(&device_speeds[speed_count], 0, sizeof(device_speed_t));
+    memset(&speed_buckets[speed_count], 0, sizeof(device_speed_bucket_t));
+    speeds_dirty = true;
+  }
+
+  // 5. Bindings
+  int old_b = meter_find_binding_locked(old_mac, false);
+  int new_b = meter_find_binding_locked(new_mac, false);
+  if (old_b >= 0 && new_b < 0) {
+    memcpy(device_bindings[old_b].mac, new_mac, 6);
+    bindings_dirty = true;
+  } else if (old_b >= 0 && new_b >= 0 && old_b != new_b) {
+    if (device_bindings[new_b].bound_ip == 0) {
+      device_bindings[new_b].bound_ip = device_bindings[old_b].bound_ip;
+    }
+    for (size_t j = (size_t)old_b; j + 1 < binding_count; ++j) {
+      device_bindings[j] = device_bindings[j + 1];
+    }
+    --binding_count;
+    memset(&device_bindings[binding_count], 0, sizeof(device_binding_t));
+    bindings_dirty = true;
+  }
+}
+
+void meter_resolve_canonical_mac_locked(const uint8_t in_mac[6], bool is_direct_sta, uint8_t out_mac[6]) {
+  memcpy(out_mac, in_mac, 6);
+  if (!valid_device_mac(in_mac)) return;
+  if (in_mac[0] == 0x02 && (in_mac[1] == 0x00 || in_mac[1] == 0xE0)) return;
+
+  // Match 3-byte hardware suffix (mac[3..5]) used by Range Extender MAT (MAC Address Translation)
+  for (size_t r = 0; r < usage_count; ++r) {
+    const uint8_t *cand = usage_records[r].mac;
+    if (!valid_device_mac(cand) || (cand[0] == 0x02 && (cand[1] == 0x00 || cand[1] == 0xE0))) continue;
+    if (memcmp(cand, in_mac, 6) == 0) continue;
+    if (memcmp(cand + 3, in_mac + 3, 3) != 0) continue;
+
+    // Ensure cand and in_mac are not two simultaneously connected direct 802.11 stations
+    bool cand_is_active_direct = false;
+    bool in_is_active_direct = is_direct_sta;
+    for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+      if (active_clients[k].aid >= 1 && active_clients[k].aid < 0xFF) {
+        if (memcmp(active_clients[k].mac, cand, 6) == 0) cand_is_active_direct = true;
+        if (memcmp(active_clients[k].mac, in_mac, 6) == 0) in_is_active_direct = true;
+      }
+    }
+    if (cand_is_active_direct && in_is_active_direct) continue;
+
+    // Prefer direct 802.11 STA MAC or globally-administered OUI over locally-administered MAT prefix
+    bool prefer_in = is_direct_sta || (((in_mac[0] & 0x02) == 0) && ((cand[0] & 0x02) != 0));
+    if (prefer_in) {
+      uint8_t old_cand[6];
+      memcpy(old_cand, cand, 6);
+      meter_merge_mac_locked(old_cand, in_mac);
+      memcpy(out_mac, in_mac, 6);
+    } else {
+      memcpy(out_mac, cand, 6);
+      meter_merge_mac_locked(in_mac, out_mac);
+    }
+    return;
+  }
+}
+
 void meter_set_main_quota(uint64_t quota_bytes, const char *start_date, const char *end_date) {
   portENTER_CRITICAL(&data_mux);
   main_quota_bytes = quota_bytes;
@@ -523,48 +668,19 @@ void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip) {
   bool need_save = false;
   portENTER_CRITICAL(&data_mux);
 
-  uint8_t target_mac[6];
-  memcpy(target_mac, physical_mac, 6);
-
-  // If a Range Extender rewrote DHCP chaddr to its own MAC and that MAC already
-  // owns a different active IP, synthesize a per-IP virtual MAC so each client
-  // behind the extender remains an independent device.
+  bool is_direct = false;
   for (size_t i = 0; i < MAX_CLIENTS; ++i) {
     if (memcmp(active_clients[i].mac, physical_mac, 6) == 0 &&
-        active_clients[i].aid != 0 && active_clients[i].ip != 0 &&
-        active_clients[i].ip != ip) {
-      target_mac[0] = 0x02;
-      target_mac[1] = 0xE0;
-      target_mac[2] = 192;
-      target_mac[3] = 168;
-      target_mac[4] = 4;
-      target_mac[5] = ((const uint8_t *)&ip)[3];
+        active_clients[i].aid >= 1 && active_clients[i].aid < 0xFF) {
+      is_direct = true;
       break;
     }
   }
 
-  // If this IP previously used a fallback 02:E0:C0:A8:04:XX MAC before DHCP
-  // revealed the true hardware MAC, migrate its accumulated bytes seamlessly.
-  if (!(target_mac[0] == 0x02 && target_mac[1] == 0xE0)) {
-    uint8_t fallback_mac[6] = {0x02, 0xE0, 192, 168, 4, ((const uint8_t *)&ip)[3]};
-    int fb_u = meter_find_usage_locked(fallback_mac, false);
-    int real_u = meter_find_usage_locked(target_mac, true);
-    if (fb_u >= 0 && real_u >= 0 && fb_u != real_u) {
-      usage_records[real_u].upload_bytes += usage_records[fb_u].upload_bytes;
-      usage_records[real_u].download_bytes += usage_records[fb_u].download_bytes;
-      for (size_t j = (size_t)fb_u; j + 1 < usage_count; ++j) {
-        usage_records[j] = usage_records[j + 1];
-        device_live_speeds[j] = device_live_speeds[j + 1];
-      }
-      --usage_count;
-      memset(&usage_records[usage_count], 0, sizeof(usage_record_t));
-      memset(&device_live_speeds[usage_count], 0, sizeof(device_live_speed_t));
-      usage_dirty = true;
-      need_save = true;
-    }
-  } else {
-    meter_find_usage_locked(target_mac, true);
-  }
+  uint8_t target_mac[6];
+  meter_resolve_canonical_mac_locked(physical_mac, is_direct, target_mac);
+
+  meter_find_usage_locked(target_mac, true);
   meter_find_policy_locked(target_mac, true);
 
   // Update MAC-to-IP binding and clear any stale binding that pointed to this IP
@@ -830,39 +946,74 @@ void meter_tick_second(uint32_t elapsed_s) {
     if (disc_oct >= 2 && disc_oct <= 254 && ip_lookup[disc_oct] == NULL) {
       uint8_t owner_mac[6] = {0};
       for (size_t b = 0; b < binding_count; ++b) {
-        if (device_bindings[b].bound_ip == disc_ip && valid_device_mac(device_bindings[b].mac)) {
-          memcpy(owner_mac, device_bindings[b].mac, 6);
+        if (device_bindings[b].bound_ip == disc_ip && valid_device_mac(device_bindings[b].mac) &&
+            !(device_bindings[b].mac[0] == 0x02 && (device_bindings[b].mac[1] == 0x00 || device_bindings[b].mac[1] == 0xE0))) {
+          meter_resolve_canonical_mac_locked(device_bindings[b].mac, false, owner_mac);
           break;
         }
       }
       if (!valid_device_mac(owner_mac)) {
-        owner_mac[0] = 0x02;
-        owner_mac[1] = 0xE0;
-        owner_mac[2] = 192;
-        owner_mac[3] = 168;
-        owner_mac[4] = 4;
-        owner_mac[5] = disc_oct;
-      }
-      size_t slot = MAX_CLIENTS;
-      for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-        if (memcmp(active_clients[k].mac, owner_mac, 6) == 0 &&
-            (active_clients[k].ip == 0 || active_clients[k].ip == disc_ip)) {
-          slot = k;
-          break;
+        // Check ARP table if this IP has a unique non-proxy hardware MAC
+        for (size_t a = 0; a < ARP_TABLE_SIZE; ++a) {
+          ip4_addr_t *arp_ip = NULL;
+          struct netif *arp_netif = NULL;
+          struct eth_addr *arp_eth = NULL;
+          if (etharp_get_entry(a, &arp_ip, &arp_netif, &arp_eth) &&
+              arp_ip && arp_eth && arp_ip->addr == disc_ip && valid_device_mac(arp_eth->addr)) {
+            bool mac_shared = false;
+            for (size_t a2 = 0; a2 < ARP_TABLE_SIZE; ++a2) {
+              if (a2 == a) continue;
+              ip4_addr_t *ip2 = NULL;
+              struct netif *nf2 = NULL;
+              struct eth_addr *eth2 = NULL;
+              if (etharp_get_entry(a2, &ip2, &nf2, &eth2) && ip2 && eth2 &&
+                  ip2->addr != 0 && ip2->addr != disc_ip &&
+                  memcmp(eth2->addr, arp_eth->addr, 6) == 0) {
+                mac_shared = true;
+                break;
+              }
+            }
+            for (size_t k = 0; k < MAX_CLIENTS && !mac_shared; ++k) {
+              if (valid_device_mac(active_clients[k].mac) &&
+                  memcmp(active_clients[k].mac, arp_eth->addr, 6) == 0 &&
+                  active_clients[k].ip != disc_ip) {
+                mac_shared = true;
+              }
+            }
+            if (!mac_shared) {
+              meter_resolve_canonical_mac_locked(arp_eth->addr, false, owner_mac);
+              int b_idx = meter_find_binding_locked(owner_mac, true);
+              if (b_idx >= 0) {
+                device_bindings[b_idx].bound_ip = disc_ip;
+                bindings_dirty = true;
+              }
+            }
+            break;
+          }
         }
-        if (slot == MAX_CLIENTS && !valid_device_mac(active_clients[k].mac)) {
-          slot = k;
-        }
       }
-      if (slot < MAX_CLIENTS) {
-        memcpy(active_clients[slot].mac, owner_mac, 6);
-        active_clients[slot].ip = disc_ip;
-        if (active_clients[slot].aid == 0) active_clients[slot].aid = 0xFF;
-        if (active_clients[slot].rssi == 0) active_clients[slot].rssi = -58;
-        active_clients[slot].last_seen_s = now_s;
-        meter_find_usage_locked(owner_mac, true);
-        meter_find_policy_locked(owner_mac, true);
-        meter_rebuild_fast_lookup();
+      if (valid_device_mac(owner_mac)) {
+        size_t slot = MAX_CLIENTS;
+        for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+          if (memcmp(active_clients[k].mac, owner_mac, 6) == 0 &&
+              (active_clients[k].ip == 0 || active_clients[k].ip == disc_ip)) {
+            slot = k;
+            break;
+          }
+          if (slot == MAX_CLIENTS && !valid_device_mac(active_clients[k].mac)) {
+            slot = k;
+          }
+        }
+        if (slot < MAX_CLIENTS) {
+          memcpy(active_clients[slot].mac, owner_mac, 6);
+          active_clients[slot].ip = disc_ip;
+          if (active_clients[slot].aid == 0) active_clients[slot].aid = 0xFF;
+          if (active_clients[slot].rssi == 0) active_clients[slot].rssi = -58;
+          active_clients[slot].last_seen_s = now_s;
+          meter_find_usage_locked(owner_mac, true);
+          meter_find_policy_locked(owner_mac, true);
+          meter_rebuild_fast_lookup();
+        }
       }
     }
   }
@@ -1015,21 +1166,21 @@ void meter_load_usage(void) {
 
     nvs_close(nvs);
 
-    // Migrate legacy 02:00:ip bytes to physical MACs and purge 02:00: records
+    // Migrate legacy 02:00:ip and 02:E0:ip bytes/settings to physical MACs and purge fake records
     for (size_t k = 0; k < usage_count; ++k) {
-      if (usage_records[k].mac[0] == 0x02 && usage_records[k].mac[1] == 0x00) {
+      if (usage_records[k].mac[0] == 0x02 &&
+          (usage_records[k].mac[1] == 0x00 || usage_records[k].mac[1] == 0xE0)) {
         uint32_t rip = 0;
         memcpy(&rip, usage_records[k].mac + 2, 4);
         if (rip != 0) {
           for (size_t b = 0; b < binding_count; ++b) {
             if (device_bindings[b].bound_ip == rip && valid_device_mac(device_bindings[b].mac) &&
-                !(device_bindings[b].mac[0] == 0x02 && device_bindings[b].mac[1] == 0x00)) {
-              int pu = meter_find_usage_locked(device_bindings[b].mac, true);
-              if (pu >= 0) {
-                usage_records[pu].upload_bytes += usage_records[k].upload_bytes;
-                usage_records[pu].download_bytes += usage_records[k].download_bytes;
-                usage_dirty = true;
-              }
+                !(device_bindings[b].mac[0] == 0x02 &&
+                  (device_bindings[b].mac[1] == 0x00 || device_bindings[b].mac[1] == 0xE0))) {
+              uint8_t fake_mac[6];
+              memcpy(fake_mac, usage_records[k].mac, 6);
+              meter_merge_mac_locked(fake_mac, device_bindings[b].mac);
+              if (k > 0) --k;
               break;
             }
           }
@@ -1039,7 +1190,11 @@ void meter_load_usage(void) {
 
     size_t clean_u = 0;
     for (size_t k = 0; k < usage_count; ++k) {
-      if (usage_records[k].mac[0] == 0x02 && usage_records[k].mac[1] == 0x00) continue;
+      if (usage_records[k].mac[0] == 0x02 &&
+          (usage_records[k].mac[1] == 0x00 || usage_records[k].mac[1] == 0xE0)) {
+        usage_dirty = true;
+        continue;
+      }
       if (clean_u != k) usage_records[clean_u] = usage_records[k];
       clean_u++;
     }
@@ -1047,7 +1202,11 @@ void meter_load_usage(void) {
 
     size_t clean_p = 0;
     for (size_t k = 0; k < policy_count; ++k) {
-      if (device_policies[k].mac[0] == 0x02 && device_policies[k].mac[1] == 0x00) continue;
+      if (device_policies[k].mac[0] == 0x02 &&
+          (device_policies[k].mac[1] == 0x00 || device_policies[k].mac[1] == 0xE0)) {
+        policy_dirty = true;
+        continue;
+      }
       if (clean_p != k) device_policies[clean_p] = device_policies[k];
       clean_p++;
     }
@@ -1055,7 +1214,11 @@ void meter_load_usage(void) {
 
     size_t clean_s = 0;
     for (size_t k = 0; k < speed_count; ++k) {
-      if (device_speeds[k].mac[0] == 0x02 && device_speeds[k].mac[1] == 0x00) continue;
+      if (device_speeds[k].mac[0] == 0x02 &&
+          (device_speeds[k].mac[1] == 0x00 || device_speeds[k].mac[1] == 0xE0)) {
+        speeds_dirty = true;
+        continue;
+      }
       if (clean_s != k) device_speeds[clean_s] = device_speeds[k];
       clean_s++;
     }
@@ -1063,7 +1226,11 @@ void meter_load_usage(void) {
 
     size_t clean_n = 0;
     for (size_t k = 0; k < name_count; ++k) {
-      if (device_names[k].mac[0] == 0x02 && device_names[k].mac[1] == 0x00) continue;
+      if (device_names[k].mac[0] == 0x02 &&
+          (device_names[k].mac[1] == 0x00 || device_names[k].mac[1] == 0xE0)) {
+        names_dirty = true;
+        continue;
+      }
       if (clean_n != k) device_names[clean_n] = device_names[k];
       clean_n++;
     }
@@ -1071,14 +1238,43 @@ void meter_load_usage(void) {
 
     size_t clean_b = 0;
     for (size_t k = 0; k < binding_count; ++k) {
-      if (device_bindings[k].mac[0] == 0x02 && device_bindings[k].mac[1] == 0x00) continue;
+      if (device_bindings[k].mac[0] == 0x02 &&
+          (device_bindings[k].mac[1] == 0x00 || device_bindings[k].mac[1] == 0xE0)) {
+        bindings_dirty = true;
+        continue;
+      }
       if (clean_b != k) device_bindings[clean_b] = device_bindings[k];
       clean_b++;
     }
     binding_count = clean_b;
+
+    // Deduplicate Range Extender MAT MACs against real OUI MACs with identical 3-byte hardware suffix
+    for (size_t i = 0; i < usage_count; ++i) {
+      for (size_t j = i + 1; j < usage_count; ++j) {
+        if (memcmp(usage_records[i].mac + 3, usage_records[j].mac + 3, 3) == 0 &&
+            memcmp(usage_records[i].mac, usage_records[j].mac, 6) != 0) {
+          bool i_local = (usage_records[i].mac[0] & 0x02) != 0;
+          bool j_local = (usage_records[j].mac[0] & 0x02) != 0;
+          if (i_local != j_local) {
+            uint8_t old_m[6], new_m[6];
+            if (j_local) {
+              memcpy(old_m, usage_records[j].mac, 6);
+              memcpy(new_m, usage_records[i].mac, 6);
+            } else {
+              memcpy(old_m, usage_records[i].mac, 6);
+              memcpy(new_m, usage_records[j].mac, 6);
+            }
+            meter_merge_mac_locked(old_m, new_m);
+            --i;
+            break;
+          }
+        }
+      }
+    }
   }
 
   meter_rebuild_fast_lookup();
+  meter_save_usage();
   ESP_LOGI(ROUTER_TAG, "Loaded usage records: %zu devices, main quota: %llu bytes", usage_count, (unsigned long long)main_quota_bytes);
 }
 
