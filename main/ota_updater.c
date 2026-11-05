@@ -379,6 +379,33 @@ static void extract_json_field(const char *json, const char *key, char *out, siz
   }
 }
 
+static int parse_version_triplet(const char *ver_str, int *major, int *minor, int *patch) {
+  if (!ver_str) return -1;
+  const char *p = ver_str;
+  while (*p && (*p == 'v' || *p == 'V' || *p == ' ')) p++;
+  int maj = 0, min = 0, pat = 0;
+  if (sscanf(p, "%d.%d.%d", &maj, &min, &pat) < 1) {
+    return -1;
+  }
+  if (major) *major = maj;
+  if (minor) *minor = min;
+  if (patch) *patch = pat;
+  return 0;
+}
+
+static bool is_remote_version_newer(const char *remote, const char *local) {
+  int r_maj = 0, r_min = 0, r_pat = 0;
+  int l_maj = 0, l_min = 0, l_pat = 0;
+  if (parse_version_triplet(remote, &r_maj, &r_min, &r_pat) != 0) return false;
+  if (parse_version_triplet(local, &l_maj, &l_min, &l_pat) != 0) return false;
+
+  if (r_maj > l_maj) return true;
+  if (r_maj < l_maj) return false;
+  if (r_min > l_min) return true;
+  if (r_min < l_min) return false;
+  return (r_pat > l_pat);
+}
+
 esp_err_t ota_check_remote_version(char *out_version, size_t ver_len,
                                    char *out_url, size_t url_len,
                                    char *out_changelog, size_t log_len,
@@ -428,8 +455,8 @@ esp_err_t ota_check_remote_version(char *out_version, size_t ver_len,
   if (out_changelog) extract_json_field(buf, "changelog", out_changelog, log_len);
 
   if (update_available && out_version && out_version[0]) {
-    // If version is different from current version, update is available!
-    if (strcmp(out_version, ROUTER_FIRMWARE_VERSION) != 0) {
+    // Only mark update available if the remote version is strictly newer than current firmware!
+    if (is_remote_version_newer(out_version, ROUTER_FIRMWARE_VERSION)) {
       *update_available = true;
     }
   }
