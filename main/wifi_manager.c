@@ -387,6 +387,9 @@ static err_t router_ap_netif_input(struct pbuf *p, struct netif *inp) {
             uint8_t oct = arp_sender_ip[3];
             if (oct >= 2 && oct <= 254) {
               uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+              uint32_t rip = 0;
+              memcpy(&rip, arp_sender_ip, 4);
+              wifi_manager_clear_aged_out_ip(rip);
               meter_notify_client_active_ip(oct, now_s);
             }
           }
@@ -455,6 +458,46 @@ static bool is_recent_direct_disconnect(const uint8_t mac[6], uint32_t now_s) {
     }
   }
   return false;
+}
+
+typedef struct {
+  uint32_t ip;
+  uint8_t mac[6];
+  uint32_t aged_s;
+} aged_out_entry_t;
+
+static aged_out_entry_t recent_aged_out[8] = {0};
+static size_t recent_aged_out_idx = 0;
+
+void wifi_manager_record_aged_out(uint32_t ip, const uint8_t mac[6]) {
+  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+  recent_aged_out[recent_aged_out_idx].ip = ip;
+  if (mac) memcpy(recent_aged_out[recent_aged_out_idx].mac, mac, 6);
+  else memset(recent_aged_out[recent_aged_out_idx].mac, 0, 6);
+  recent_aged_out[recent_aged_out_idx].aged_s = now_s;
+  recent_aged_out_idx = (recent_aged_out_idx + 1) % 8;
+}
+
+bool wifi_manager_is_recent_aged_out(uint32_t ip, const uint8_t mac[6], uint32_t now_s) {
+  for (size_t i = 0; i < 8; ++i) {
+    if (recent_aged_out[i].ip != 0 && (recent_aged_out[i].ip == ip || (mac && valid_device_mac(mac) && memcmp(recent_aged_out[i].mac, mac, 6) == 0))) {
+      if (now_s >= recent_aged_out[i].aged_s && (now_s - recent_aged_out[i].aged_s) < 30) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void wifi_manager_clear_aged_out_ip(uint32_t ip) {
+  if (ip == 0) return;
+  for (size_t i = 0; i < 8; ++i) {
+    if (recent_aged_out[i].ip == ip) {
+      recent_aged_out[i].ip = 0;
+      memset(recent_aged_out[i].mac, 0, 6);
+      recent_aged_out[i].aged_s = 0;
+    }
+  }
 }
 
 static void dhcps_sync_tcpip_cb(void *ctx) {
@@ -807,9 +850,11 @@ void wifi_manager_refresh_clients(void) {
         }
         if (matched) continue;
 
-        // Skip if this MAC recently disconnected directly from SoftAP
+        // Skip if this MAC recently disconnected directly from SoftAP or was aged out
         if (is_recent_direct_disconnect(arp_eth->addr, now_s)) continue;
         if (has_bound_mac && is_recent_direct_disconnect(bound_mac, now_s)) continue;
+        if (wifi_manager_is_recent_aged_out(ip4, arp_eth->addr, now_s)) continue;
+        if (has_bound_mac && wifi_manager_is_recent_aged_out(ip4, bound_mac, now_s)) continue;
 
         // Determine real last seen time for this client
         uint32_t assigned_last_seen = 0;
@@ -819,7 +864,14 @@ void wifi_manager_refresh_clients(void) {
             if (fast_device_pool[k].last_seen_s > assigned_last_seen) assigned_last_seen = fast_device_pool[k].last_seen_s;
           }
         }
-        if (assigned_last_seen == 0) assigned_last_seen = now_s;
+        if (assigned_last_seen == 0) {
+          // Stale ARP cache entry with zero active traffic: do not resurrect!
+          continue;
+        }
+        if (now_s > assigned_last_seen && (now_s - assigned_last_seen) > BRIDGED_CLIENT_TIMEOUT_S) {
+          // Inactive bridged client exceeded timeout: do not re-add!
+          continue;
+        }
 
         // 2. Assign to bound_mac from DHCP/Static bindings
         if (has_bound_mac) {
@@ -979,6 +1031,7 @@ void wifi_manager_refresh_clients(void) {
          valid_device_mac(active_clients[k].mac) &&
         !(active_clients[k].mac[0] == 0x02 && active_clients[k].mac[1] == 0x00) &&
         !is_recent_direct_disconnect(active_clients[k].mac, now_s) &&
+        !wifi_manager_is_recent_aged_out(active_clients[k].ip, active_clients[k].mac, now_s) &&
         (now_s <= active_clients[k].last_seen_s ||
          (now_s - active_clients[k].last_seen_s) <= BRIDGED_CLIENT_TIMEOUT_S)) {
       bool ip_found = false;
@@ -1006,6 +1059,7 @@ void wifi_manager_refresh_clients(void) {
           meter_resolve_canonical_mac_locked(cand.mac, false, cand.mac);
         }
         if (is_recent_direct_disconnect(cand.mac, now_s)) continue;
+        if (wifi_manager_is_recent_aged_out(cand.ip, cand.mac, now_s)) continue;
         bool mac_exists = false;
         for (size_t m = 0; m < count; ++m) {
           if (memcmp(fresh[m].mac, cand.mac, 6) == 0) {

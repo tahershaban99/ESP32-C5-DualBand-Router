@@ -88,7 +88,7 @@ void meter_rebuild_fast_lookup(void) {
     ip_lookup[i] = NULL;
   }
   for (size_t s = 0; s < MAX_CLIENTS; ++s) {
-    if (active_clients[s].ip != 0 && (active_clients[s].aid != 0 || active_clients[s].last_seen_s > 0)) {
+    if (active_clients[s].ip != 0 && active_clients[s].aid != 0) {
       uint32_t ip = active_clients[s].ip;
       uint8_t octet = ((uint8_t *)&ip)[3];
       if (octet >= 2 && octet <= 254) {
@@ -863,9 +863,11 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
   dev_fast_entry_t *dev = ip_lookup[octet];
   if (dev == NULL) {
     pending_discovered_ip = target_local_ip;
+    wifi_manager_clear_aged_out_ip(target_local_ip);
     return -1; // Fast-forward unmapped packet and queue zero-overhead L3 discovery
   }
 
+  wifi_manager_clear_aged_out_ip(target_local_ip);
   int64_t now_us = esp_timer_get_time();
   dev->last_seen_s = (uint32_t)(now_us / 1000000ULL);
 
@@ -995,10 +997,15 @@ void meter_tick_second(uint32_t elapsed_s) {
       }
       // Age out bridged / range extender devices if no response after timeout
       if (active_clients[k].aid == 0xFF && idle_s > BRIDGED_CLIENT_TIMEOUT_S) {
-        uint8_t oct = ((uint8_t *)&active_clients[k].ip)[3];
+        uint32_t dead_ip = active_clients[k].ip;
+        uint8_t dead_mac[6];
+        memcpy(dead_mac, active_clients[k].mac, 6);
+        uint8_t oct = ((uint8_t *)&dead_ip)[3];
         ip_lookup[oct] = NULL;
         memset(&active_clients[k], 0, sizeof(active_clients[k]));
         memset(&fast_device_pool[k], 0, sizeof(fast_device_pool[k]));
+        wifi_manager_invalidate_arp_entry(dead_ip);
+        wifi_manager_record_aged_out(dead_ip, dead_mac);
       }
     }
   }
