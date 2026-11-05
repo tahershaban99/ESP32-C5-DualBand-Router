@@ -4,6 +4,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_netif_net_stack.h"
 #include "lwip/lwip_napt.h"
 #include "lwip/etharp.h"
 #include "lwip/udp.h"
@@ -372,8 +373,99 @@ static void router_dhcps_recv_wrapper(void *arg, struct udp_pcb *pcb, struct pbu
   }
 }
 
+static netif_input_fn orig_ap_netif_input = NULL;
+
+static err_t router_ap_netif_input(struct pbuf *p, struct netif *inp) {
+  if (p != NULL && p->len >= 28) {
+    uint8_t eth_hdr[14];
+    if (pbuf_copy_partial(p, eth_hdr, 14, 0) == 14) {
+      uint16_t eth_type = ((uint16_t)eth_hdr[12] << 8) | eth_hdr[13];
+      if (eth_type == 0x0806) { // ARP packet
+        uint8_t arp_sender_ip[4];
+        if (pbuf_copy_partial(p, arp_sender_ip, 4, 28) == 4) {
+          if (arp_sender_ip[0] == AP_IP_A && arp_sender_ip[1] == AP_IP_B && arp_sender_ip[2] == AP_IP_C) {
+            uint8_t oct = arp_sender_ip[3];
+            if (oct >= 2 && oct <= 254) {
+              uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+              meter_notify_client_active_ip(oct, now_s);
+            }
+          }
+        }
+      }
+    }
+  }
+  return orig_ap_netif_input ? orig_ap_netif_input(p, inp) : pbuf_free(p);
+}
+
+static void arp_probe_tcpip_cb(void *ctx) {
+  uint32_t target_ip = (uint32_t)(uintptr_t)ctx;
+  if (ap_netif == NULL) return;
+  struct netif *lwip_ap = (struct netif *)esp_netif_get_netif_impl(ap_netif);
+  if (lwip_ap != NULL) {
+    ip4_addr_t tip;
+    tip.addr = target_ip;
+    etharp_request(lwip_ap, &tip);
+  }
+}
+
+void wifi_manager_send_arp_probe(uint32_t ip) {
+  if (ip == 0 || ap_netif == NULL) return;
+  tcpip_try_callback(arp_probe_tcpip_cb, (void *)(uintptr_t)ip);
+}
+
+static void arp_invalidate_tcpip_cb(void *ctx) {
+  uint32_t ip_to_clear = (uint32_t)(uintptr_t)ctx;
+  for (size_t i = 0; i < ARP_TABLE_SIZE; ++i) {
+    ip4_addr_t *ip = NULL;
+    struct netif *nf = NULL;
+    struct eth_addr *eth = NULL;
+    if (etharp_get_entry(i, &ip, &nf, &eth) && ip && ip->addr == ip_to_clear) {
+      ip->addr = 0;
+      if (eth) memset(eth->addr, 0, 6);
+    }
+  }
+}
+
+void wifi_manager_invalidate_arp_entry(uint32_t ip) {
+  if (ip == 0) return;
+  tcpip_try_callback(arp_invalidate_tcpip_cb, (void *)(uintptr_t)ip);
+}
+
+typedef struct {
+  uint8_t mac[6];
+  uint32_t disc_s;
+} direct_disc_entry_t;
+
+static direct_disc_entry_t recent_direct_disc[4] = {0};
+static size_t recent_direct_disc_idx = 0;
+
+static void record_direct_disconnect(const uint8_t mac[6]) {
+  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+  memcpy(recent_direct_disc[recent_direct_disc_idx].mac, mac, 6);
+  recent_direct_disc[recent_direct_disc_idx].disc_s = now_s;
+  recent_direct_disc_idx = (recent_direct_disc_idx + 1) % 4;
+}
+
+static bool is_recent_direct_disconnect(const uint8_t mac[6], uint32_t now_s) {
+  for (size_t i = 0; i < 4; ++i) {
+    if (memcmp(recent_direct_disc[i].mac, mac, 6) == 0) {
+      if (now_s >= recent_direct_disc[i].disc_s && (now_s - recent_direct_disc[i].disc_s) < 30) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 static void dhcps_sync_tcpip_cb(void *ctx) {
   (void)ctx;
+  if (ap_netif != NULL) {
+    struct netif *lwip_ap = (struct netif *)esp_netif_get_netif_impl(ap_netif);
+    if (lwip_ap != NULL && lwip_ap->input != router_ap_netif_input) {
+      orig_ap_netif_input = lwip_ap->input;
+      lwip_ap->input = router_ap_netif_input;
+    }
+  }
   uint32_t expected_srv_ip = PP_HTONL(LWIP_MAKEU32(AP_IP_A, AP_IP_B, AP_IP_C, AP_IP_D));
   for (struct udp_pcb *pcb = udp_pcbs; pcb != NULL; pcb = pcb->next) {
     if (pcb->local_port == 67 && pcb->recv_arg != NULL) {
@@ -448,18 +540,40 @@ static void handle_ap_station_connected(const wifi_event_ap_staconnected_t *even
 
 static void handle_ap_station_disconnected(const wifi_event_ap_stadisconnected_t *event) {
   if (!event) return;
-  portENTER_CRITICAL(&data_mux);
   uint8_t canon_mac[6];
+  uint32_t disc_ip = 0;
+
+  portENTER_CRITICAL(&data_mux);
   meter_resolve_canonical_mac_locked(event->mac, false, canon_mac);
   for (size_t i = 0; i < MAX_CLIENTS; ++i) {
     if (memcmp(active_clients[i].mac, event->mac, 6) == 0 ||
         memcmp(active_clients[i].mac, canon_mac, 6) == 0) {
+      disc_ip = active_clients[i].ip;
       active_clients[i].aid = 0;
+      active_clients[i].ip = 0;
+      memset(active_clients[i].mac, 0, 6);
       break;
+    }
+  }
+  if (disc_ip != 0) {
+    uint8_t oct = ((uint8_t *)&disc_ip)[3];
+    if (oct >= 2 && oct <= 254) {
+      ip_lookup[oct] = NULL;
+      for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+        if (fast_device_pool[k].ip == disc_ip) {
+          memset(&fast_device_pool[k], 0, sizeof(fast_device_pool[k]));
+        }
+      }
     }
   }
   meter_rebuild_fast_lookup();
   portEXIT_CRITICAL(&data_mux);
+
+  if (disc_ip != 0) {
+    wifi_manager_invalidate_arp_entry(disc_ip);
+  }
+  record_direct_disconnect(canon_mac);
+  record_direct_disconnect(event->mac);
 }
 
 static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
@@ -687,12 +801,25 @@ void wifi_manager_refresh_clients(void) {
         bool matched = false;
         for (size_t k = 0; k < count; ++k) {
           if (fresh[k].ip == ip4) {
-            fresh[k].last_seen_s = now_s;
             matched = true;
             break;
           }
         }
         if (matched) continue;
+
+        // Skip if this MAC recently disconnected directly from SoftAP
+        if (is_recent_direct_disconnect(arp_eth->addr, now_s)) continue;
+        if (has_bound_mac && is_recent_direct_disconnect(bound_mac, now_s)) continue;
+
+        // Determine real last seen time for this client
+        uint32_t assigned_last_seen = 0;
+        for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+          if (active_clients[k].ip == ip4 || fast_device_pool[k].ip == ip4) {
+            if (active_clients[k].last_seen_s > assigned_last_seen) assigned_last_seen = active_clients[k].last_seen_s;
+            if (fast_device_pool[k].last_seen_s > assigned_last_seen) assigned_last_seen = fast_device_pool[k].last_seen_s;
+          }
+        }
+        if (assigned_last_seen == 0) assigned_last_seen = now_s;
 
         // 2. Assign to bound_mac from DHCP/Static bindings
         if (has_bound_mac) {
@@ -710,7 +837,7 @@ void wifi_manager_refresh_clients(void) {
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF; // Bridged / Range Extender client
             fresh[count].rssi = -55;
-            fresh[count].last_seen_s = now_s;
+            fresh[count].last_seen_s = assigned_last_seen;
             count++;
             matched = true;
           }
@@ -746,7 +873,7 @@ void wifi_manager_refresh_clients(void) {
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF;
             fresh[count].rssi = -55;
-            fresh[count].last_seen_s = now_s;
+            fresh[count].last_seen_s = assigned_last_seen;
             count++;
             matched = true;
           }
@@ -760,7 +887,6 @@ void wifi_manager_refresh_clients(void) {
           for (size_t k = 0; k < count; ++k) {
             if (memcmp(fresh[k].mac, vmac, 6) == 0) {
               fresh[k].ip = ip4;
-              fresh[k].last_seen_s = now_s;
               matched = true;
               break;
             }
@@ -770,7 +896,7 @@ void wifi_manager_refresh_clients(void) {
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF;
             fresh[count].rssi = -55;
-            fresh[count].last_seen_s = now_s;
+            fresh[count].last_seen_s = assigned_last_seen;
             count++;
           }
         }
@@ -852,6 +978,7 @@ void wifi_manager_refresh_clients(void) {
     if (active_clients[k].aid == 0xFF && active_clients[k].ip != 0 &&
          valid_device_mac(active_clients[k].mac) &&
         !(active_clients[k].mac[0] == 0x02 && active_clients[k].mac[1] == 0x00) &&
+        !is_recent_direct_disconnect(active_clients[k].mac, now_s) &&
         (now_s <= active_clients[k].last_seen_s ||
          (now_s - active_clients[k].last_seen_s) <= BRIDGED_CLIENT_TIMEOUT_S)) {
       bool ip_found = false;
@@ -878,6 +1005,7 @@ void wifi_manager_refresh_clients(void) {
         } else {
           meter_resolve_canonical_mac_locked(cand.mac, false, cand.mac);
         }
+        if (is_recent_direct_disconnect(cand.mac, now_s)) continue;
         bool mac_exists = false;
         for (size_t m = 0; m < count; ++m) {
           if (memcmp(fresh[m].mac, cand.mac, 6) == 0) {
@@ -1078,6 +1206,9 @@ void wifi_manager_init(void) {
   }
   ESP_ERROR_CHECK(esp_wifi_start());
   esp_wifi_set_country(&country);
+
+  // SoftAP station inactivity timeout: automatically deauth silent/out-of-range stations within 20s
+  esp_wifi_set_inactive_time(WIFI_IF_AP, 20);
 
   // Apply Wi-Fi Band Mode after esp_wifi_start()
   esp_err_t band_err = esp_wifi_set_band_mode(bmode);

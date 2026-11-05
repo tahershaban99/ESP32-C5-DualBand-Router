@@ -18,6 +18,8 @@ void wifi_manager_refresh_clients(void);
 bool wifi_manager_start_scan(void);
 void wifi_manager_deauth_station(uint16_t aid);
 void wifi_manager_advertise_uplink_dns(void);
+void wifi_manager_send_arp_probe(uint32_t ip);
+void wifi_manager_invalidate_arp_entry(uint32_t ip);
 const char *wifi_manager_get_current_band_str(void);
 uint8_t wifi_manager_get_current_band(void);
 

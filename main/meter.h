@@ -48,6 +48,7 @@ void meter_merge_mac_locked(const uint8_t old_mac[6], const uint8_t new_mac[6]);
 void meter_resolve_canonical_mac_locked(const uint8_t in_mac[6], bool is_direct_sta, uint8_t out_mac[6]);
 
 void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip);
+void meter_notify_client_active_ip(uint8_t oct, uint32_t now_s);
 void meter_set_device_policy(const uint8_t mac[6], uint64_t quota_bytes, bool blocked, bool gaming_mode);
 void meter_set_device_speed(const uint8_t mac[6], uint32_t upload_bps, uint32_t download_bps);
 void meter_set_device_name(const uint8_t mac[6], const char *name);

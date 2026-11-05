@@ -1,6 +1,6 @@
 {
-  "version": "v3.3.2",
+  "version": "v3.3.3",
   "release_date": "2026-11-05",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إصلاح ظهور الأجهزة المتصلة عبر مقوي الشبكة (Range Extender) عند تثبيت IP ثابت (Static IP) عليها، وإظهارها فوراً كمتصلة مع حساب الاستهلاك وإمكانية التحكم فيها ودمجها تلقائياً مع الماك الحقيقي."
+  "changelog": "إصلاح فوري لانفصال الأجهزة (0 ثوانٍ)، وتقليص مهلة خمول راديو الواي فاي إلى 20 ثانية، مع تقنية الفحص النشط (Active ARP Probing) للأجهزة الساكنة ومقويات الشبكة بدون استهلاك للرام."
 }

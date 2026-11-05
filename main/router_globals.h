@@ -28,7 +28,8 @@ extern uint16_t router_gb_standard;
 #define ROUTER_TAG "router"
 #define SETUP_SSID "ESP32-Router"
 #define SETUP_PASSWORD "configure-123"
-#define BRIDGED_CLIENT_TIMEOUT_S 180
+#define BRIDGED_CLIENT_TIMEOUT_S 20
+#define ARP_PROBE_IDLE_TIMEOUT_S 15
 
 // Memory-optimized packed C structs (Ultra-Low RAM Footprint)
 typedef struct __attribute__((packed)) {

@@ -1,4 +1,5 @@
 #include "meter.h"
+#include "wifi_manager.h"
 #include "router_config.h"
 #include "telegram_bot.h"
 #include <string.h>
@@ -105,6 +106,22 @@ void meter_rebuild_fast_lookup(void) {
       memset(&fast_device_pool[s], 0, sizeof(dev_fast_entry_t));
     }
   }
+}
+
+void meter_notify_client_active_ip(uint8_t oct, uint32_t now_s) {
+  if (oct < 2 || oct > 254) return;
+  portENTER_CRITICAL(&data_mux);
+  dev_fast_entry_t *fast = ip_lookup[oct];
+  if (fast) {
+    fast->last_seen_s = now_s;
+    for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+      if (active_clients[k].ip == fast->ip) {
+        active_clients[k].last_seen_s = now_s;
+        break;
+      }
+    }
+  }
+  portEXIT_CRITICAL(&data_mux);
 }
 
 int meter_find_usage_locked(const uint8_t mac[6], bool create) {
@@ -970,9 +987,14 @@ void meter_tick_second(uint32_t elapsed_s) {
         active_clients[k].last_seen_s = fast_device_pool[k].last_seen_s;
       }
     }
-    if (active_clients[k].aid == 0xFF && active_clients[k].ip != 0) {
-      if (now_s > active_clients[k].last_seen_s &&
-          (now_s - active_clients[k].last_seen_s) > BRIDGED_CLIENT_TIMEOUT_S) {
+    if (active_clients[k].ip != 0 && valid_device_mac(active_clients[k].mac)) {
+      uint32_t idle_s = (now_s > active_clients[k].last_seen_s) ? (now_s - active_clients[k].last_seen_s) : 0;
+      // Send active ARP probe to verify if idle device is still alive
+      if (idle_s >= ARP_PROBE_IDLE_TIMEOUT_S && idle_s <= BRIDGED_CLIENT_TIMEOUT_S) {
+        wifi_manager_send_arp_probe(active_clients[k].ip);
+      }
+      // Age out bridged / range extender devices if no response after timeout
+      if (active_clients[k].aid == 0xFF && idle_s > BRIDGED_CLIENT_TIMEOUT_S) {
         uint8_t oct = ((uint8_t *)&active_clients[k].ip)[3];
         ip_lookup[oct] = NULL;
         memset(&active_clients[k], 0, sizeof(active_clients[k]));
