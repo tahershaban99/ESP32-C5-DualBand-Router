@@ -1,6 +1,6 @@
 {
-  "version": "v3.3.5",
+  "version": "v3.3.6",
   "release_date": "2026-11-05",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إصلاح خطأ انقطاع التحديث السحابي (Network read error) بإضافة دعم إعادة المحاولة التلقائية عند تأخر الشبكة (EAGAIN/Timeout)، واستخدام مخزن 4KB، وتفعيل Keep-Alive."
+  "changelog": "دعم جلسات متعددة للمشرف (Multiple Admin Sessions حتى 8 أجهزة معاً)، القضاء على رعشة زر المشرف وفصل الجلسات عبر إلغاء حلقة التوثيق التلقائي الدورية، وإضافة إعادة المحاولة التلقائية (Auto-Retry) للأوامر مع تعليق التحديث الدوري أثناء تنفيذ الأوامر لاستقرار تام على مقوي الشبكة (Range Extender)."
 }

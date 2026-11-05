@@ -30,9 +30,14 @@
 
 httpd_handle_t web_server = NULL;
 
-static char active_session_token[65] = {0};
-static bool session_valid = false;
-static int64_t session_expiry_us = 0;
+#define MAX_ADMIN_SESSIONS 8
+typedef struct {
+  char token[65];
+  int64_t expiry_us;
+  bool valid;
+} admin_session_t;
+
+static admin_session_t s_admin_sessions[MAX_ADMIN_SESSIONS] = {0};
 static uint32_t failed_login_attempts = 0;
 static int64_t lockout_until_us = 0;
 
@@ -125,14 +130,68 @@ static bool constant_time_eq(const char *a, const char *b) {
   return result == 0;
 }
 
-static bool is_admin_authenticated(httpd_req_t *req) {
-  if (!session_valid || active_session_token[0] == 0) return false;
+static bool is_token_valid(const char *tok) {
+  if (!tok || tok[0] == 0) return false;
   int64_t now_us = esp_timer_get_time();
-  if (now_us > session_expiry_us) {
-    session_valid = false;
-    return false;
+  for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
+    if (s_admin_sessions[i].valid) {
+      if (now_us > s_admin_sessions[i].expiry_us) {
+        s_admin_sessions[i].valid = false;
+        continue;
+      }
+      if (constant_time_eq(tok, s_admin_sessions[i].token)) {
+        return true;
+      }
+    }
   }
+  return false;
+}
 
+static void add_admin_session(const char *tok, int64_t expiry_us) {
+  if (!tok || tok[0] == 0) return;
+  int64_t now_us = esp_timer_get_time();
+  // 1. Check if token already exists, update expiry
+  for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
+    if (s_admin_sessions[i].valid && constant_time_eq(tok, s_admin_sessions[i].token)) {
+      s_admin_sessions[i].expiry_us = expiry_us;
+      return;
+    }
+  }
+  // 2. Find an empty/invalid or expired slot
+  for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
+    if (!s_admin_sessions[i].valid || now_us > s_admin_sessions[i].expiry_us) {
+      snprintf(s_admin_sessions[i].token, sizeof(s_admin_sessions[i].token), "%s", tok);
+      s_admin_sessions[i].expiry_us = expiry_us;
+      s_admin_sessions[i].valid = true;
+      return;
+    }
+  }
+  // 3. Overwrite earliest expiring slot if all full
+  size_t earliest_idx = 0;
+  int64_t earliest_expiry = s_admin_sessions[0].expiry_us;
+  for (size_t i = 1; i < MAX_ADMIN_SESSIONS; ++i) {
+    if (s_admin_sessions[i].expiry_us < earliest_expiry) {
+      earliest_expiry = s_admin_sessions[i].expiry_us;
+      earliest_idx = i;
+    }
+  }
+  snprintf(s_admin_sessions[earliest_idx].token, sizeof(s_admin_sessions[earliest_idx].token), "%s", tok);
+  s_admin_sessions[earliest_idx].expiry_us = expiry_us;
+  s_admin_sessions[earliest_idx].valid = true;
+}
+
+static void remove_admin_session(const char *tok) {
+  if (!tok || tok[0] == 0) return;
+  for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
+    if (s_admin_sessions[i].valid && constant_time_eq(tok, s_admin_sessions[i].token)) {
+      s_admin_sessions[i].valid = false;
+      s_admin_sessions[i].token[0] = 0;
+      return;
+    }
+  }
+}
+
+static bool is_admin_authenticated(httpd_req_t *req) {
   // 1. Check Cookie header (up to 512 bytes for complex browser headers)
   char cookie_hdr[512];
   size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
@@ -147,7 +206,7 @@ static bool is_admin_authenticated(httpd_req_t *req) {
         if (n >= sizeof(cookie_val)) n = sizeof(cookie_val) - 1;
         memcpy(cookie_val, p, n);
         cookie_val[n] = 0;
-        if (constant_time_eq(cookie_val, active_session_token)) return true;
+        if (is_token_valid(cookie_val)) return true;
       }
     }
   }
@@ -157,7 +216,7 @@ static bool is_admin_authenticated(httpd_req_t *req) {
   size_t tok_len = httpd_req_get_hdr_value_len(req, "X-Session-Token");
   if (tok_len > 0 && tok_len < sizeof(token_hdr)) {
     if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr, sizeof(token_hdr)) == ESP_OK) {
-      if (constant_time_eq(token_hdr, active_session_token)) return true;
+      if (is_token_valid(token_hdr)) return true;
     }
   }
 
@@ -554,17 +613,17 @@ static esp_err_t login_handler(httpd_req_t *req) {
     failed_login_attempts = 0;
     lockout_until_us = 0;
     uint32_t r1 = esp_random(), r2 = esp_random();
-    snprintf(active_session_token, sizeof(active_session_token), "%08lx%08lx%08lx%08lx",
+    char new_token[65];
+    snprintf(new_token, sizeof(new_token), "%08lx%08lx%08lx%08lx",
              (unsigned long)r1, (unsigned long)r2, (unsigned long)esp_random(), (unsigned long)esp_random());
-    session_valid = true;
-    session_expiry_us = now_us + SESSION_TTL_US;
+    add_admin_session(new_token, now_us + SESSION_TTL_US);
 
     char set_cookie[160];
-    snprintf(set_cookie, sizeof(set_cookie), "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000", active_session_token);
+    snprintf(set_cookie, sizeof(set_cookie), "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000", new_token);
     httpd_resp_set_hdr(req, "Set-Cookie", set_cookie);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     char res[128];
-    snprintf(res, sizeof(res), "{\"ok\":true,\"token\":\"%s\"}", active_session_token);
+    snprintf(res, sizeof(res), "{\"ok\":true,\"token\":\"%s\"}", new_token);
     return httpd_resp_sendstr(req, res);
   } else {
     failed_login_attempts++;
@@ -584,8 +643,31 @@ static esp_err_t login_handler(httpd_req_t *req) {
 }
 
 static esp_err_t logout_handler(httpd_req_t *req) {
-  session_valid = false;
-  active_session_token[0] = 0;
+  char token_hdr[68] = {0};
+  size_t tok_len = httpd_req_get_hdr_value_len(req, "X-Session-Token");
+  if (tok_len > 0 && tok_len < sizeof(token_hdr)) {
+    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr, sizeof(token_hdr)) == ESP_OK) {
+      remove_admin_session(token_hdr);
+    }
+  }
+  char cookie_hdr[512];
+  size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
+  if (buf_len > 0 && buf_len < sizeof(cookie_hdr)) {
+    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr, sizeof(cookie_hdr)) == ESP_OK) {
+      char *p = strstr(cookie_hdr, "session_id=");
+      if (p) {
+        p += strlen("session_id=");
+        char *end = strchr(p, ';');
+        size_t n = end ? (size_t)(end - p) : strlen(p);
+        if (n < sizeof(token_hdr)) {
+          char c_val[68] = {0};
+          memcpy(c_val, p, n);
+          c_val[n] = 0;
+          remove_admin_session(c_val);
+        }
+      }
+    }
+  }
   httpd_resp_set_hdr(req, "Set-Cookie", "session_id=; Path=/; Max-Age=0");
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -614,6 +696,7 @@ static esp_err_t password_handler(httpd_req_t *req) {
   }
 
   config_save_admin(new_u, new_p);
+  memset(s_admin_sessions, 0, sizeof(s_admin_sessions));
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
@@ -1168,7 +1251,9 @@ static esp_err_t ota_check_handler(httpd_req_t *req) {
 void web_server_start(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.lru_purge_enable = true;
-  config.max_open_sockets = 6;
+  config.max_open_sockets = 7;
+  config.recv_wait_timeout = 8;
+  config.send_wait_timeout = 8;
   config.stack_size = 8192; // 8KB stack for ESP-IDF v6.1 HTTPD (saves 2KB RAM)
   config.max_uri_handlers = 26;
   config.core_id = 0; // ESP32-C5 Unicore (Core 0)
