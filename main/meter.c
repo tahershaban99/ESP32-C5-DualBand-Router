@@ -175,7 +175,7 @@ int meter_find_binding_locked(const uint8_t mac[6], bool create) {
   return (int)i;
 }
 
-static void meter_merge_mac_locked(const uint8_t old_mac[6], const uint8_t new_mac[6]) {
+void meter_merge_mac_locked(const uint8_t old_mac[6], const uint8_t new_mac[6]) {
   if (!valid_device_mac(old_mac) || !valid_device_mac(new_mac) || memcmp(old_mac, new_mac, 6) == 0) return;
 
   // 1. Usage records
@@ -424,8 +424,17 @@ void meter_set_device_name(const uint8_t mac[6], const char *name) {
 
 void meter_set_device_binding(const uint8_t mac[6], uint32_t ip) {
   if (!valid_device_mac(mac)) return;
+  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
   portENTER_CRITICAL(&data_mux);
-  int idx = meter_find_binding_locked(mac, true);
+  uint8_t canon_mac[6];
+  meter_resolve_canonical_mac_locked(mac, false, canon_mac);
+
+  if (ip != 0 && !(canon_mac[0] == 0x02 && (canon_mac[1] == 0x00 || canon_mac[1] == 0xE0))) {
+    uint8_t fallback_mac[6] = {0x02, 0xE0, 192, 168, 4, ((const uint8_t *)&ip)[3]};
+    meter_merge_mac_locked(fallback_mac, canon_mac);
+  }
+
+  int idx = meter_find_binding_locked(canon_mac, true);
   if (idx >= 0) {
     device_bindings[idx].bound_ip = ip;
     bindings_dirty = true;
@@ -438,6 +447,30 @@ void meter_set_device_binding(const uint8_t mac[6], uint32_t ip) {
         bindings_dirty = true;
       }
     }
+    // If an active slot currently holds this IP (e.g. under a 02:E0 fallback MAC) or canon_mac, sync it immediately
+    size_t mac_slot = MAX_CLIENTS;
+    size_t ip_slot = MAX_CLIENTS;
+    for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+      if (memcmp(active_clients[k].mac, canon_mac, 6) == 0) mac_slot = k;
+      if (active_clients[k].ip == ip) ip_slot = k;
+    }
+    if (ip_slot < MAX_CLIENTS && mac_slot < MAX_CLIENTS && ip_slot != mac_slot) {
+      active_clients[mac_slot].ip = ip;
+      active_clients[mac_slot].last_seen_s = now_s;
+      if (active_clients[mac_slot].aid == 0) active_clients[mac_slot].aid = 0xFF;
+      if (active_clients[mac_slot].rssi == 0) active_clients[mac_slot].rssi = -55;
+      memset(&active_clients[ip_slot], 0, sizeof(active_clients[ip_slot]));
+    } else if (ip_slot < MAX_CLIENTS) {
+      memcpy(active_clients[ip_slot].mac, canon_mac, 6);
+      active_clients[ip_slot].last_seen_s = now_s;
+      if (active_clients[ip_slot].aid == 0) active_clients[ip_slot].aid = 0xFF;
+      if (active_clients[ip_slot].rssi == 0) active_clients[ip_slot].rssi = -55;
+    } else if (mac_slot < MAX_CLIENTS) {
+      active_clients[mac_slot].ip = ip;
+    }
+    meter_find_usage_locked(canon_mac, true);
+    meter_find_policy_locked(canon_mac, true);
+    meter_rebuild_fast_lookup();
   }
   portEXIT_CRITICAL(&data_mux);
   meter_save_usage();
@@ -679,6 +712,16 @@ void meter_sync_device_on_dhcp(const uint8_t physical_mac[6], uint32_t ip) {
 
   uint8_t target_mac[6];
   meter_resolve_canonical_mac_locked(physical_mac, is_direct, target_mac);
+
+  if (!(target_mac[0] == 0x02 && (target_mac[1] == 0x00 || target_mac[1] == 0xE0))) {
+    uint8_t fallback_mac[6] = {0x02, 0xE0, 192, 168, 4, ((const uint8_t *)&ip)[3]};
+    if (meter_find_usage_locked(fallback_mac, false) >= 0 ||
+        meter_find_policy_locked(fallback_mac, false) >= 0 ||
+        meter_find_name_locked(fallback_mac, false) >= 0) {
+      meter_merge_mac_locked(fallback_mac, target_mac);
+      need_save = true;
+    }
+  }
 
   meter_find_usage_locked(target_mac, true);
   meter_find_policy_locked(target_mac, true);
@@ -992,11 +1035,20 @@ void meter_tick_second(uint32_t elapsed_s) {
           }
         }
       }
+      if (!valid_device_mac(owner_mac)) {
+        // Fallback per-IP virtual MAC for unbound static-IP clients behind a Proxy-ARP Range Extender
+        owner_mac[0] = 0x02;
+        owner_mac[1] = 0xE0;
+        owner_mac[2] = 192;
+        owner_mac[3] = 168;
+        owner_mac[4] = 4;
+        owner_mac[5] = disc_oct;
+      }
       if (valid_device_mac(owner_mac)) {
         size_t slot = MAX_CLIENTS;
         for (size_t k = 0; k < MAX_CLIENTS; ++k) {
           if (memcmp(active_clients[k].mac, owner_mac, 6) == 0 &&
-              (active_clients[k].ip == 0 || active_clients[k].ip == disc_ip)) {
+              (active_clients[k].ip == 0 || active_clients[k].ip == disc_ip || active_clients[k].aid == 0xFF)) {
             slot = k;
             break;
           }
@@ -1190,8 +1242,7 @@ void meter_load_usage(void) {
 
     size_t clean_u = 0;
     for (size_t k = 0; k < usage_count; ++k) {
-      if (usage_records[k].mac[0] == 0x02 &&
-          (usage_records[k].mac[1] == 0x00 || usage_records[k].mac[1] == 0xE0)) {
+      if (usage_records[k].mac[0] == 0x02 && usage_records[k].mac[1] == 0x00) {
         usage_dirty = true;
         continue;
       }
@@ -1202,8 +1253,7 @@ void meter_load_usage(void) {
 
     size_t clean_p = 0;
     for (size_t k = 0; k < policy_count; ++k) {
-      if (device_policies[k].mac[0] == 0x02 &&
-          (device_policies[k].mac[1] == 0x00 || device_policies[k].mac[1] == 0xE0)) {
+      if (device_policies[k].mac[0] == 0x02 && device_policies[k].mac[1] == 0x00) {
         policy_dirty = true;
         continue;
       }
@@ -1214,8 +1264,7 @@ void meter_load_usage(void) {
 
     size_t clean_s = 0;
     for (size_t k = 0; k < speed_count; ++k) {
-      if (device_speeds[k].mac[0] == 0x02 &&
-          (device_speeds[k].mac[1] == 0x00 || device_speeds[k].mac[1] == 0xE0)) {
+      if (device_speeds[k].mac[0] == 0x02 && device_speeds[k].mac[1] == 0x00) {
         speeds_dirty = true;
         continue;
       }
@@ -1226,8 +1275,7 @@ void meter_load_usage(void) {
 
     size_t clean_n = 0;
     for (size_t k = 0; k < name_count; ++k) {
-      if (device_names[k].mac[0] == 0x02 &&
-          (device_names[k].mac[1] == 0x00 || device_names[k].mac[1] == 0xE0)) {
+      if (device_names[k].mac[0] == 0x02 && device_names[k].mac[1] == 0x00) {
         names_dirty = true;
         continue;
       }
@@ -1250,7 +1298,11 @@ void meter_load_usage(void) {
 
     // Deduplicate Range Extender MAT MACs against real OUI MACs with identical 3-byte hardware suffix
     for (size_t i = 0; i < usage_count; ++i) {
+      if (usage_records[i].mac[0] == 0x02 &&
+          (usage_records[i].mac[1] == 0x00 || usage_records[i].mac[1] == 0xE0)) continue;
       for (size_t j = i + 1; j < usage_count; ++j) {
+        if (usage_records[j].mac[0] == 0x02 &&
+            (usage_records[j].mac[1] == 0x00 || usage_records[j].mac[1] == 0xE0)) continue;
         if (memcmp(usage_records[i].mac + 3, usage_records[j].mac + 3, 3) == 0 &&
             memcmp(usage_records[i].mac, usage_records[j].mac, 6) != 0) {
           bool i_local = (usage_records[i].mac[0] & 0x02) != 0;

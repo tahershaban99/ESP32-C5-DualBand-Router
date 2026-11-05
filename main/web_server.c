@@ -391,10 +391,26 @@ static esp_err_t devices_handler(httpd_req_t *req) {
 
     portENTER_CRITICAL(&data_mux);
     if (i < usage_count && valid_device_mac(usage_records[i].mac)) {
-      if (usage_records[i].mac[0] == 0x02 &&
-          (usage_records[i].mac[1] == 0x00 || usage_records[i].mac[1] == 0xE0)) {
+      if (usage_records[i].mac[0] == 0x02 && usage_records[i].mac[1] == 0x00) {
         portEXIT_CRITICAL(&data_mux);
         continue;
+      }
+      if (usage_records[i].mac[0] == 0x02 && usage_records[i].mac[1] == 0xE0) {
+        uint32_t rip = 0;
+        memcpy(&rip, usage_records[i].mac + 2, 4);
+        bool claimed_by_real = false;
+        for (size_t b = 0; b < binding_count; ++b) {
+          if (device_bindings[b].bound_ip == rip && valid_device_mac(device_bindings[b].mac) &&
+              !(device_bindings[b].mac[0] == 0x02 &&
+                (device_bindings[b].mac[1] == 0x00 || device_bindings[b].mac[1] == 0xE0))) {
+            claimed_by_real = true;
+            break;
+          }
+        }
+        if (claimed_by_real) {
+          portEXIT_CRITICAL(&data_mux);
+          continue;
+        }
       }
       valid = true;
       rec = usage_records[i];
@@ -449,6 +465,10 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     } else if (bound_ip != 0) {
       ip4_addr_t bip = {.addr = bound_ip};
       snprintf(ip_text, sizeof(ip_text), IPSTR, IP2STR(&bip));
+    } else if (rec.mac[0] == 0x02 && rec.mac[1] == 0xE0) {
+      snprintf(ip_text, sizeof(ip_text), "%u.%u.%u.%u",
+               (unsigned)rec.mac[2], (unsigned)rec.mac[3],
+               (unsigned)rec.mac[4], (unsigned)rec.mac[5]);
     }
 
     int8_t rssi = (active_index >= 0) ? active[active_index].rssi : 0;
