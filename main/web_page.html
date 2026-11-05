@@ -2516,6 +2516,7 @@ async function ensureAdminAuth() {
 }
 
 let _actionInFlight = false;
+let isOtaActive = false;
 async function postWithRetry(url, params, maxRetries = 1) {
   _actionInFlight = true;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -2695,7 +2696,7 @@ function formatBytes(bytes) {
 }
 
 async function refreshData() {
-  if (_actionInFlight) return;
+  if (_actionInFlight || isOtaActive) return;
   try {
     let res = await fetch('/api/devices', { headers: getAuthHeaders() });
     if (!res.ok) return;
@@ -3795,6 +3796,7 @@ async function uploadOtaFirmware(e) {
   let progressTxt = document.getElementById('ota-progress-text');
   let statusTxt = document.getElementById('ota-status-msg');
 
+  isOtaActive = true;
   progressBox.style.display = 'block';
   progressBar.style.width = '0%';
   progressTxt.textContent = '0%';
@@ -3814,6 +3816,7 @@ async function uploadOtaFirmware(e) {
   };
 
   xhr.onload = function() {
+    isOtaActive = false;
     if (xhr.status === 200) {
       progressBar.style.width = '100%';
       progressTxt.textContent = '100%';
@@ -3827,6 +3830,7 @@ async function uploadOtaFirmware(e) {
   };
 
   xhr.onerror = function() {
+    isOtaActive = false;
     statusTxt.innerHTML = '❌ <b style="color:var(--red)">انقطع الاتصال أثناء الرفع</b>';
   };
 
@@ -3870,6 +3874,7 @@ async function triggerUrlOta(e) {
 }
 
 function pollOtaStatus() {
+  isOtaActive = true;
   let timer = setInterval(async () => {
     try {
       let res = await fetch('/api/ota/status');
@@ -3884,11 +3889,13 @@ function pollOtaStatus() {
       if (st.state === 'downloading' || st.state === 'flashing') {
         statusTxt.textContent = `جاري التنزيل والبرمجة: ${st.progress}% (${(st.written/1024).toFixed(0)} KB)...`;
       } else if (st.state === 'success') {
+        isOtaActive = false;
         clearInterval(timer);
         progressBar.style.width = '100%';
         statusTxt.innerHTML = '🎉 <b style="color:var(--green)">اكتملت الترقية بنجاح!</b> جاري إعادة التشغيل على البارتيشن الجديد...';
         setTimeout(() => location.reload(), 5000);
       } else if (st.state === 'failed') {
+        isOtaActive = false;
         clearInterval(timer);
         statusTxt.innerHTML = '❌ <b style="color:var(--red)">فشل التحديث: ' + st.error + '</b>';
       }

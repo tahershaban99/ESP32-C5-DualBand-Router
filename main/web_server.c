@@ -1,32 +1,32 @@
 #include "web_server.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_wifi.h"
 #include "esp_netif.h"
+#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "esp_random.h"
-#include "nvs.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "lwip/etharp.h"
 #include "lwip/inet.h"
 #include "lwip/ip4_addr.h"
-#include "lwip/etharp.h"
-#include <sys/socket.h>
+#include "nvs.h"
 #include <netinet/in.h>
+#include <sys/socket.h>
 
-#include "router_globals.h"
-#include "router_config.h"
 #include "meter.h"
-#include "wifi_manager.h"
-#include "telegram_bot.h"
 #include "ota_updater.h"
+#include "router_config.h"
+#include "router_globals.h"
+#include "telegram_bot.h"
 #include "web_page_gz.h"
+#include "wifi_manager.h"
 
 httpd_handle_t web_server = NULL;
 
@@ -48,51 +48,67 @@ static int64_t lockout_until_us = 0;
 static void url_decode(char *s) {
   char *out = s;
   while (*s) {
-    if (*s == '+') { *out++ = ' '; ++s; }
-    else if (*s == '%' && s[1] && s[2]) {
+    if (*s == '+') {
+      *out++ = ' ';
+      ++s;
+    } else if (*s == '%' && s[1] && s[2]) {
       char hex[3] = {s[1], s[2], 0};
-      *out++ = (char)strtol(hex, NULL, 16); s += 3;
-    } else *out++ = *s++;
+      *out++ = (char)strtol(hex, NULL, 16);
+      s += 3;
+    } else
+      *out++ = *s++;
   }
   *out = 0;
 }
 
-static void form_value(char *body, const char *key, char *dest, size_t capacity) {
+static void form_value(char *body, const char *key, char *dest,
+                       size_t capacity) {
   char search[48];
   snprintf(search, sizeof(search), "%s=", key);
   char *p = strstr(body, search);
-  if (!p) { dest[0] = 0; return; }
+  if (!p) {
+    dest[0] = 0;
+    return;
+  }
   p += strlen(search);
   char *end = strchr(p, '&');
   size_t n = end ? (size_t)(end - p) : strlen(p);
-  if (n >= capacity) n = capacity - 1;
+  if (n >= capacity)
+    n = capacity - 1;
   memcpy(dest, p, n);
   dest[n] = 0;
   url_decode(dest);
 }
 
 static void format_mac(const uint8_t mac[6], char out[18]) {
-  snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
-           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2],
+           mac[3], mac[4], mac[5]);
 }
 
 static bool parse_mac_address(const char *text, uint8_t mac[6]) {
-  if (!text || strlen(text) != 17) return false;
+  if (!text || strlen(text) != 17)
+    return false;
   for (size_t i = 0; i < 6; ++i) {
     char pair[3] = {text[i * 3], text[i * 3 + 1], 0};
     char *end = NULL;
     unsigned long value = strtoul(pair, &end, 16);
-    if (end != pair + 2 || value > 255 || (i < 5 && text[i * 3 + 2] != ':' && text[i * 3 + 2] != '-')) return false;
+    if (end != pair + 2 || value > 255 ||
+        (i < 5 && text[i * 3 + 2] != ':' && text[i * 3 + 2] != '-'))
+      return false;
     mac[i] = (uint8_t)value;
   }
   return valid_device_mac(mac);
 }
 
-static size_t append_json_string(char *dst, size_t capacity, size_t used, const char *src) {
-  if (used + 2 >= capacity) return used;
+static size_t append_json_string(char *dst, size_t capacity, size_t used,
+                                 const char *src) {
+  if (used + 2 >= capacity)
+    return used;
   dst[used++] = '"';
-  for (const unsigned char *p = (const unsigned char *)src; *p && used + 3 < capacity; ++p) {
-    if (*p == '"' || *p == '\\') dst[used++] = '\\';
+  for (const unsigned char *p = (const unsigned char *)src;
+       *p && used + 3 < capacity; ++p) {
+    if (*p == '"' || *p == '\\')
+      dst[used++] = '\\';
     dst[used++] = (*p < 0x20) ? '_' : (char)*p;
   }
   dst[used++] = '"';
@@ -100,7 +116,8 @@ static size_t append_json_string(char *dst, size_t capacity, size_t used, const 
   return used;
 }
 
-static esp_err_t read_small_form(httpd_req_t *req, char *body, size_t capacity) {
+static esp_err_t read_small_form(httpd_req_t *req, char *body,
+                                 size_t capacity) {
   if (req->content_len <= 0 || req->content_len >= capacity) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid form");
     return ESP_FAIL;
@@ -119,10 +136,12 @@ static esp_err_t read_small_form(httpd_req_t *req, char *body, size_t capacity) 
 }
 
 static bool constant_time_eq(const char *a, const char *b) {
-  if (!a || !b) return false;
+  if (!a || !b)
+    return false;
   size_t len_a = strlen(a);
   size_t len_b = strlen(b);
-  if (len_a != len_b) return false;
+  if (len_a != len_b)
+    return false;
   unsigned char result = 0;
   for (size_t i = 0; i < len_a; ++i) {
     result |= (unsigned char)(a[i] ^ b[i]);
@@ -131,7 +150,8 @@ static bool constant_time_eq(const char *a, const char *b) {
 }
 
 static bool is_token_valid(const char *tok) {
-  if (!tok || tok[0] == 0) return false;
+  if (!tok || tok[0] == 0)
+    return false;
   int64_t now_us = esp_timer_get_time();
   for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
     if (s_admin_sessions[i].valid) {
@@ -148,11 +168,13 @@ static bool is_token_valid(const char *tok) {
 }
 
 static void add_admin_session(const char *tok, int64_t expiry_us) {
-  if (!tok || tok[0] == 0) return;
+  if (!tok || tok[0] == 0)
+    return;
   int64_t now_us = esp_timer_get_time();
   // 1. Check if token already exists, update expiry
   for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
-    if (s_admin_sessions[i].valid && constant_time_eq(tok, s_admin_sessions[i].token)) {
+    if (s_admin_sessions[i].valid &&
+        constant_time_eq(tok, s_admin_sessions[i].token)) {
       s_admin_sessions[i].expiry_us = expiry_us;
       return;
     }
@@ -181,9 +203,11 @@ static void add_admin_session(const char *tok, int64_t expiry_us) {
 }
 
 static void remove_admin_session(const char *tok) {
-  if (!tok || tok[0] == 0) return;
+  if (!tok || tok[0] == 0)
+    return;
   for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
-    if (s_admin_sessions[i].valid && constant_time_eq(tok, s_admin_sessions[i].token)) {
+    if (s_admin_sessions[i].valid &&
+        constant_time_eq(tok, s_admin_sessions[i].token)) {
       s_admin_sessions[i].valid = false;
       s_admin_sessions[i].token[0] = 0;
       return;
@@ -196,27 +220,33 @@ static bool is_admin_authenticated(httpd_req_t *req) {
   char cookie_hdr[512];
   size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
   if (buf_len > 0 && buf_len < sizeof(cookie_hdr)) {
-    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr, sizeof(cookie_hdr)) == ESP_OK) {
+    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr,
+                                    sizeof(cookie_hdr)) == ESP_OK) {
       char cookie_val[68] = {0};
       char *p = strstr(cookie_hdr, "session_id=");
       if (p) {
         p += strlen("session_id=");
         char *end = strchr(p, ';');
         size_t n = end ? (size_t)(end - p) : strlen(p);
-        if (n >= sizeof(cookie_val)) n = sizeof(cookie_val) - 1;
+        if (n >= sizeof(cookie_val))
+          n = sizeof(cookie_val) - 1;
         memcpy(cookie_val, p, n);
         cookie_val[n] = 0;
-        if (is_token_valid(cookie_val)) return true;
+        if (is_token_valid(cookie_val))
+          return true;
       }
     }
   }
 
-  // 2. Also check custom header X-Session-Token (prevents cookie loss / SameSite issues)
+  // 2. Also check custom header X-Session-Token (prevents cookie loss /
+  // SameSite issues)
   char token_hdr[68] = {0};
   size_t tok_len = httpd_req_get_hdr_value_len(req, "X-Session-Token");
   if (tok_len > 0 && tok_len < sizeof(token_hdr)) {
-    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr, sizeof(token_hdr)) == ESP_OK) {
-      if (is_token_valid(token_hdr)) return true;
+    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr,
+                                    sizeof(token_hdr)) == ESP_OK) {
+      if (is_token_valid(token_hdr))
+        return true;
     }
   }
 
@@ -227,7 +257,9 @@ static bool require_admin(httpd_req_t *req) {
   if (!is_admin_authenticated(req)) {
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
-    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"unauthorized\",\"auth_required\":true}");
+    httpd_resp_sendstr(
+        req,
+        "{\"ok\":false,\"error\":\"unauthorized\",\"auth_required\":true}");
     return false;
   }
   return true;
@@ -235,19 +267,22 @@ static bool require_admin(httpd_req_t *req) {
 
 // -----------------------------------------------------------------------------
 // ZERO-RAM GZIP WEB UI SERVING
-// Serves pre-compressed HTML frontend directly from Flash .rodata with Content-Encoding: gzip
+// Serves pre-compressed HTML frontend directly from Flash .rodata with
+// Content-Encoding: gzip
 // -----------------------------------------------------------------------------
 static esp_err_t root_handler(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-  httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+  httpd_resp_set_hdr(req, "Cache-Control",
+                     "no-cache, no-store, must-revalidate");
 
   const char *ptr = (const char *)PAGE_GZ;
   size_t remaining = PAGE_GZ_LEN;
   while (remaining > 0) {
     size_t chunk_size = (remaining > 4096) ? 4096 : remaining;
     esp_err_t err = httpd_resp_send_chunk(req, ptr, chunk_size);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+      return err;
     ptr += chunk_size;
     remaining -= chunk_size;
   }
@@ -273,7 +308,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   portENTER_CRITICAL(&data_mux);
   memcpy(active, active_clients, sizeof(active));
   count = usage_count;
-  if (count > MAX_RECORDS) count = MAX_RECORDS;
+  if (count > MAX_RECORDS)
+    count = MAX_RECORDS;
   period_days = meter_period_days;
   elapsed_s = meter_period_elapsed_s;
   live_total_up = total_cur_up_bps;
@@ -297,7 +333,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   char sta_ssid_safe[33] = {0};
   if (wan_connected) {
     size_t slen = strlen((char *)upstream_record.ssid);
-    if (slen > 32) slen = 32;
+    if (slen > 32)
+      slen = 32;
     memcpy(sta_ssid_safe, upstream_record.ssid, slen);
   }
   uint16_t active_clients_count = 0;
@@ -311,10 +348,14 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   char current_sta_ip[16] = {0};
   char current_sta_gw[16] = {0};
   char current_sta_mask[16] = {0};
-  if (esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK && sta_ip_info.ip.addr != 0) {
-    snprintf(current_sta_ip, sizeof(current_sta_ip), IPSTR, IP2STR(&sta_ip_info.ip));
-    snprintf(current_sta_gw, sizeof(current_sta_gw), IPSTR, IP2STR(&sta_ip_info.gw));
-    snprintf(current_sta_mask, sizeof(current_sta_mask), IPSTR, IP2STR(&sta_ip_info.netmask));
+  if (esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK &&
+      sta_ip_info.ip.addr != 0) {
+    snprintf(current_sta_ip, sizeof(current_sta_ip), IPSTR,
+             IP2STR(&sta_ip_info.ip));
+    snprintf(current_sta_gw, sizeof(current_sta_gw), IPSTR,
+             IP2STR(&sta_ip_info.gw));
+    snprintf(current_sta_mask, sizeof(current_sta_mask), IPSTR,
+             IP2STR(&sta_ip_info.netmask));
   } else if (sta_static_enabled) {
     snprintf(current_sta_ip, sizeof(current_sta_ip), "%s", sta_ip_text);
     snprintf(current_sta_gw, sizeof(current_sta_gw), "%s", sta_gateway_text);
@@ -336,13 +377,15 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       rem_hours = 0;
     }
   }
-  double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+  double gb_div =
+      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
   double main_quota_gb = (double)m_quota / gb_div;
   uint64_t grand_total_bytes = total_up + total_down;
   double grand_total_gb = (double)grand_total_bytes / gb_div;
   double rem_main_gb = 0.0;
   if (main_quota_gb > 0.0) {
-    rem_main_gb = main_quota_gb > grand_total_gb ? (main_quota_gb - grand_total_gb) : 0.0;
+    rem_main_gb =
+        main_quota_gb > grand_total_gb ? (main_quota_gb - grand_total_gb) : 0.0;
   }
 
   bool is_admin = is_admin_authenticated(req);
@@ -356,71 +399,93 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     time_t local_cur = cur_epoch + ((int64_t)auto_reboot_tz_offset * 3600LL);
     struct tm cur_tm;
     gmtime_r(&local_cur, &cur_tm);
-    snprintf(router_time_str, sizeof(router_time_str), "%02d:%02d", cur_tm.tm_hour, cur_tm.tm_min);
+    snprintf(router_time_str, sizeof(router_time_str), "%02d:%02d",
+             cur_tm.tm_hour, cur_tm.tm_min);
   }
   char reboot_time_str[8];
-  snprintf(reboot_time_str, sizeof(reboot_time_str), "%02d:%02d", auto_reboot_hour, auto_reboot_min);
+  snprintf(reboot_time_str, sizeof(reboot_time_str), "%02d:%02d",
+           auto_reboot_hour, auto_reboot_min);
 
-  // Stack buffer: 2048 bytes ensures header string (approx ~1000 bytes) will never truncate or overflow
+  // Stack buffer: 2048 bytes ensures header string (approx ~1000 bytes) will
+  // never truncate or overflow
   char buf[2048];
   httpd_resp_set_type(req, "application/json; charset=utf-8");
 
-  size_t used = (size_t)snprintf(buf, sizeof(buf),
-                      "{\"wan\":%s,\"is_admin\":%s,\"period_days\":%u,\"elapsed_s\":%" PRIu32 ","
-                      "\"total_up\":%" PRIu64 ",\"total_down\":%" PRIu64 ","
-                      "\"cur_up_bps\":%" PRIu32 ",\"cur_down_bps\":%" PRIu32 ","
-                      "\"free_heap\":%" PRIu32 ",\"min_free_heap\":%" PRIu32 ",\"uptime_s\":%" PRIu32 ","
-                      "\"sta_rssi\":%d,\"sta_channel\":%d,\"active_clients\":%u,"
-                      "\"cpu_freq_mhz\":%u,\"wifi_power_save\":%s,\"meter_scale_pct\":%u,\"gb_standard\":%u,"
-                      "\"main_quota_gb\":%.2f,\"q_start\":\"%s\",\"q_end\":\"%s\","
-                      "\"time_synced\":%s,\"rem_days\":%ld,\"rem_hours\":%ld,\"rem_main_gb\":%.3f,"
-                      "\"firmware_version\":\"" ROUTER_FIRMWARE_VERSION "\",\"running_partition\":\"%s\",\"sta_ssid\":",
-                      wan_connected ? "true" : "false", is_admin ? "true" : "false", period_days, elapsed_s, total_up, total_down,
-                      live_total_up, live_total_down,
-                      free_heap, min_free_heap, uptime_s,
-                      sta_rssi, sta_channel, active_clients_count,
-                      (unsigned)esp_cpu_freq_mhz, esp_wifi_power_save ? "true" : "false", (unsigned)router_meter_scale_pct, (unsigned)router_gb_standard,
-                      main_quota_gb, q_start, q_end,
-                      time_synced ? "true" : "false", (long)rem_days, (long)rem_hours, rem_main_gb,
-                      ota_inf.running_partition);
-  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
+  size_t used = (size_t)snprintf(
+      buf, sizeof(buf),
+      "{\"wan\":%s,\"is_admin\":%s,\"period_days\":%u,\"elapsed_s\":%" PRIu32
+      ","
+      "\"total_up\":%" PRIu64 ",\"total_down\":%" PRIu64 ","
+      "\"cur_up_bps\":%" PRIu32 ",\"cur_down_bps\":%" PRIu32 ","
+      "\"free_heap\":%" PRIu32 ",\"min_free_heap\":%" PRIu32
+      ",\"uptime_s\":%" PRIu32 ","
+      "\"sta_rssi\":%d,\"sta_channel\":%d,\"active_clients\":%u,"
+      "\"cpu_freq_mhz\":%u,\"wifi_power_save\":%s,\"meter_scale_pct\":%u,\"gb_"
+      "standard\":%u,"
+      "\"main_quota_gb\":%.2f,\"q_start\":\"%s\",\"q_end\":\"%s\","
+      "\"time_synced\":%s,\"rem_days\":%ld,\"rem_hours\":%ld,\"rem_main_gb\":%."
+      "3f,"
+      "\"firmware_version\":\"" ROUTER_FIRMWARE_VERSION
+      "\",\"running_partition\":\"%s\",\"sta_ssid\":",
+      wan_connected ? "true" : "false", is_admin ? "true" : "false",
+      period_days, elapsed_s, total_up, total_down, live_total_up,
+      live_total_down, free_heap, min_free_heap, uptime_s, sta_rssi,
+      sta_channel, active_clients_count, (unsigned)esp_cpu_freq_mhz,
+      esp_wifi_power_save ? "true" : "false", (unsigned)router_meter_scale_pct,
+      (unsigned)router_gb_standard, main_quota_gb, q_start, q_end,
+      time_synced ? "true" : "false", (long)rem_days, (long)rem_hours,
+      rem_main_gb, ota_inf.running_partition);
+  if (used >= sizeof(buf) - 64)
+    used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, sta_ssid_safe);
   if (used < sizeof(buf) - 1) {
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-        ",\"sta_static_enabled\":%s,\"sta_ip\":\"%s\",\"sta_mask\":\"%s\",\"sta_gw\":\"%s\",\"sta_dns\":\"%s\","
-        "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"router_ssid\":",
-        sta_static_enabled ? "true" : "false", current_sta_ip, current_sta_mask, current_sta_gw, sta_dns_text,
-        (unsigned)wifi_protocol_mode, (unsigned)wifi_band_mode, wifi_manager_get_current_band_str());
+    used += (size_t)snprintf(
+        buf + used, sizeof(buf) - used,
+        ",\"sta_static_enabled\":%s,\"sta_ip\":\"%s\",\"sta_mask\":\"%s\","
+        "\"sta_gw\":\"%s\",\"sta_dns\":\"%s\","
+        "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"router_"
+        "ssid\":",
+        sta_static_enabled ? "true" : "false", current_sta_ip, current_sta_mask,
+        current_sta_gw, sta_dns_text, (unsigned)wifi_protocol_mode,
+        (unsigned)wifi_band_mode, wifi_manager_get_current_band_str());
   }
-  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
+  if (used >= sizeof(buf) - 64)
+    used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, router_ssid);
   if (used < sizeof(buf) - 16) {
     used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"ap_ssid\":");
   }
-  if (used >= sizeof(buf) - 64) used = sizeof(buf) - 64;
+  if (used >= sizeof(buf) - 64)
+    used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, ap_ssid);
   if (used < sizeof(buf) - 1) {
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-        ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,\"router_clock\":\"%s\","
+    used += (size_t)snprintf(
+        buf + used, sizeof(buf) - used,
+        ",\"tg_enable\":%s,\"tg_interactive\":%s,\"tg_chat_id\":\"%s\",\"tg_"
+        "thresholds\":\"%s\",\"rb_enable\":%s,\"rb_time\":\"%s\",\"rb_tz\":%d,"
+        "\"router_clock\":\"%s\","
         "\"ota_auto\":%s,\"last_reset_reason\":\"%s\",\"last_reset_code\":%d",
-        telegram_enabled ? "true" : "false", telegram_interactive ? "true" : "false",
-        telegram_chat_id, telegram_thresholds,
-        auto_reboot_enabled ? "true" : "false", reboot_time_str, auto_reboot_tz_offset, router_time_str,
-        ota_auto_update_enabled ? "true" : "false",
-        last_reset_reason_str, last_reset_code);
+        telegram_enabled ? "true" : "false",
+        telegram_interactive ? "true" : "false", telegram_chat_id,
+        telegram_thresholds, auto_reboot_enabled ? "true" : "false",
+        reboot_time_str, auto_reboot_tz_offset, router_time_str,
+        ota_auto_update_enabled ? "true" : "false", last_reset_reason_str,
+        last_reset_code);
   }
 
   // Output discovered Telegram users list for dropdown linking
   tg_discovered_user_t disc_users[MAX_DISCOVERED_TG_USERS];
-  size_t disc_cnt = telegram_get_discovered_users(disc_users, MAX_DISCOVERED_TG_USERS);
+  size_t disc_cnt =
+      telegram_get_discovered_users(disc_users, MAX_DISCOVERED_TG_USERS);
   if (used < sizeof(buf) - 32) {
     used += (size_t)snprintf(buf + used, sizeof(buf) - used, ",\"tg_users\":[");
     for (size_t u = 0; u < disc_cnt; ++u) {
       if (used < sizeof(buf) - 128) {
-        used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+        used += (size_t)snprintf(
+            buf + used, sizeof(buf) - used,
             "%s{\"chat_id\":\"%s\",\"name\":\"%s\",\"username\":\"%s\"}",
-            (u == 0) ? "" : ",",
-            disc_users[u].chat_id, disc_users[u].first_name, disc_users[u].username);
+            (u == 0) ? "" : ",", disc_users[u].chat_id,
+            disc_users[u].first_name, disc_users[u].username);
       }
     }
     if (used < sizeof(buf) - 2) {
@@ -434,7 +499,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   }
 
   esp_err_t err = httpd_resp_send_chunk(req, buf, used);
-  if (err != ESP_OK) return err;
+  if (err != ESP_OK)
+    return err;
 
   bool first = true;
   uint8_t seen_macs[MAX_RECORDS + MAX_CLIENTS][6];
@@ -459,9 +525,11 @@ static esp_err_t devices_handler(httpd_req_t *req) {
         memcpy(&rip, usage_records[i].mac + 2, 4);
         bool claimed_by_real = false;
         for (size_t b = 0; b < binding_count; ++b) {
-          if (device_bindings[b].bound_ip == rip && valid_device_mac(device_bindings[b].mac) &&
+          if (device_bindings[b].bound_ip == rip &&
+              valid_device_mac(device_bindings[b].mac) &&
               !(device_bindings[b].mac[0] == 0x02 &&
-                (device_bindings[b].mac[1] == 0x00 || device_bindings[b].mac[1] == 0xE0))) {
+                (device_bindings[b].mac[1] == 0x00 ||
+                 device_bindings[b].mac[1] == 0xE0))) {
             claimed_by_real = true;
             break;
           }
@@ -475,17 +543,20 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       rec = usage_records[i];
       live = device_live_speeds[i];
       int p_idx = meter_find_policy_locked(rec.mac, false);
-      if (p_idx >= 0) pol = device_policies[p_idx];
+      if (p_idx >= 0)
+        pol = device_policies[p_idx];
       int n_idx = meter_find_name_locked(rec.mac, false);
       if (n_idx >= 0) {
         snprintf(name, sizeof(name), "%s", device_names[n_idx].name);
       }
       int s_idx = meter_find_speed_locked(rec.mac, false);
-      if (s_idx >= 0) spd = device_speeds[s_idx];
+      if (s_idx >= 0)
+        spd = device_speeds[s_idx];
     }
     portEXIT_CRITICAL(&data_mux);
 
-    if (!valid) continue;
+    if (!valid)
+      continue;
 
     bool already_seen = false;
     for (size_t s = 0; s < seen_count; ++s) {
@@ -494,8 +565,9 @@ static esp_err_t devices_handler(httpd_req_t *req) {
         break;
       }
     }
-    if (already_seen) continue;
-    if (seen_count < sizeof(seen_macs)/sizeof(seen_macs[0])) {
+    if (already_seen)
+      continue;
+    if (seen_count < sizeof(seen_macs) / sizeof(seen_macs[0])) {
       memcpy(seen_macs[seen_count++], rec.mac, 6);
     }
 
@@ -525,13 +597,14 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       ip4_addr_t bip = {.addr = bound_ip};
       snprintf(ip_text, sizeof(ip_text), IPSTR, IP2STR(&bip));
     } else if (rec.mac[0] == 0x02 && rec.mac[1] == 0xE0) {
-      snprintf(ip_text, sizeof(ip_text), "%u.%u.%u.%u",
-               (unsigned)rec.mac[2], (unsigned)rec.mac[3],
-               (unsigned)rec.mac[4], (unsigned)rec.mac[5]);
+      snprintf(ip_text, sizeof(ip_text), "%u.%u.%u.%u", (unsigned)rec.mac[2],
+               (unsigned)rec.mac[3], (unsigned)rec.mac[4],
+               (unsigned)rec.mac[5]);
     }
 
     int8_t rssi = (active_index >= 0) ? active[active_index].rssi : 0;
-    bool connected = (active_index >= 0 && active[active_index].aid != 0 && active[active_index].ip != 0);
+    bool connected = (active_index >= 0 && active[active_index].aid != 0 &&
+                      active[active_index].ip != 0);
     uint64_t quota = pol.quota_bytes;
     uint32_t upload_limit_bps = spd.upload_bps;
     uint32_t download_limit_bps = spd.download_bps;
@@ -539,9 +612,12 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     bool quota_exceeded = (quota > 0 && dev_tot >= quota);
     bool blocked = pol.blocked || quota_exceeded;
     bool gaming = pol.gaming_mode;
-    double dev_share_pct = (m_quota > 0) ? (((double)dev_tot / (double)m_quota) * 100.0) : 0.0;
-    double dev_quota_pct = (quota > 0) ? (((double)dev_tot / (double)quota) * 100.0) : 0.0;
-    double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+    double dev_share_pct =
+        (m_quota > 0) ? (((double)dev_tot / (double)m_quota) * 100.0) : 0.0;
+    double dev_quota_pct =
+        (quota > 0) ? (((double)dev_tot / (double)quota) * 100.0) : 0.0;
+    double gb_div = (router_gb_standard == 1000) ? 1000000000.0
+                                                 : (1024.0 * 1024.0 * 1024.0);
     double dev_quota_gb = (double)quota / gb_div;
 
     used = 0;
@@ -550,20 +626,26 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     }
     first = false;
 
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      "{\"ip\":\"%s\",\"mac\":\"%s\",\"canon_mac\":\"%s\",\"rssi\":%d,\"up\":%" PRIu64 ",\"down\":%" PRIu64 ","
-      "\"quota\":%" PRIu64 ",\"quota_gb\":%.2f,\"quota_pct\":%.1f,\"quota_exceeded\":%s,"
-      "\"upload_mbps\":%.2f,\"download_mbps\":%.2f,"
-      "\"cur_up_bps\":%" PRIu32 ",\"cur_down_bps\":%" PRIu32 ",\"share_pct\":%.2f,\"name\":",
-      ip_text, mac, canon_mac, rssi, rec.upload_bytes, rec.download_bytes,
-      quota, dev_quota_gb, dev_quota_pct, quota_exceeded ? "true" : "false",
-      upload_limit_bps / 1000000.0, download_limit_bps / 1000000.0,
-      live.cur_up_bps, live.cur_down_bps, dev_share_pct);
+    used += (size_t)snprintf(
+        buf + used, sizeof(buf) - used,
+        "{\"ip\":\"%s\",\"mac\":\"%s\",\"canon_mac\":\"%s\",\"rssi\":%d,\"up\":"
+        "%" PRIu64 ",\"down\":%" PRIu64 ","
+        "\"quota\":%" PRIu64
+        ",\"quota_gb\":%.2f,\"quota_pct\":%.1f,\"quota_exceeded\":%s,"
+        "\"upload_mbps\":%.2f,\"download_mbps\":%.2f,"
+        "\"cur_up_bps\":%" PRIu32 ",\"cur_down_bps\":%" PRIu32
+        ",\"share_pct\":%.2f,\"name\":",
+        ip_text, mac, canon_mac, rssi, rec.upload_bytes, rec.download_bytes,
+        quota, dev_quota_gb, dev_quota_pct, quota_exceeded ? "true" : "false",
+        upload_limit_bps / 1000000.0, download_limit_bps / 1000000.0,
+        live.cur_up_bps, live.cur_down_bps, dev_share_pct);
 
     used = append_json_string(buf, sizeof(buf), used, name);
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      ",\"connected\":%s,\"blocked\":%s,\"gaming\":%s,\"telegram_chat_id\":",
-      connected ? "true" : "false", blocked ? "true" : "false", gaming ? "true" : "false");
+    used += (size_t)snprintf(
+        buf + used, sizeof(buf) - used,
+        ",\"connected\":%s,\"blocked\":%s,\"gaming\":%s,\"telegram_chat_id\":",
+        connected ? "true" : "false", blocked ? "true" : "false",
+        gaming ? "true" : "false");
     used = append_json_string(buf, sizeof(buf), used, pol.telegram_chat_id);
 
     char bound_ip_str[16] = "";
@@ -572,16 +654,19 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       snprintf(bound_ip_str, sizeof(bound_ip_str), "%d.%d.%d.%d", IP2STR(&bip));
     }
     used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      ",\"is_static_ip\":%s,\"bound_ip\":\"%s\"",
-      (bound_ip != 0) ? "true" : "false", bound_ip_str);
-    if (used < sizeof(buf) - 1) buf[used++] = '}';
+                             ",\"is_static_ip\":%s,\"bound_ip\":\"%s\"",
+                             (bound_ip != 0) ? "true" : "false", bound_ip_str);
+    if (used < sizeof(buf) - 1)
+      buf[used++] = '}';
 
     err = httpd_resp_send_chunk(req, buf, used);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+      return err;
   }
 
   err = httpd_resp_send_chunk(req, "]}", 2);
-  if (err != ESP_OK) return err;
+  if (err != ESP_OK)
+    return err;
   return httpd_resp_send_chunk(req, NULL, 0);
 }
 
@@ -595,19 +680,23 @@ static esp_err_t login_handler(httpd_req_t *req) {
     httpd_resp_set_status(req, "429 Too Many Requests");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     char res[90];
-    snprintf(res, sizeof(res), "{\"ok\":false,\"error\":\"locked_out\",\"remaining\":%lu}", (unsigned long)rem_sec);
+    snprintf(res, sizeof(res),
+             "{\"ok\":false,\"error\":\"locked_out\",\"remaining\":%lu}",
+             (unsigned long)rem_sec);
     return httpd_resp_sendstr(req, res);
   }
 
   char body[160];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char user[48] = {0};
   char pass[80] = {0};
   form_value(body, "username", user, sizeof(user));
   form_value(body, "password", pass, sizeof(pass));
 
-  bool ok = constant_time_eq(user, admin_username) && constant_time_eq(pass, admin_password);
+  bool ok = constant_time_eq(user, admin_username) &&
+            constant_time_eq(pass, admin_password);
 
   if (ok) {
     failed_login_attempts = 0;
@@ -615,11 +704,14 @@ static esp_err_t login_handler(httpd_req_t *req) {
     uint32_t r1 = esp_random(), r2 = esp_random();
     char new_token[65];
     snprintf(new_token, sizeof(new_token), "%08lx%08lx%08lx%08lx",
-             (unsigned long)r1, (unsigned long)r2, (unsigned long)esp_random(), (unsigned long)esp_random());
+             (unsigned long)r1, (unsigned long)r2, (unsigned long)esp_random(),
+             (unsigned long)esp_random());
     add_admin_session(new_token, now_us + SESSION_TTL_US);
 
     char set_cookie[160];
-    snprintf(set_cookie, sizeof(set_cookie), "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000", new_token);
+    snprintf(set_cookie, sizeof(set_cookie),
+             "session_id=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+             new_token);
     httpd_resp_set_hdr(req, "Set-Cookie", set_cookie);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     char res[128];
@@ -631,13 +723,16 @@ static esp_err_t login_handler(httpd_req_t *req) {
       lockout_until_us = now_us + LOCKOUT_DURATION_US;
       httpd_resp_set_status(req, "429 Too Many Requests");
       httpd_resp_set_type(req, "application/json; charset=utf-8");
-      return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"locked_out\",\"remaining\":60}");
+      return httpd_resp_sendstr(
+          req, "{\"ok\":false,\"error\":\"locked_out\",\"remaining\":60}");
     }
     httpd_resp_set_status(req, "401 Unauthorized");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     char res[90];
-    snprintf(res, sizeof(res), "{\"ok\":false,\"error\":\"invalid_credentials\",\"attempts_left\":%u}",
-             (unsigned)(MAX_FAILED_ATTEMPTS - failed_login_attempts));
+    snprintf(
+        res, sizeof(res),
+        "{\"ok\":false,\"error\":\"invalid_credentials\",\"attempts_left\":%u}",
+        (unsigned)(MAX_FAILED_ATTEMPTS - failed_login_attempts));
     return httpd_resp_sendstr(req, res);
   }
 }
@@ -646,14 +741,16 @@ static esp_err_t logout_handler(httpd_req_t *req) {
   char token_hdr[68] = {0};
   size_t tok_len = httpd_req_get_hdr_value_len(req, "X-Session-Token");
   if (tok_len > 0 && tok_len < sizeof(token_hdr)) {
-    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr, sizeof(token_hdr)) == ESP_OK) {
+    if (httpd_req_get_hdr_value_str(req, "X-Session-Token", token_hdr,
+                                    sizeof(token_hdr)) == ESP_OK) {
       remove_admin_session(token_hdr);
     }
   }
   char cookie_hdr[512];
   size_t buf_len = httpd_req_get_hdr_value_len(req, "Cookie");
   if (buf_len > 0 && buf_len < sizeof(cookie_hdr)) {
-    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr, sizeof(cookie_hdr)) == ESP_OK) {
+    if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_hdr,
+                                    sizeof(cookie_hdr)) == ESP_OK) {
       char *p = strstr(cookie_hdr, "session_id=");
       if (p) {
         p += strlen("session_id=");
@@ -674,9 +771,11 @@ static esp_err_t logout_handler(httpd_req_t *req) {
 }
 
 static esp_err_t password_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[256];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char old_p[80] = {0}, new_u[48] = {0}, new_p[80] = {0};
   form_value(body, "old_pass", old_p, sizeof(old_p));
@@ -686,7 +785,8 @@ static esp_err_t password_handler(httpd_req_t *req) {
   if (!constant_time_eq(old_p, admin_password)) {
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
-    return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"wrong_password\"}");
+    return httpd_resp_sendstr(req,
+                              "{\"ok\":false,\"error\":\"wrong_password\"}");
   }
 
   if (strlen(new_u) < 2 || strlen(new_p) < 4) {
@@ -705,9 +805,11 @@ static esp_err_t password_handler(httpd_req_t *req) {
 // DEVICE MANAGEMENT API
 // -----------------------------------------------------------------------------
 static esp_err_t device_save_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[512];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
@@ -733,7 +835,8 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
   form_value(body, "is_static_ip", is_static_s, sizeof(is_static_s));
 
   if (is_static_s[0]) {
-    bool is_static = (strcmp(is_static_s, "true") == 0 || strcmp(is_static_s, "1") == 0);
+    bool is_static =
+        (strcmp(is_static_s, "true") == 0 || strcmp(is_static_s, "1") == 0);
     if (!is_static) {
       meter_set_device_binding(mac, 0);
     } else if (bound_ip_s[0]) {
@@ -768,16 +871,19 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
   form_value(body, "quota_gb", quota_s, sizeof(quota_s));
   if (quota_s[0]) {
     double quota_gb = atof(quota_s);
-    double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+    double gb_div = (router_gb_standard == 1000) ? 1000000000.0
+                                                 : (1024.0 * 1024.0 * 1024.0);
     uint64_t quota_bytes = (uint64_t)(quota_gb * gb_div);
     int p_idx = meter_find_policy_locked(mac, true);
     bool blk = (p_idx >= 0) ? device_policies[p_idx].blocked : false;
     bool gam = (p_idx >= 0) ? device_policies[p_idx].gaming_mode : false;
 
-    // Auto-unblock device if newly assigned quota > current usage or set to 0 (unlimited)
+    // Auto-unblock device if newly assigned quota > current usage or set to 0
+    // (unlimited)
     int u_idx = meter_find_usage_locked(mac, false);
     if (u_idx >= 0) {
-      uint64_t consumed = usage_records[u_idx].upload_bytes + usage_records[u_idx].download_bytes;
+      uint64_t consumed = usage_records[u_idx].upload_bytes +
+                          usage_records[u_idx].download_bytes;
       if (quota_bytes == 0 || consumed < quota_bytes) {
         blk = false;
       }
@@ -790,9 +896,11 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
 }
 
 static esp_err_t device_block_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[256];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char mac_text[64] = {0}, val_s[8] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
@@ -810,9 +918,11 @@ static esp_err_t device_block_handler(httpd_req_t *req) {
 }
 
 static esp_err_t device_gaming_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[256];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char mac_text[64] = {0}, val_s[8] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
@@ -830,9 +940,11 @@ static esp_err_t device_gaming_handler(httpd_req_t *req) {
 }
 
 static esp_err_t device_reset_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[256];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
@@ -848,9 +960,11 @@ static esp_err_t device_reset_handler(httpd_req_t *req) {
 }
 
 static esp_err_t device_delete_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[256];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char mac_text[64] = {0};
   form_value(body, "mac", mac_text, sizeof(mac_text));
@@ -869,9 +983,11 @@ static esp_err_t device_delete_handler(httpd_req_t *req) {
 // MAIN ISP QUOTA & PERIOD
 // -----------------------------------------------------------------------------
 static esp_err_t main_quota_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[200];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char q_gb_s[20] = {0}, s_date[16] = {0}, e_date[16] = {0};
   form_value(body, "quota_gb", q_gb_s, sizeof(q_gb_s));
@@ -879,18 +995,22 @@ static esp_err_t main_quota_handler(httpd_req_t *req) {
   form_value(body, "end_date", e_date, sizeof(e_date));
 
   double q_gb = atof(q_gb_s);
-  double gb_div = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+  double gb_div =
+      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
   uint64_t q_bytes = (uint64_t)(q_gb * gb_div);
-  meter_set_main_quota(q_bytes, s_date[0] ? s_date : NULL, e_date[0] ? e_date : NULL);
+  meter_set_main_quota(q_bytes, s_date[0] ? s_date : NULL,
+                       e_date[0] ? e_date : NULL);
 
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
 static esp_err_t meter_period_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[64];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char days_s[12] = {0};
   form_value(body, "period_days", days_s, sizeof(days_s));
@@ -903,7 +1023,8 @@ static esp_err_t meter_period_handler(httpd_req_t *req) {
 }
 
 static esp_err_t meter_reset_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   meter_reset_all_usage(); // Also clears Telegram alert flags!
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -913,9 +1034,11 @@ static esp_err_t meter_reset_handler(httpd_req_t *req) {
 // PERFORMANCE & METER SCALE
 // -----------------------------------------------------------------------------
 static esp_err_t performance_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[96];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char freq_s[12] = {0}, ps_s[8] = {0};
   form_value(body, "cpu_freq", freq_s, sizeof(freq_s));
@@ -939,9 +1062,11 @@ static esp_err_t performance_handler(httpd_req_t *req) {
 }
 
 static esp_err_t meter_scale_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[96];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char scale_s[12] = {0}, gb_std_s[12] = {0};
   form_value(body, "scale", scale_s, sizeof(scale_s));
@@ -949,7 +1074,8 @@ static esp_err_t meter_scale_handler(httpd_req_t *req) {
   int sc = atoi(scale_s);
   int gb_std = atoi(gb_std_s);
   if (sc >= 10 && sc <= 200) {
-    if (gb_std != 1000 && gb_std != 1024) gb_std = 1024;
+    if (gb_std != 1000 && gb_std != 1024)
+      gb_std = 1024;
     config_save_meter_scale((uint8_t)sc, (uint16_t)gb_std);
   }
   httpd_resp_set_type(req, "application/json; charset=utf-8");
@@ -963,19 +1089,21 @@ static esp_err_t scan_start_handler(httpd_req_t *req) {
   ESP_LOGI(ROUTER_TAG, "Client requested Wi-Fi scan via /api/scan/start");
   bool ok = wifi_manager_start_scan();
   httpd_resp_set_type(req, "application/json; charset=utf-8");
-  return httpd_resp_sendstr(req, ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"busy\"}");
+  return httpd_resp_sendstr(req, ok ? "{\"ok\":true}"
+                                    : "{\"ok\":false,\"error\":\"busy\"}");
 }
 
 static esp_err_t scan_results_handler(httpd_req_t *req) {
   char buf[896];
   httpd_resp_set_type(req, "application/json; charset=utf-8");
 
-  size_t used = (size_t)snprintf(buf, sizeof(buf),
-    "{\"ready\":%s,\"running\":%s,\"results\":[",
-    scan_ready ? "true" : "false", scan_running ? "true" : "false");
+  size_t used = (size_t)snprintf(
+      buf, sizeof(buf), "{\"ready\":%s,\"running\":%s,\"results\":[",
+      scan_ready ? "true" : "false", scan_running ? "true" : "false");
 
   esp_err_t err = httpd_resp_send_chunk(req, buf, used);
-  if (err != ESP_OK) return err;
+  if (err != ESP_OK)
+    return err;
 
   portENTER_CRITICAL(&data_mux);
   uint16_t count = scan_result_count;
@@ -986,20 +1114,24 @@ static esp_err_t scan_results_handler(httpd_req_t *req) {
   bool first = true;
   for (uint16_t i = 0; i < count; ++i) {
     used = 0;
-    if (!first) buf[used++] = ',';
+    if (!first)
+      buf[used++] = ',';
     first = false;
     used += (size_t)snprintf(buf + used, sizeof(buf) - used, "{\"ssid\":");
     used = append_json_string(buf, sizeof(buf), used, entries[i].ssid);
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-      ",\"rssi\":%d,\"secured\":%s,\"band\":%u}",
-      entries[i].rssi, entries[i].secured ? "true" : "false", (unsigned)entries[i].band);
+    used += (size_t)snprintf(
+        buf + used, sizeof(buf) - used,
+        ",\"rssi\":%d,\"secured\":%s,\"band\":%u}", entries[i].rssi,
+        entries[i].secured ? "true" : "false", (unsigned)entries[i].band);
 
     err = httpd_resp_send_chunk(req, buf, used);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+      return err;
   }
 
   err = httpd_resp_send_chunk(req, "]}", 2);
-  if (err != ESP_OK) return err;
+  if (err != ESP_OK)
+    return err;
   return httpd_resp_send_chunk(req, NULL, 0);
 }
 
@@ -1007,13 +1139,16 @@ static esp_err_t scan_results_handler(httpd_req_t *req) {
 // SAVE WI-FI SETTINGS & REBOOT
 // -----------------------------------------------------------------------------
 static esp_err_t save_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[512];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char r_ssid[33] = {0}, r_pass[65] = {0}, clr_r_pass[8] = {0};
   char a_ssid[33] = {0}, a_pass[65] = {0}, proto_s[8] = {0}, band_s[8] = {0};
-  char static_s[8] = {0}, ip[16] = {0}, mask[16] = {0}, gw[16] = {0}, dns[16] = {0};
+  char static_s[8] = {0}, ip[16] = {0}, mask[16] = {0}, gw[16] = {0},
+       dns[16] = {0};
 
   form_value(body, "router_ssid", r_ssid, sizeof(r_ssid));
   form_value(body, "router_password", r_pass, sizeof(r_pass));
@@ -1029,15 +1164,22 @@ static esp_err_t save_handler(httpd_req_t *req) {
   form_value(body, "sta_dns", dns, sizeof(dns));
 
   uint8_t band = (uint8_t)atoi(band_s);
-  if (band < 1 || band > 3) band = 3;
+  if (band < 1 || band > 3)
+    band = 3;
   uint8_t proto = (uint8_t)atoi(proto_s);
   bool static_en = (atoi(static_s) != 0);
   bool clear_pass = (atoi(clr_r_pass) != 0);
 
-  config_save_wifi(r_ssid, r_pass, clear_pass, a_ssid, a_pass, band, proto, static_en, ip, mask, gw, dns);
+  config_save_wifi(r_ssid, r_pass, clear_pass, a_ssid, a_pass, band, proto,
+                   static_en, ip, mask, gw, dns);
 
   httpd_resp_set_type(req, "text/html; charset=utf-8");
-  httpd_resp_sendstr(req, "<!doctype html><html lang='ar' dir='rtl'><body style='background:#0f172a;color:#fff;font-family:sans-serif;text-align:center;padding:50px'><h2>تم حفظ الإعدادات بنجاح!</h2><p>جاري إعادة تشغيل الراوتر... انتظر 15 ثانية ثم اتصل بالشبكة الجديدة.</p></body></html>");
+  httpd_resp_sendstr(
+      req, "<!doctype html><html lang='ar' dir='rtl'><body "
+           "style='background:#0f172a;color:#fff;font-family:sans-serif;text-"
+           "align:center;padding:50px'><h2>تم حفظ الإعدادات بنجاح!</h2><p>جاري "
+           "إعادة تشغيل الراوتر... انتظر 15 ثانية ثم اتصل بالشبكة "
+           "الجديدة.</p></body></html>");
 
   vTaskDelay(pdMS_TO_TICKS(1500));
   meter_save_usage();
@@ -1047,9 +1189,11 @@ static esp_err_t save_handler(httpd_req_t *req) {
 }
 
 static esp_err_t reboot_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[96];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char cd_min_s[12] = {0}, imm_s[8] = {0};
   form_value(body, "countdown_min", cd_min_s, sizeof(cd_min_s));
@@ -1080,9 +1224,11 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
 // DAILY SCHEDULED AUTO-REBOOT
 // -----------------------------------------------------------------------------
 static esp_err_t auto_reboot_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[128];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char en_s[8] = {0}, time_s[12] = {0}, tz_s[8] = {0};
   form_value(body, "enable", en_s, sizeof(en_s));
@@ -1104,9 +1250,11 @@ static esp_err_t auto_reboot_handler(httpd_req_t *req) {
 // TELEGRAM BOT & MULTI-THRESHOLD QUOTA ALERTS
 // -----------------------------------------------------------------------------
 static esp_err_t telegram_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
   char body[512];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char test_s[8] = {0};
   form_value(body, "test", test_s, sizeof(test_s));
@@ -1128,7 +1276,8 @@ static esp_err_t telegram_handler(httpd_req_t *req) {
     bool ok = (rc == 0);
 
     char resp[384];
-    snprintf(resp, sizeof(resp), "{\"ok\":%s,\"msg\":\"%s\"}", ok ? "true" : "false", diag);
+    snprintf(resp, sizeof(resp), "{\"ok\":%s,\"msg\":\"%s\"}",
+             ok ? "true" : "false", diag);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     return httpd_resp_sendstr(req, resp);
   }
@@ -1141,17 +1290,21 @@ static esp_err_t telegram_handler(httpd_req_t *req) {
   bool inter = (atoi(inter_s) != 0);
 
   // Always enable both if token is present
-  config_save_telegram(token[0] ? true : en, token[0] ? true : inter, token[0] ? token : NULL, chat_id[0] ? chat_id : NULL, thresholds[0] ? thresholds : NULL);
+  config_save_telegram(token[0] ? true : en, token[0] ? true : inter,
+                       token[0] ? token : NULL, chat_id[0] ? chat_id : NULL,
+                       thresholds[0] ? thresholds : NULL);
 
   httpd_resp_set_type(req, "application/json; charset=utf-8");
-  return httpd_resp_sendstr(req, "{\"ok\":true,\"msg\":\"تم حفظ إعدادات بوت التيليجرام بنجاح! 🤖\"}");
+  return httpd_resp_sendstr(
+      req, "{\"ok\":true,\"msg\":\"تم حفظ إعدادات بوت التيليجرام بنجاح! 🤖\"}");
 }
 
 // -----------------------------------------------------------------------------
 // SECURE OVER-THE-AIR (OTA) AUTOMATED UPDATE HANDLERS
 // -----------------------------------------------------------------------------
 static esp_err_t ota_status_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
 
   ota_info_t info;
   ota_updater_get_info(&info);
@@ -1159,43 +1312,63 @@ static esp_err_t ota_status_handler(httpd_req_t *req) {
   char res[340];
   const char *state_str = "idle";
   switch (info.state) {
-    case OTA_STATE_IDLE: state_str = "idle"; break;
-    case OTA_STATE_PREPARING: state_str = "preparing"; break;
-    case OTA_STATE_DOWNLOADING: state_str = "downloading"; break;
-    case OTA_STATE_FLASHING: state_str = "flashing"; break;
-    case OTA_STATE_SUCCESS: state_str = "success"; break;
-    case OTA_STATE_FAILED: state_str = "failed"; break;
+  case OTA_STATE_IDLE:
+    state_str = "idle";
+    break;
+  case OTA_STATE_PREPARING:
+    state_str = "preparing";
+    break;
+  case OTA_STATE_DOWNLOADING:
+    state_str = "downloading";
+    break;
+  case OTA_STATE_FLASHING:
+    state_str = "flashing";
+    break;
+  case OTA_STATE_SUCCESS:
+    state_str = "success";
+    break;
+  case OTA_STATE_FAILED:
+    state_str = "failed";
+    break;
   }
 
-  snprintf(res, sizeof(res),
-    "{\"version\":\"%s\",\"build_timestamp\":\"%s\","
-    "\"running_partition\":\"%s\",\"target_partition\":\"%s\","
-    "\"ota_auto\":%s,\"state\":\"%s\",\"progress\":%u,\"written\":%" PRIu32 ",\"total\":%" PRIu32 ",\"error\":\"%s\"}",
-    info.current_version, info.build_timestamp,
-    info.running_partition, info.target_partition,
-    ota_auto_update_enabled ? "true" : "false",
-    state_str, (unsigned)info.progress_pct, info.written_bytes, info.total_bytes, info.error_msg);
+  snprintf(
+      res, sizeof(res),
+      "{\"version\":\"%s\",\"build_timestamp\":\"%s\","
+      "\"running_partition\":\"%s\",\"target_partition\":\"%s\","
+      "\"ota_auto\":%s,\"state\":\"%s\",\"progress\":%u,\"written\":%" PRIu32
+      ",\"total\":%" PRIu32 ",\"error\":\"%s\"}",
+      info.current_version, info.build_timestamp, info.running_partition,
+      info.target_partition, ota_auto_update_enabled ? "true" : "false",
+      state_str, (unsigned)info.progress_pct, info.written_bytes,
+      info.total_bytes, info.error_msg);
 
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, res);
 }
 
 static esp_err_t ota_update_handler(httpd_req_t *req) {
-  if (!require_admin(req)) return ESP_OK;
+  if (!require_admin(req))
+    return ESP_OK;
 
   // Check if this is a direct binary file upload (.bin)
-  // If Content-Type contains octet-stream or content length is substantial without form urlencoded
+  // If Content-Type contains octet-stream or content length is substantial
+  // without form urlencoded
   char content_type[64] = {0};
-  httpd_req_get_hdr_value_str(req, "Content-Type", content_type, sizeof(content_type));
+  httpd_req_get_hdr_value_str(req, "Content-Type", content_type,
+                              sizeof(content_type));
 
   if (strstr(content_type, "application/octet-stream") != NULL ||
-      (req->content_len > 1024 && strstr(content_type, "application/x-www-form-urlencoded") == NULL)) {
+      (req->content_len > 1024 &&
+       strstr(content_type, "application/x-www-form-urlencoded") == NULL)) {
     return ota_updater_handle_stream(req);
   }
 
-  // Otherwise, handle form with URL for automated remote OTA or auto_update toggle
+  // Otherwise, handle form with URL for automated remote OTA or auto_update
+  // toggle
   char body[280];
-  if (read_small_form(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
+  if (read_small_form(req, body, sizeof(body)) != ESP_OK)
+    return ESP_FAIL;
 
   char auto_s[8] = {0};
   form_value(body, "auto_update", auto_s, sizeof(auto_s));
@@ -1203,13 +1376,15 @@ static esp_err_t ota_update_handler(httpd_req_t *req) {
     bool en = (atoi(auto_s) != 0 || strcmp(auto_s, "true") == 0);
     config_save_ota_auto_update(en);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
-    return httpd_resp_sendstr(req, en ? "{\"ok\":true,\"ota_auto\":true}" : "{\"ok\":true,\"ota_auto\":false}");
+    return httpd_resp_sendstr(req, en ? "{\"ok\":true,\"ota_auto\":true}"
+                                      : "{\"ok\":true,\"ota_auto\":false}");
   }
 
   char url[220] = {0};
   form_value(body, "url", url, sizeof(url));
   if (url[0] == 0) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing URL parameter or binary file");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Missing URL parameter or binary file");
     return ESP_FAIL;
   }
 
@@ -1218,7 +1393,8 @@ static esp_err_t ota_update_handler(httpd_req_t *req) {
   if (err == ESP_OK) {
     return httpd_resp_sendstr(req, "{\"ok\":true,\"msg\":\"ota_started\"}");
   } else {
-    return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"ota_start_failed\"}");
+    return httpd_resp_sendstr(req,
+                              "{\"ok\":false,\"error\":\"ota_start_failed\"}");
   }
 }
 
@@ -1228,18 +1404,22 @@ static esp_err_t ota_check_handler(httpd_req_t *req) {
   char log[256] = {0};
   bool update_avail = false;
 
-  esp_err_t err = ota_check_remote_version(ver, sizeof(ver), url, sizeof(url), log, sizeof(log), &update_avail);
+  esp_err_t err = ota_check_remote_version(ver, sizeof(ver), url, sizeof(url),
+                                           log, sizeof(log), &update_avail);
 
   char res[800];
   if (err == ESP_OK) {
-    snprintf(res, sizeof(res),
-      "{\"ok\":true,\"current_version\":\"%s\",\"latest_version\":\"%s\","
-      "\"update_available\":%s,\"firmware_url\":\"%s\",\"changelog\":\"%s\"}",
-      ROUTER_FIRMWARE_VERSION, ver, update_avail ? "true" : "false", url, log);
+    snprintf(
+        res, sizeof(res),
+        "{\"ok\":true,\"current_version\":\"%s\",\"latest_version\":\"%s\","
+        "\"update_available\":%s,\"firmware_url\":\"%s\",\"changelog\":\"%s\"}",
+        ROUTER_FIRMWARE_VERSION, ver, update_avail ? "true" : "false", url,
+        log);
   } else {
-    snprintf(res, sizeof(res),
-      "{\"ok\":false,\"error\":\"check_failed\",\"current_version\":\"%s\"}",
-      ROUTER_FIRMWARE_VERSION);
+    snprintf(
+        res, sizeof(res),
+        "{\"ok\":false,\"error\":\"check_failed\",\"current_version\":\"%s\"}",
+        ROUTER_FIRMWARE_VERSION);
   }
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, res);
@@ -1259,31 +1439,69 @@ void web_server_start(void) {
   config.core_id = 0; // ESP32-C5 Unicore (Core 0)
 
   httpd_uri_t uris[] = {
-    { .uri = "/", .method = HTTP_GET, .handler = root_handler },
-    { .uri = "/api/devices", .method = HTTP_GET, .handler = devices_handler },
-    { .uri = "/api/login", .method = HTTP_POST, .handler = login_handler },
-    { .uri = "/api/logout", .method = HTTP_POST, .handler = logout_handler },
-    { .uri = "/api/password", .method = HTTP_POST, .handler = password_handler },
-    { .uri = "/api/device/save", .method = HTTP_POST, .handler = device_save_handler },
-    { .uri = "/api/device/block", .method = HTTP_POST, .handler = device_block_handler },
-    { .uri = "/api/device/gaming", .method = HTTP_POST, .handler = device_gaming_handler },
-    { .uri = "/api/device/reset", .method = HTTP_POST, .handler = device_reset_handler },
-    { .uri = "/api/device/delete", .method = HTTP_POST, .handler = device_delete_handler },
-    { .uri = "/api/main_quota", .method = HTTP_POST, .handler = main_quota_handler },
-    { .uri = "/meter/period", .method = HTTP_POST, .handler = meter_period_handler },
-    { .uri = "/meter/reset", .method = HTTP_POST, .handler = meter_reset_handler },
-    { .uri = "/api/performance", .method = HTTP_POST, .handler = performance_handler },
-    { .uri = "/api/meter_scale", .method = HTTP_POST, .handler = meter_scale_handler },
-    { .uri = "/api/scan/start", .method = HTTP_POST, .handler = scan_start_handler },
-    { .uri = "/api/scan/start", .method = HTTP_GET, .handler = scan_start_handler },
-    { .uri = "/api/scan", .method = HTTP_GET, .handler = scan_results_handler },
-    { .uri = "/save", .method = HTTP_POST, .handler = save_handler },
-    { .uri = "/api/system/reboot", .method = HTTP_POST, .handler = reboot_handler },
-    { .uri = "/api/auto_reboot", .method = HTTP_POST, .handler = auto_reboot_handler },
-    { .uri = "/api/telegram", .method = HTTP_POST, .handler = telegram_handler },
-    { .uri = "/api/ota/update", .method = HTTP_POST, .handler = ota_update_handler },
-    { .uri = "/api/ota/status", .method = HTTP_GET, .handler = ota_status_handler },
-    { .uri = "/api/ota/check", .method = HTTP_GET, .handler = ota_check_handler },
+      {.uri = "/", .method = HTTP_GET, .handler = root_handler},
+      {.uri = "/api/devices", .method = HTTP_GET, .handler = devices_handler},
+      {.uri = "/api/login", .method = HTTP_POST, .handler = login_handler},
+      {.uri = "/api/logout", .method = HTTP_POST, .handler = logout_handler},
+      {.uri = "/api/password",
+       .method = HTTP_POST,
+       .handler = password_handler},
+      {.uri = "/api/device/save",
+       .method = HTTP_POST,
+       .handler = device_save_handler},
+      {.uri = "/api/device/block",
+       .method = HTTP_POST,
+       .handler = device_block_handler},
+      {.uri = "/api/device/gaming",
+       .method = HTTP_POST,
+       .handler = device_gaming_handler},
+      {.uri = "/api/device/reset",
+       .method = HTTP_POST,
+       .handler = device_reset_handler},
+      {.uri = "/api/device/delete",
+       .method = HTTP_POST,
+       .handler = device_delete_handler},
+      {.uri = "/api/main_quota",
+       .method = HTTP_POST,
+       .handler = main_quota_handler},
+      {.uri = "/meter/period",
+       .method = HTTP_POST,
+       .handler = meter_period_handler},
+      {.uri = "/meter/reset",
+       .method = HTTP_POST,
+       .handler = meter_reset_handler},
+      {.uri = "/api/performance",
+       .method = HTTP_POST,
+       .handler = performance_handler},
+      {.uri = "/api/meter_scale",
+       .method = HTTP_POST,
+       .handler = meter_scale_handler},
+      {.uri = "/api/scan/start",
+       .method = HTTP_POST,
+       .handler = scan_start_handler},
+      {.uri = "/api/scan/start",
+       .method = HTTP_GET,
+       .handler = scan_start_handler},
+      {.uri = "/api/scan", .method = HTTP_GET, .handler = scan_results_handler},
+      {.uri = "/save", .method = HTTP_POST, .handler = save_handler},
+      {.uri = "/api/system/reboot",
+       .method = HTTP_POST,
+       .handler = reboot_handler},
+      {.uri = "/api/auto_reboot",
+       .method = HTTP_POST,
+       .handler = auto_reboot_handler},
+      {.uri = "/api/telegram",
+       .method = HTTP_POST,
+       .handler = telegram_handler},
+      {.uri = "/api/ota/update",
+       .method = HTTP_POST,
+       .handler = ota_update_handler},
+      {.uri = "/api/ota/status",
+       .method = HTTP_GET,
+       .handler = ota_status_handler},
+      {.uri = "/api/ota/check",
+       .method = HTTP_GET,
+       .handler = ota_check_handler},
   };
 
   if (httpd_start(&web_server, &config) == ESP_OK) {
@@ -1291,7 +1509,8 @@ void web_server_start(void) {
     for (size_t i = 0; i < count; ++i) {
       httpd_register_uri_handler(web_server, &uris[i]);
     }
-    ESP_LOGI(ROUTER_TAG, "High-throughput HTTP Web Server running on Core %d", config.core_id);
+    ESP_LOGI(ROUTER_TAG, "High-throughput HTTP Web Server running on Core %d",
+             config.core_id);
   } else {
     ESP_LOGE(ROUTER_TAG, "Failed to start HTTP Web Server");
   }
@@ -1303,4 +1522,3 @@ void web_server_stop(void) {
     web_server = NULL;
   }
 }
-

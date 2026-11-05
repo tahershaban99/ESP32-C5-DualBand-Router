@@ -14,6 +14,8 @@
 #define TAG "ota_updater"
 #define OTA_BUF_SIZE 2048
 
+static char s_ota_chunk_buf[4096];
+
 static ota_info_t s_ota_info = {
   .state = OTA_STATE_IDLE,
   .progress_pct = 0,
@@ -203,12 +205,15 @@ esp_err_t ota_updater_handle_stream(httpd_req_t *req) {
 }
 
 // -----------------------------------------------------------------------------
-// Method 2: Automated Background Remote OTA Task (URL Download)
+// Method 2: Automated Background Remote OTA Task (URL Download with HTTP Range Resume)
 // -----------------------------------------------------------------------------
 static void ota_download_task(void *pvParameter) {
   (void)pvParameter;
   ESP_LOGI(TAG, "Starting automated remote OTA download from: %s", s_target_url);
   set_state(OTA_STATE_DOWNLOADING, 0, NULL);
+
+  // Allow 1.5s for any in-flight background TLS polling (e.g. Telegram) to cleanly finish
+  vTaskDelay(pdMS_TO_TICKS(1500));
 
   const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
   if (update_partition == NULL) {
@@ -218,138 +223,202 @@ static void ota_download_task(void *pvParameter) {
     return;
   }
 
-  esp_http_client_config_t config = {
-    .url = s_target_url,
-    .timeout_ms = 30000,
-    .buffer_size = 4096,
-    .buffer_size_tx = 1024,
-    .keep_alive_enable = true,
-    .crt_bundle_attach = esp_crt_bundle_attach,
-    .max_redirection_count = 5,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (client == NULL) {
-    ESP_LOGE(TAG, "Failed to initialize HTTP client");
-    set_state(OTA_STATE_FAILED, 0, "HTTP client initialization failed");
-    vTaskDelete(NULL);
-    return;
-  }
-
-  esp_err_t err = esp_http_client_open(client, 0);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to connect to remote OTA URL: %s", esp_err_to_name(err));
-    set_state(OTA_STATE_FAILED, 0, "Cannot connect to server");
-    esp_http_client_cleanup(client);
-    vTaskDelete(NULL);
-    return;
-  }
-
-  int content_length = esp_http_client_fetch_headers(client);
-  int status_code = esp_http_client_get_status_code(client);
-  if (status_code != 200) {
-    ESP_LOGE(TAG, "Remote OTA server returned HTTP status: %d", status_code);
-    char err_buf[48];
-    snprintf(err_buf, sizeof(err_buf), "Server returned HTTP %d", status_code);
-    set_state(OTA_STATE_FAILED, 0, err_buf);
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    vTaskDelete(NULL);
-    return;
-  }
-
   esp_ota_handle_t ota_handle = 0;
-  err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
-    set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    vTaskDelete(NULL);
-    return;
-  }
-
-  set_state(OTA_STATE_FLASHING, 0, NULL);
-  char *buf = (char *)malloc(4096);
-  if (!buf) {
-    ESP_LOGE(TAG, "Failed to allocate OTA buffer");
-    esp_ota_abort(ota_handle);
-    set_state(OTA_STATE_FAILED, 0, "Out of memory");
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    vTaskDelete(NULL);
-    return;
-  }
-
+  esp_err_t err = ESP_OK;
   uint32_t written = 0;
-  bool first = true;
-  int retry_cnt = 0;
+  int64_t total_firmware_size = -1;
+  bool first_chunk = true;
+  int reconnect_count = 0;
+  const int max_reconnect_attempts = 12;
 
-  while (1) {
-    int read_bytes = esp_http_client_read(client, buf, 4096);
-    if (read_bytes < 0) {
-      if (read_bytes == -ESP_ERR_HTTP_EAGAIN || errno == EAGAIN || errno == EINTR) {
-        if (retry_cnt++ < 30) {
-          ESP_LOGW(TAG, "HTTP read EAGAIN/timeout (retry %d/30)", retry_cnt);
-          vTaskDelay(pdMS_TO_TICKS(100));
-          continue;
+  while (total_firmware_size <= 0 || written < (uint32_t)total_firmware_size) {
+    esp_http_client_config_t config = {
+      .url = s_target_url,
+      .timeout_ms = 30000,
+      .buffer_size = 4096,
+      .buffer_size_tx = 1024,
+      .keep_alive_enable = true,
+      .crt_bundle_attach = esp_crt_bundle_attach,
+      .max_redirection_count = 5,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+      ESP_LOGE(TAG, "Failed to initialize HTTP client");
+      set_state(OTA_STATE_FAILED, 0, "HTTP client initialization failed");
+      break;
+    }
+
+    if (written > 0) {
+      char range_val[48];
+      snprintf(range_val, sizeof(range_val), "bytes=%" PRIu32 "-", written);
+      esp_http_client_set_header(client, "Range", range_val);
+      ESP_LOGI(TAG, "Resuming OTA download with Range header: %s", range_val);
+    }
+
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to connect to remote OTA URL: %s (attempt %d/%d)",
+               esp_err_to_name(err), reconnect_count + 1, max_reconnect_attempts);
+      esp_http_client_cleanup(client);
+      reconnect_count++;
+      if (reconnect_count >= max_reconnect_attempts) {
+        set_state(OTA_STATE_FAILED, 0, "Cannot connect to server");
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      continue;
+    }
+
+    int clen = esp_http_client_fetch_headers(client);
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "HTTP status: %d, content-length: %d, written: %" PRIu32, status_code, clen, written);
+
+    if (written == 0) {
+      if (status_code != 200 && status_code != 206) {
+        ESP_LOGE(TAG, "Remote OTA server returned HTTP status: %d", status_code);
+        char err_buf[48];
+        snprintf(err_buf, sizeof(err_buf), "Server returned HTTP %d", status_code);
+        set_state(OTA_STATE_FAILED, 0, err_buf);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        break;
+      }
+      if (clen > 0) {
+        total_firmware_size = clen;
+      }
+      err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
+        set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        break;
+      }
+      set_state(OTA_STATE_FLASHING, 0, NULL);
+    } else {
+      // Reconnection with Range
+      if (status_code == 200) {
+        ESP_LOGW(TAG, "Server returned 200 instead of 206 on Range request; restarting flash from 0");
+        if (ota_handle != 0) {
+          esp_ota_abort(ota_handle);
+          ota_handle = 0;
+        }
+        written = 0;
+        first_chunk = true;
+        if (clen > 0) total_firmware_size = clen;
+        err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
+        if (err != ESP_OK) {
+          ESP_LOGE(TAG, "esp_ota_begin failed on restart: %s", esp_err_to_name(err));
+          set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
+          esp_http_client_close(client);
+          esp_http_client_cleanup(client);
+          break;
+        }
+      } else if (status_code != 206) {
+        ESP_LOGW(TAG, "Unexpected HTTP status %d on resume (attempt %d/%d)",
+                 status_code, reconnect_count + 1, max_reconnect_attempts);
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        reconnect_count++;
+        if (reconnect_count >= max_reconnect_attempts) {
+          set_state(OTA_STATE_FAILED, 0, "Resume failed (server status error)");
+          break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        continue;
+      }
+    }
+
+    bool conn_dropped = false;
+    int idle_retry_cnt = 0;
+
+    while (1) {
+      int read_bytes = esp_http_client_read(client, s_ota_chunk_buf, sizeof(s_ota_chunk_buf));
+      if (read_bytes < 0) {
+        if (read_bytes == -ESP_ERR_HTTP_EAGAIN || errno == EAGAIN || errno == EINTR) {
+          if (idle_retry_cnt++ < 30) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+          }
+        }
+        ESP_LOGW(TAG, "Transient network read error (%d, errno %d) at offset %" PRIu32 ". Triggering Range resume...",
+                 read_bytes, errno, written);
+        conn_dropped = true;
+        break;
+      }
+      idle_retry_cnt = 0;
+
+      if (read_bytes == 0) {
+        if (total_firmware_size > 0 && written >= (uint32_t)total_firmware_size) {
+          ESP_LOGI(TAG, "All %" PRId64 " bytes received successfully!", total_firmware_size);
+          break;
+        }
+        if (esp_http_client_is_complete_data_received(client)) {
+          ESP_LOGI(TAG, "Data stream completed (%" PRIu32 " bytes received)", written);
+          break;
+        }
+        ESP_LOGW(TAG, "Connection closed prematurely at %" PRIu32 " of %" PRId64 " bytes. Triggering Range resume...",
+                 written, total_firmware_size);
+        conn_dropped = true;
+        break;
+      }
+
+      if (first_chunk) {
+        first_chunk = false;
+        uint8_t magic = (uint8_t)s_ota_chunk_buf[0];
+        if (magic != 0xE9 && magic != 0xE7) {
+          ESP_LOGE(TAG, "Downloaded file is not a valid ESP32 firmware binary (magic=0x%02X)!", magic);
+          set_state(OTA_STATE_FAILED, 0, "Not a valid ESP32 firmware binary");
+          break;
         }
       }
-      ESP_LOGE(TAG, "Error reading HTTP stream: %d (errno %d)", read_bytes, errno);
-      esp_ota_abort(ota_handle);
-      set_state(OTA_STATE_FAILED, 0, "Network read error");
-      break;
-    }
-    retry_cnt = 0;
 
-    if (read_bytes == 0) {
-      if (esp_http_client_is_complete_data_received(client)) {
-        ESP_LOGI(TAG, "All data received successfully (%lu bytes)", (unsigned long)written);
+      err = esp_ota_write(ota_handle, s_ota_chunk_buf, read_bytes);
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_write failed at offset %" PRIu32 ": %s", written, esp_err_to_name(err));
+        set_state(OTA_STATE_FAILED, 0, "Flash write failed");
         break;
       }
-      if (content_length > 0 && written >= (uint32_t)content_length) {
-        ESP_LOGI(TAG, "Downloaded all %d bytes", content_length);
-        break;
-      }
-      ESP_LOGE(TAG, "Connection closed prematurely (%lu / %d bytes)", (unsigned long)written, content_length);
-      esp_ota_abort(ota_handle);
-      set_state(OTA_STATE_FAILED, 0, "Premature connection close");
-      break;
-    }
 
-    if (first) {
-      first = false;
-      uint8_t magic = (uint8_t)buf[0];
-      if (magic != 0xE9 && magic != 0xE7) {
-        ESP_LOGE(TAG, "Downloaded file is not a valid ESP32 firmware binary (magic=0x%02X)!", magic);
-        esp_ota_abort(ota_handle);
-        set_state(OTA_STATE_FAILED, 0, "Not a valid ESP32 firmware binary");
-        break;
+      written += read_bytes;
+      reconnect_count = 0; // Reset reconnection counter upon streaming data
+
+      if (total_firmware_size > 0) {
+        uint8_t pct = (uint8_t)(((uint64_t)written * 100ULL) / (uint64_t)total_firmware_size);
+        portENTER_CRITICAL(&s_ota_mux);
+        s_ota_info.written_bytes = written;
+        s_ota_info.total_bytes = (uint32_t)total_firmware_size;
+        s_ota_info.progress_pct = pct;
+        portEXIT_CRITICAL(&s_ota_mux);
       }
     }
 
-    err = esp_ota_write(ota_handle, buf, read_bytes);
-    if (err != ESP_OK) {
-      ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
-      esp_ota_abort(ota_handle);
-      set_state(OTA_STATE_FAILED, 0, "Flash write failed");
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+
+    if (s_ota_info.state == OTA_STATE_FAILED) {
+      if (ota_handle != 0) esp_ota_abort(ota_handle);
       break;
     }
 
-    written += read_bytes;
-    if (content_length > 0) {
-      uint8_t pct = (uint8_t)(((uint64_t)written * 100ULL) / (uint64_t)content_length);
-      portENTER_CRITICAL(&s_ota_mux);
-      s_ota_info.written_bytes = written;
-      s_ota_info.total_bytes = content_length;
-      s_ota_info.progress_pct = pct;
-      portEXIT_CRITICAL(&s_ota_mux);
+    if (total_firmware_size > 0 && written >= (uint32_t)total_firmware_size) {
+      break; // Complete
+    }
+
+    if (conn_dropped) {
+      reconnect_count++;
+      if (reconnect_count >= max_reconnect_attempts) {
+        ESP_LOGE(TAG, "Exceeded maximum reconnect attempts (%d). Aborting OTA.", max_reconnect_attempts);
+        if (ota_handle != 0) esp_ota_abort(ota_handle);
+        set_state(OTA_STATE_FAILED, 0, "Network read error (max retries)");
+        break;
+      }
+      ESP_LOGI(TAG, "Reconnecting via HTTP Range resume in 1.5s (attempt %d/%d, offset %" PRIu32 ")...",
+               reconnect_count, max_reconnect_attempts, written);
+      vTaskDelay(pdMS_TO_TICKS(1500));
     }
   }
-
-  free(buf);
-  esp_http_client_close(client);
-  esp_http_client_cleanup(client);
 
   if (s_ota_info.state == OTA_STATE_FAILED) {
     vTaskDelete(NULL);
