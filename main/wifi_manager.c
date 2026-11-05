@@ -1277,6 +1277,8 @@ void wifi_manager_init(void) {
   esp_wifi_set_max_tx_power(72);
 
   // Bandwidth & Protocol Tuning with Wi-Fi 6 (802.11ax) acceleration
+  wifi_bandwidth_t user_bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
+
   if (bmode == WIFI_BAND_MODE_AUTO) {
     // Enable BOTH 2.4GHz and 5GHz protocols on SoftAP and STA!
     // Because ESP32-C5 shares a single radio, when STA connects to a 5GHz router, SoftAP also operates on 5GHz!
@@ -1288,35 +1290,33 @@ void wifi_manager_init(void) {
     esp_wifi_set_protocols(WIFI_IF_STA, &dual_protos);
 
     wifi_bandwidths_t ap_bws = {
-      .ghz_2g = WIFI_BW20,
-      .ghz_5g = WIFI_BW20,
+      .ghz_2g = user_bw,
+      .ghz_5g = user_bw,
     };
     wifi_bandwidths_t sta_bws = {
-      .ghz_2g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
-      .ghz_5g = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40,
+      .ghz_2g = user_bw,
+      .ghz_5g = user_bw,
     };
     esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
     esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (AP+STA 2.4G/5G 11a/b/g/n/ac/ax, max_conn=%d)",
-             MAX_WIFI_STATIONS);
+    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (AP+STA 2.4G/5G 11a/b/g/n/ac/ax, bw=%s, max_conn=%d)",
+             (user_bw == WIFI_BW40) ? "40MHz" : "20MHz", MAX_WIFI_STATIONS);
   } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
     uint16_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
-    wifi_bandwidth_t bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
     esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, user_bw);
     esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, bw);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11a/n/ac/ax Wi-Fi 6, Ch 36, max_conn=%d)",
-             MAX_WIFI_STATIONS);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, user_bw);
+    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11a/n/ac/ax Wi-Fi 6, bw=%s, Ch 36, max_conn=%d)",
+             (user_bw == WIFI_BW40) ? "40MHz" : "20MHz", MAX_WIFI_STATIONS);
   } else {
     uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
-    wifi_bandwidth_t bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
     esp_wifi_set_protocol(WIFI_IF_AP, proto_2g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+    esp_wifi_set_bandwidth(WIFI_IF_AP, user_bw);
     esp_wifi_set_protocol(WIFI_IF_STA, proto_2g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, bw);
+    esp_wifi_set_bandwidth(WIFI_IF_STA, user_bw);
     ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz Only (11bgnax Wi-Fi 6, bw=%s, Ch 1, max_conn=%d)",
-             (bw == WIFI_BW40) ? "HT40" : "HT20", MAX_WIFI_STATIONS);
+             (user_bw == WIFI_BW40) ? "HT40" : "HT20", MAX_WIFI_STATIONS);
   }
 
   ESP_LOGI(ROUTER_TAG, "=================================================");
