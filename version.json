@@ -1,6 +1,6 @@
 {
-  "version": "v3.3.4",
+  "version": "v3.3.5",
   "release_date": "2026-11-05",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "تسريع اكتشاف انقطاع أجهزة مقوي الشبكة (Range Extender) إلى 15-20 ثانية، ومسح كاش ARP فور انتهاء المهلة، ومنع الإحياء التلقائي للأجهزة الخاملة بدون استهلاك للرام."
+  "changelog": "إصلاح خطأ انقطاع التحديث السحابي (Network read error) بإضافة دعم إعادة المحاولة التلقائية عند تأخر الشبكة (EAGAIN/Timeout)، واستخدام مخزن 4KB، وتفعيل Keep-Alive."
 }

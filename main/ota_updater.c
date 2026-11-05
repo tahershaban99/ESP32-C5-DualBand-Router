@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #define TAG "ota_updater"
 #define OTA_BUF_SIZE 2048
@@ -219,9 +220,10 @@ static void ota_download_task(void *pvParameter) {
 
   esp_http_client_config_t config = {
     .url = s_target_url,
-    .timeout_ms = 20000,
-    .buffer_size = OTA_BUF_SIZE,
+    .timeout_ms = 30000,
+    .buffer_size = 4096,
     .buffer_size_tx = 1024,
+    .keep_alive_enable = true,
     .crt_bundle_attach = esp_crt_bundle_attach,
     .max_redirection_count = 5,
   };
@@ -268,20 +270,50 @@ static void ota_download_task(void *pvParameter) {
   }
 
   set_state(OTA_STATE_FLASHING, 0, NULL);
-  char buf[OTA_BUF_SIZE];
+  char *buf = (char *)malloc(4096);
+  if (!buf) {
+    ESP_LOGE(TAG, "Failed to allocate OTA buffer");
+    esp_ota_abort(ota_handle);
+    set_state(OTA_STATE_FAILED, 0, "Out of memory");
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    vTaskDelete(NULL);
+    return;
+  }
+
   uint32_t written = 0;
   bool first = true;
+  int retry_cnt = 0;
 
   while (1) {
-    int read_bytes = esp_http_client_read(client, buf, sizeof(buf));
+    int read_bytes = esp_http_client_read(client, buf, 4096);
     if (read_bytes < 0) {
-      ESP_LOGE(TAG, "Error reading HTTP stream");
+      if (read_bytes == -ESP_ERR_HTTP_EAGAIN || errno == EAGAIN || errno == EINTR) {
+        if (retry_cnt++ < 30) {
+          ESP_LOGW(TAG, "HTTP read EAGAIN/timeout (retry %d/30)", retry_cnt);
+          vTaskDelay(pdMS_TO_TICKS(100));
+          continue;
+        }
+      }
+      ESP_LOGE(TAG, "Error reading HTTP stream: %d (errno %d)", read_bytes, errno);
       esp_ota_abort(ota_handle);
       set_state(OTA_STATE_FAILED, 0, "Network read error");
       break;
     }
+    retry_cnt = 0;
+
     if (read_bytes == 0) {
-      // Finished stream
+      if (esp_http_client_is_complete_data_received(client)) {
+        ESP_LOGI(TAG, "All data received successfully (%lu bytes)", (unsigned long)written);
+        break;
+      }
+      if (content_length > 0 && written >= (uint32_t)content_length) {
+        ESP_LOGI(TAG, "Downloaded all %d bytes", content_length);
+        break;
+      }
+      ESP_LOGE(TAG, "Connection closed prematurely (%lu / %d bytes)", (unsigned long)written, content_length);
+      esp_ota_abort(ota_handle);
+      set_state(OTA_STATE_FAILED, 0, "Premature connection close");
       break;
     }
 
@@ -315,6 +347,7 @@ static void ota_download_task(void *pvParameter) {
     }
   }
 
+  free(buf);
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
 
@@ -354,9 +387,15 @@ esp_err_t ota_updater_start_from_url(const char *url) {
   strncpy(s_target_url, url, sizeof(s_target_url) - 1);
   s_target_url[sizeof(s_target_url) - 1] = 0;
 
+  set_state(OTA_STATE_PREPARING, 0, NULL);
+
   // Pin OTA task to Core 0 for ESP32-C5 Unicore
   BaseType_t res = xTaskCreatePinnedToCore(ota_download_task, "ota_url_task", 8192, NULL, 5, NULL, 0);
-  return (res == pdPASS) ? ESP_OK : ESP_FAIL;
+  if (res != pdPASS) {
+    set_state(OTA_STATE_FAILED, 0, "Failed to create OTA task");
+    return ESP_FAIL;
+  }
+  return ESP_OK;
 }
 
 static void extract_json_field(const char *json, const char *key, char *out, size_t max_len) {
