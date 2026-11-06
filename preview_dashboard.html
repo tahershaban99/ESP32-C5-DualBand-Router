@@ -4549,7 +4549,7 @@ async function triggerScan() {
       return;
     }
     pollScanAttempts = 0;
-    setTimeout(pollScanResults, 1500);
+    setTimeout(pollScanResults, 800);
   } catch (e) {
     btn.disabled = false;
     btn.textContent = '🔍 فحص';
@@ -4580,8 +4580,8 @@ async function pollScanResults() {
       sel.onchange = () => { if (sel.value) document.getElementById('cfg_router_ssid').value = sel.value; };
       btn.disabled = false;
       btn.textContent = '🔍 فحص';
-    } else if (pollScanAttempts < 20) {
-      setTimeout(pollScanResults, 1000);
+    } else if (pollScanAttempts < 45) {
+      setTimeout(pollScanResults, 800);
     } else {
       btn.disabled = false;
       btn.textContent = '🔍 فحص';

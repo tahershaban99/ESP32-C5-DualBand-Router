@@ -16,6 +16,7 @@ extern bool scan_ready;
 void wifi_manager_init(void);
 void wifi_manager_refresh_clients(void);
 bool wifi_manager_start_scan(void);
+void wifi_manager_check_scan_watchdog(void);
 void wifi_manager_deauth_station(uint16_t aid);
 void wifi_manager_advertise_uplink_dns(void);
 void wifi_manager_send_arp_probe(uint32_t ip);

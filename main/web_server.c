@@ -1094,6 +1094,7 @@ static esp_err_t scan_start_handler(httpd_req_t *req) {
 }
 
 static esp_err_t scan_results_handler(httpd_req_t *req) {
+  wifi_manager_check_scan_watchdog();
   char buf[896];
   httpd_resp_set_type(req, "application/json; charset=utf-8");
 
