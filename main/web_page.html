@@ -1771,22 +1771,9 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         متصل بالإنترنت 🟢
       </span>
     </div>
-    <p class="note" style="margin-bottom:16px">قم بمسح شبكات الواي فاي القريبة والاتصال برواتر المودم الأساسي لتوزيع وتوجيه الإنترنت عبر تقنية NAPT.</p>
+    <p class="note" style="margin-bottom:16px">قم بإدخال بيانات شبكة الواي فاي للراوتر الأساسي لتوزيع وتوجيه الإنترنت عبر تقنية NAPT.</p>
 
     <form method="post" action="/save" onsubmit="if(!isAdmin){openLoginModal();return false;}">
-      <!-- NEARBY NETWORKS SCAN -->
-      <div class="form-group" style="margin-bottom:14px">
-        <label style="font-weight:700;margin-bottom:6px;display:block">شبكات الواي فاي القريبة:</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button type="button" id="scan_button" class="primary-btn" style="padding:10px 20px;font-size:0.88rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--accent-grad);border:none;box-shadow:0 3px 12px var(--accent-shadow);flex-shrink:0" onclick="triggerScan()">
-            🔍 فحص
-          </button>
-          <select id="scan_results" style="flex:1;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);color:var(--text);border-radius:10px;font-size:0.9rem">
-            <option value="">اضغط فحص لاكتشاف شبكات الواي فاي المحيطة</option>
-          </select>
-        </div>
-      </div>
-
       <!-- UPSTREAM SSID -->
       <div class="form-group" style="margin-bottom:14px">
         <label style="font-weight:700;margin-bottom:6px;display:block">اسم شبكة الراوتر الأساسي (SSID):</label>
@@ -4560,65 +4547,6 @@ async function rebootRouter() {
     });
     showToast('جاري إعادة تشغيل الراوتر الآن... انتظر حوالي 10 ثوانٍ.');
   } catch (e) {}
-}
-
-let pollScanAttempts = 0;
-async function triggerScan() {
-  let btn = document.getElementById('scan_button');
-  btn.disabled = true;
-  btn.textContent = '⏳ جاري الفحص...';
-  try {
-    let res = await fetch('/api/scan/start?t=' + Date.now(), {method: 'POST'});
-    let json = await res.json();
-    if (!json.ok) {
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-      alert('الواي فاي مشغول حالياً، يرجى إعادة المحاولة بعد ثوانٍ');
-      return;
-    }
-    pollScanAttempts = 0;
-    setTimeout(pollScanResults, 800);
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '🔍 فحص';
-    alert('حدث خطأ في الاتصال بالراوتر أثناء بدء الفحص');
-  }
-}
-
-async function pollScanResults() {
-  let btn = document.getElementById('scan_button');
-  pollScanAttempts++;
-  try {
-    let res = await fetch('/api/scan?t=' + Date.now());
-    let data = await res.json();
-    if (data.ready) {
-      let sel = document.getElementById('scan_results');
-      if (data.results && data.results.length > 0) {
-        sel.innerHTML = `<option value="">اختر شبكة للاتصال بها (${data.results.length} شبكة)</option>`;
-        data.results.forEach(net => {
-          let opt = document.createElement('option');
-          opt.value = net.ssid;
-          let bandTag = net.band === 2 ? '[5 GHz 🚀]' : '[2.4 GHz 📶]';
-          opt.textContent = `${bandTag} ${net.ssid} (${net.rssi} dBm)${net.secured ? ' 🔒' : ''}`;
-          sel.appendChild(opt);
-        });
-      } else {
-        sel.innerHTML = '<option value="">لم يتم العثور على شبكات (اضغط فحص لإعادة المحاولة)</option>';
-      }
-      sel.onchange = () => { if (sel.value) document.getElementById('cfg_router_ssid').value = sel.value; };
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-    } else if (pollScanAttempts < 45) {
-      setTimeout(pollScanResults, 800);
-    } else {
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-      alert('انتهت مهلة انتظار نتائج الفحص، يرجى المحاولة ثانية');
-    }
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '🔍 فحص';
-  }
 }
 
 setInterval(refreshData, 2000);

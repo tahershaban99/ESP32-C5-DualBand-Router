@@ -1083,60 +1083,6 @@ static esp_err_t meter_scale_handler(httpd_req_t *req) {
 }
 
 // -----------------------------------------------------------------------------
-// WI-FI SCANNING
-// -----------------------------------------------------------------------------
-static esp_err_t scan_start_handler(httpd_req_t *req) {
-  ESP_LOGI(ROUTER_TAG, "Client requested Wi-Fi scan via /api/scan/start");
-  bool ok = wifi_manager_start_scan();
-  httpd_resp_set_type(req, "application/json; charset=utf-8");
-  return httpd_resp_sendstr(req, ok ? "{\"ok\":true}"
-                                    : "{\"ok\":false,\"error\":\"busy\"}");
-}
-
-static esp_err_t scan_results_handler(httpd_req_t *req) {
-  wifi_manager_check_scan_watchdog();
-  char buf[896];
-  httpd_resp_set_type(req, "application/json; charset=utf-8");
-
-  size_t used = (size_t)snprintf(
-      buf, sizeof(buf), "{\"ready\":%s,\"running\":%s,\"results\":[",
-      scan_ready ? "true" : "false", scan_running ? "true" : "false");
-
-  esp_err_t err = httpd_resp_send_chunk(req, buf, used);
-  if (err != ESP_OK)
-    return err;
-
-  portENTER_CRITICAL(&data_mux);
-  uint16_t count = scan_result_count;
-  scan_entry_t entries[MAX_SCAN_RESULTS];
-  memcpy(entries, scan_results, sizeof(entries));
-  portEXIT_CRITICAL(&data_mux);
-
-  bool first = true;
-  for (uint16_t i = 0; i < count; ++i) {
-    used = 0;
-    if (!first)
-      buf[used++] = ',';
-    first = false;
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used, "{\"ssid\":");
-    used = append_json_string(buf, sizeof(buf), used, entries[i].ssid);
-    used += (size_t)snprintf(
-        buf + used, sizeof(buf) - used,
-        ",\"rssi\":%d,\"secured\":%s,\"band\":%u}", entries[i].rssi,
-        entries[i].secured ? "true" : "false", (unsigned)entries[i].band);
-
-    err = httpd_resp_send_chunk(req, buf, used);
-    if (err != ESP_OK)
-      return err;
-  }
-
-  err = httpd_resp_send_chunk(req, "]}", 2);
-  if (err != ESP_OK)
-    return err;
-  return httpd_resp_send_chunk(req, NULL, 0);
-}
-
-// -----------------------------------------------------------------------------
 // SAVE WI-FI SETTINGS & REBOOT
 // -----------------------------------------------------------------------------
 static esp_err_t save_handler(httpd_req_t *req) {
@@ -1477,13 +1423,6 @@ void web_server_start(void) {
       {.uri = "/api/meter_scale",
        .method = HTTP_POST,
        .handler = meter_scale_handler},
-      {.uri = "/api/scan/start",
-       .method = HTTP_POST,
-       .handler = scan_start_handler},
-      {.uri = "/api/scan/start",
-       .method = HTTP_GET,
-       .handler = scan_start_handler},
-      {.uri = "/api/scan", .method = HTTP_GET, .handler = scan_results_handler},
       {.uri = "/save", .method = HTTP_POST, .handler = save_handler},
       {.uri = "/api/system/reboot",
        .method = HTTP_POST,

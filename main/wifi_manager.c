@@ -21,87 +21,6 @@
 esp_netif_t *ap_netif = NULL;
 esp_netif_t *sta_netif = NULL;
 
-scan_entry_t scan_results[MAX_SCAN_RESULTS];
-uint16_t scan_result_count = 0;
-bool scan_running = false;
-bool scan_ready = false;
-static uint32_t scan_started_s = 0;
-
-static void wifi_scan_task(void *pv) {
-  wifi_scan_default_params_t scan_params = {
-    .scan_time = {
-      .active = { .min = 35, .max = 75 },
-      .passive = 120,
-    },
-    .home_chan_dwell_time = 30,
-  };
-  esp_wifi_set_scan_parameters(&scan_params);
-
-  // Synchronous scan in background task: sweeps all allowed channels cleanly
-  esp_err_t err = esp_wifi_scan_start(NULL, true);
-  if (err == ESP_OK) {
-    uint16_t found = 0;
-    esp_err_t num_err = esp_wifi_scan_get_ap_num(&found);
-    if (num_err != ESP_OK) found = 0;
-    ESP_LOGI(ROUTER_TAG, "Scan completed: APs detected = %u", (unsigned)found);
-
-    uint16_t fetch_count = (found > MAX_SCAN_RESULTS) ? MAX_SCAN_RESULTS : found;
-    if (fetch_count > 0) {
-      wifi_ap_record_t records[MAX_SCAN_RESULTS];
-      if (esp_wifi_scan_get_ap_records(&fetch_count, records) == ESP_OK) {
-        portENTER_CRITICAL(&data_mux);
-        scan_result_count = fetch_count;
-        memset(scan_results, 0, sizeof(scan_results));
-        for (uint16_t i = 0; i < fetch_count; ++i) {
-          memcpy(scan_results[i].ssid, records[i].ssid, sizeof(scan_results[i].ssid) - 1);
-          scan_results[i].ssid[sizeof(scan_results[i].ssid) - 1] = 0;
-          scan_results[i].rssi = records[i].rssi;
-          scan_results[i].secured = (records[i].authmode != WIFI_AUTH_OPEN);
-          scan_results[i].band = (records[i].primary >= 36) ? 2 : 1;
-          ESP_LOGI(ROUTER_TAG, "  Found AP[%u]: '%s', Ch %u (%s), RSSI %d dBm, %s",
-                   (unsigned)i, scan_results[i].ssid, (unsigned)records[i].primary,
-                   (scan_results[i].band == 2) ? "5GHz" : "2.4GHz",
-                   (int)scan_results[i].rssi, scan_results[i].secured ? "Secured" : "Open");
-        }
-        portEXIT_CRITICAL(&data_mux);
-      }
-    } else {
-      esp_wifi_clear_ap_list();
-      portENTER_CRITICAL(&data_mux);
-      scan_result_count = 0;
-      portEXIT_CRITICAL(&data_mux);
-    }
-  } else {
-    ESP_LOGW(ROUTER_TAG, "esp_wifi_scan_start blocking failed: %s (0x%x)", esp_err_to_name(err), err);
-    esp_wifi_clear_ap_list();
-    portENTER_CRITICAL(&data_mux);
-    scan_result_count = 0;
-    portEXIT_CRITICAL(&data_mux);
-  }
-
-  portENTER_CRITICAL(&data_mux);
-  scan_running = false;
-  scan_ready = true;
-  scan_started_s = 0;
-  portEXIT_CRITICAL(&data_mux);
-
-  vTaskDelete(NULL);
-}
-
-void wifi_manager_check_scan_watchdog(void) {
-  if (!scan_running) return;
-  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-  if (scan_started_s > 0 && (now_s - scan_started_s) > 16) {
-    ESP_LOGW(ROUTER_TAG, "Scan watchdog: Wi-Fi scan exceeded 16s timeout - recovering state");
-    esp_wifi_scan_stop();
-    portENTER_CRITICAL(&data_mux);
-    scan_running = false;
-    scan_ready = true;
-    scan_started_s = 0;
-    portEXIT_CRITICAL(&data_mux);
-  }
-}
-
 typedef struct dhcps_list_node {
   void *pnode;
   struct dhcps_list_node *pnext;
@@ -651,13 +570,6 @@ static void handle_ap_station_disconnected(const wifi_event_ap_stadisconnected_t
 static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_AP_START) {
     tcpip_try_callback(dhcps_sync_tcpip_cb, NULL);
-  } else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
-    if (has_saved_config) {
-      wifi_ap_record_t sta_ap;
-      if (esp_wifi_sta_get_ap_info(&sta_ap) != ESP_OK) {
-        esp_wifi_connect();
-      }
-    }
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
     // Pause any background STA scan for 8s so the connecting client completes WPA2 + DHCP handshake without channel hopping
     uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
@@ -668,7 +580,7 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STADISCONNECTED) {
     handle_ap_station_disconnected((const wifi_event_ap_stadisconnected_t *)data);
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-    if (has_saved_config && !scan_running) esp_wifi_connect();
+    if (has_saved_config) esp_wifi_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     wifi_event_sta_disconnected_t *disc = (wifi_event_sta_disconnected_t *)data;
     uint8_t reason = disc ? disc->reason : 0;
@@ -1123,46 +1035,11 @@ void wifi_manager_refresh_clients(void) {
   meter_rebuild_fast_lookup();
   portEXIT_CRITICAL(&data_mux);
 
-  wifi_manager_check_scan_watchdog();
-
   // Non-blocking STA reconnect handler: avoids stalling sys_evt or starving SoftAP association
-  if (has_saved_config && !scan_running && !sta_connected_now && next_sta_reconnect_s > 0 && now_s >= next_sta_reconnect_s) {
+  if (has_saved_config && !sta_connected_now && next_sta_reconnect_s > 0 && now_s >= next_sta_reconnect_s) {
     next_sta_reconnect_s = now_s + 15;
     esp_wifi_connect();
   }
-}
-
-bool wifi_manager_start_scan(void) {
-  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-  portENTER_CRITICAL(&data_mux);
-  if (scan_running) {
-    if (scan_started_s > 0 && (now_s - scan_started_s) > 16) {
-      // Prior scan was hung/timed out; auto unstick
-      scan_running = false;
-    } else {
-      portEXIT_CRITICAL(&data_mux);
-      ESP_LOGW(ROUTER_TAG, "Wi-Fi scan requested while already running");
-      return false;
-    }
-  }
-  scan_running = true;
-  scan_ready = false;
-  scan_result_count = 0;
-  scan_started_s = now_s;
-  portEXIT_CRITICAL(&data_mux);
-
-  BaseType_t ret = xTaskCreatePinnedToCore(wifi_scan_task, "wifi_scan", 4096, NULL, 3, NULL, 0);
-  if (ret != pdPASS) {
-    ESP_LOGE(ROUTER_TAG, "Failed to create wifi_scan task");
-    portENTER_CRITICAL(&data_mux);
-    scan_running = false;
-    scan_ready = true;
-    scan_started_s = 0;
-    portEXIT_CRITICAL(&data_mux);
-    return false;
-  }
-  ESP_LOGI(ROUTER_TAG, "Wi-Fi dedicated scan task launched");
-  return true;
 }
 
 void wifi_manager_deauth_station(uint16_t aid) {

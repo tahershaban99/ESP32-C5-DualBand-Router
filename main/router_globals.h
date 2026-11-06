@@ -10,7 +10,6 @@
 #define MAX_CLIENTS 20           // L3 IP/MAC tracking table for up to 20 concurrent active devices
 #define MAX_WIFI_STATIONS 12     // SoftAP maximum direct Wi-Fi connections
 #define MAX_RECORDS 24           // Persistent stored records in NVS (saves ~19KB static RAM)
-#define MAX_SCAN_RESULTS 16      // Nearby Wi-Fi scan results
 
 // SoftAP Subnet 192.168.4.1/24
 #define AP_IP_A 192
@@ -84,13 +83,6 @@ typedef struct {
   uint32_t cur_up_bps;
   uint32_t cur_down_bps;
 } device_live_speed_t;
-
-typedef struct {
-  char ssid[33];
-  int8_t rssi;
-  bool secured;
-  uint8_t band; // 1 = 2.4GHz, 2 = 5GHz
-} scan_entry_t;
 
 // Fast O(1) device runtime cache structure for direct lookup array ip_lookup[256]
 typedef struct {
