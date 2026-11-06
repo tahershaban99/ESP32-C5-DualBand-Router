@@ -913,8 +913,17 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
 
   // Byte Accounting & Quota Enforcement (Pure Integer Math)
   if (dev->usage_idx >= 0 && (size_t)dev->usage_idx < usage_count) {
+    // 1. Live speed tracking: ALWAYS accumulates pure raw unscaled physical bytes
+    if (is_upload) {
+      device_live_speeds[dev->usage_idx].interval_up_bytes += bytes;
+    } else {
+      device_live_speeds[dev->usage_idx].interval_down_bytes += bytes;
+    }
+
+    // 2. Metered bytes calculation
     uint64_t metered_bytes = bytes;
-    if (router_meter_scale_pct != 100) {
+    if (router_meter_scale_mode == 1 && router_meter_scale_pct != 100) {
+      // Cumulative Mode: scale new incoming/outgoing streaming packets
       metered_bytes = ((uint64_t)bytes * (uint64_t)router_meter_scale_pct) / 100ULL;
     }
     if (is_upload) {
@@ -929,6 +938,9 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
       uint64_t quota = device_policies[dev->policy_idx].quota_bytes;
       if (quota > 0) {
         uint64_t tot = usage_records[dev->usage_idx].upload_bytes + usage_records[dev->usage_idx].download_bytes;
+        if (router_meter_scale_mode == 0 && router_meter_scale_pct != 100) {
+          tot = (tot * (uint64_t)router_meter_scale_pct) / 100ULL;
+        }
         if (tot >= quota) {
           device_policies[dev->policy_idx].blocked = true;
           dev->blocked = true;
@@ -955,25 +967,23 @@ void meter_tick_second(uint32_t elapsed_s) {
   for (size_t i = 0; i < usage_count; ++i) {
     uint64_t cur_up = usage_records[i].upload_bytes;
     uint64_t cur_down = usage_records[i].download_bytes;
+    if (router_meter_scale_mode == 0 && router_meter_scale_pct != 100) {
+      cur_up = (cur_up * (uint64_t)router_meter_scale_pct) / 100ULL;
+      cur_down = (cur_down * (uint64_t)router_meter_scale_pct) / 100ULL;
+    }
     grand_total_used += (cur_up + cur_down);
 
-    if (cur_up >= device_live_speeds[i].last_up_bytes) {
-      uint64_t diff = cur_up - device_live_speeds[i].last_up_bytes;
-      uint32_t inst_bps = (uint32_t)((diff * 8ULL) / elapsed_s);
-      device_live_speeds[i].cur_up_bps = (device_live_speeds[i].cur_up_bps == 0) ? inst_bps : ((inst_bps * 7 + device_live_speeds[i].cur_up_bps * 3) / 10);
-    } else {
-      device_live_speeds[i].cur_up_bps = 0;
-    }
-    device_live_speeds[i].last_up_bytes = cur_up;
+    // True physical line speed calculation from raw interval bytes (100% unscaled)
+    uint32_t up_bytes = device_live_speeds[i].interval_up_bytes;
+    device_live_speeds[i].interval_up_bytes = 0;
+    uint32_t down_bytes = device_live_speeds[i].interval_down_bytes;
+    device_live_speeds[i].interval_down_bytes = 0;
 
-    if (cur_down >= device_live_speeds[i].last_down_bytes) {
-      uint64_t diff = cur_down - device_live_speeds[i].last_down_bytes;
-      uint32_t inst_bps = (uint32_t)((diff * 8ULL) / elapsed_s);
-      device_live_speeds[i].cur_down_bps = (device_live_speeds[i].cur_down_bps == 0) ? inst_bps : ((inst_bps * 7 + device_live_speeds[i].cur_down_bps * 3) / 10);
-    } else {
-      device_live_speeds[i].cur_down_bps = 0;
-    }
-    device_live_speeds[i].last_down_bytes = cur_down;
+    uint32_t inst_up_bps = (uint32_t)(((uint64_t)up_bytes * 8ULL) / elapsed_s);
+    device_live_speeds[i].cur_up_bps = (device_live_speeds[i].cur_up_bps == 0) ? inst_up_bps : ((inst_up_bps * 7 + device_live_speeds[i].cur_up_bps * 3) / 10);
+
+    uint32_t inst_down_bps = (uint32_t)(((uint64_t)down_bytes * 8ULL) / elapsed_s);
+    device_live_speeds[i].cur_down_bps = (device_live_speeds[i].cur_down_bps == 0) ? inst_down_bps : ((inst_down_bps * 7 + device_live_speeds[i].cur_down_bps * 3) / 10);
 
     agg_up_bps += device_live_speeds[i].cur_up_bps;
     agg_down_bps += device_live_speeds[i].cur_down_bps;

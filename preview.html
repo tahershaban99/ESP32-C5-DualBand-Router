@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>راوتر ESP32 المتقدم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 :root[data-theme='sunset']{
   --bg-gradient: radial-gradient(circle at 20% 20%, #1f1435 0%, #120f24 50%, #0a0b16 100%);
   --glass-bg: rgba(28, 25, 48, 0.65);
@@ -31,6 +35,15 @@
   --flow-up-color: #fb923c;
   --flow-up-bg: rgba(251, 146, 60, 0.12);
   --flow-up-border: rgba(251, 146, 60, 0.25);
+  --tbl-ip-color: #38bdf8;
+  --tbl-dl-color: #38bdf8;
+  --tbl-dl-bg: rgba(56, 189, 248, 0.12);
+  --tbl-dl-border: rgba(56, 189, 248, 0.25);
+  --tbl-ul-color: #c084fc;
+  --tbl-ul-bg: rgba(192, 132, 252, 0.12);
+  --tbl-ul-border: rgba(192, 132, 252, 0.25);
+  --tbl-tg-color: #93c5fd;
+  --tbl-tg-border: rgba(96, 165, 250, 0.35);
 }
 :root[data-theme='matrix']{
   --bg-gradient: radial-gradient(circle at 30% 20%, #0d2217 0%, #0a1811 50%, #050d09 100%);
@@ -48,20 +61,29 @@
   --green: #00ff9d;
   --red: #f43f5e;
   --amber: #fbbf24;
-  --cyan: #38bdf8;
-  --badge-gaming-bg: rgba(56, 189, 248, 0.15);
-  --badge-gaming-border: rgba(56, 189, 248, 0.4);
-  --badge-gaming-color: #7dd3fc;
+  --cyan: #6ee7b7;
+  --badge-gaming-bg: rgba(0, 255, 157, 0.15);
+  --badge-gaming-border: rgba(0, 255, 157, 0.4);
+  --badge-gaming-color: #a7f3d0;
   --flow-down-color: #00ff9d;
   --flow-down-bg: rgba(0, 255, 157, 0.1);
   --flow-down-border: rgba(0, 255, 157, 0.25);
-  --flow-up-color: #38bdf8;
-  --flow-up-bg: rgba(56, 189, 248, 0.1);
-  --flow-up-border: rgba(56, 189, 248, 0.25);
+  --flow-up-color: #a3e635;
+  --flow-up-bg: rgba(163, 230, 53, 0.1);
+  --flow-up-border: rgba(163, 230, 53, 0.25);
+  --tbl-ip-color: #6ee7b7;
+  --tbl-dl-color: #00ff9d;
+  --tbl-dl-bg: rgba(0, 255, 157, 0.12);
+  --tbl-dl-border: rgba(0, 255, 157, 0.3);
+  --tbl-ul-color: #a3e635;
+  --tbl-ul-bg: rgba(163, 230, 53, 0.12);
+  --tbl-ul-border: rgba(163, 230, 53, 0.3);
+  --tbl-tg-color: #a7f3d0;
+  --tbl-tg-border: rgba(0, 255, 157, 0.35);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
-  font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  font-family:'Cairo','Tajawal',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg-gradient);
   background-attachment:fixed;
   color:var(--text);
@@ -592,9 +614,7 @@ canvas{width:100%!important;height:130px!important;border-radius:8px;background:
 .cards-view{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
 .table-view{display:none;overflow-x:auto}
 @media(max-width:900px){
-  .view-btns{display:none!important}
-  .table-view{display:none!important}
-  .cards-view{display:grid!important;grid-template-columns:1fr!important}
+  .cards-view{grid-template-columns:1fr!important}
 }
 .dev-card{padding:16px;display:flex;flex-direction:column;gap:12px}
 .dev-card.blocked{border-color:rgba(239,68,68,0.5);background:rgba(40,15,20,0.6)}
@@ -1177,6 +1197,411 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
+/* =====================================================================
+   ZERO-LAYOUT-SHIFT RESPONSIVE DEVICES TABLE & FLOATING TOAST
+   ===================================================================== */
+.tabular-nums {
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" !important;
+}
+
+.table-responsive-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+  border-radius: 12px;
+}
+
+.table-responsive-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+table.devices-table {
+  width: 100% !important;
+  min-width: 1180px !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+  text-align: right;
+  margin: 0;
+}
+
+/* 8 Fixed Column Widths (Sum = 100%) - Balanced layout */
+.devices-table th:nth-child(1), .devices-table td:nth-child(1) { width: 6% !important; text-align: center; }  /* الحالة */
+.devices-table th:nth-child(2), .devices-table td:nth-child(2) { width: 16% !important; text-align: right; } /* اسم الجهاز */
+.devices-table th:nth-child(3), .devices-table td:nth-child(3) { width: 14% !important; text-align: center; }/* IP / MAC */
+.devices-table th:nth-child(4), .devices-table td:nth-child(4) { width: 13% !important; text-align: right; } /* السرعة اللحظية */
+.devices-table th:nth-child(5), .devices-table td:nth-child(5) { width: 14% !important; text-align: right; } /* الباقة والاستهلاك */
+.devices-table th:nth-child(6), .devices-table td:nth-child(6) { width: 12% !important; text-align: center; }/* تحديد السرعة */
+.devices-table th:nth-child(7), .devices-table td:nth-child(7) { width: 8% !important; text-align: center; }  /* معرف التيليجرام */
+.devices-table th:nth-child(8), .devices-table td:nth-child(8) { width: 17% !important; text-align: center; } /* الإجراءات */
+
+.devices-table thead th {
+  background-color: rgba(22, 32, 51, 0.85);
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.devices-table tbody tr {
+  height: 68px !important;
+  max-height: 68px !important;
+  min-height: 68px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background-color 0.15s ease;
+}
+
+.devices-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.035);
+}
+
+.devices-table tbody td {
+  padding: 6px 8px !important;
+  vertical-align: middle !important;
+  overflow: hidden;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Status Dot */
+.status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.online {
+  background-color: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+}
+.status-dot.offline {
+  background-color: #64748b;
+}
+.status-dot.blocked {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.75);
+}
+
+/* Device Info */
+.tbl-device-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tbl-device-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+.tbl-device-text {
+  min-width: 0;
+  flex: 1;
+}
+.tbl-device-name-input {
+  width: 100%;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+  background: transparent;
+  padding: 1px 0;
+  outline: none;
+  font-family: inherit;
+}
+.tbl-device-name-input:focus {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.tbl-device-type {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Network IP/MAC */
+.tbl-net-info {
+  direction: ltr;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.tbl-ip-addr {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--tbl-ip-color, #38bdf8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tbl-mac-addr {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+/* Speed Pills */
+.tbl-speed-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tbl-speed-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tbl-speed-pill.down {
+  background: var(--tbl-dl-bg, rgba(56, 189, 248, 0.12));
+  color: var(--tbl-dl-color, #38bdf8);
+  border: 1px solid var(--tbl-dl-border, rgba(56, 189, 248, 0.25));
+}
+.tbl-speed-pill.up {
+  background: var(--tbl-ul-bg, rgba(192, 132, 252, 0.12));
+  color: var(--tbl-ul-color, #c084fc);
+  border: 1px solid var(--tbl-ul-border, rgba(192, 132, 252, 0.25));
+}
+.tbl-speed-val {
+  direction: ltr;
+  display: inline-block;
+  min-width: 68px;
+  text-align: left;
+}
+
+/* Quota Wrapper */
+.tbl-quota-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tbl-quota-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+.tbl-progress-track {
+  width: 100%;
+  height: 5px;
+  background: #1e293b;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.tbl-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease, background-color 0.35s ease;
+}
+
+/* Speed Limit Inputs */
+.tbl-limit-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.tbl-limit-box {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 1px 3px;
+}
+.tbl-limit-box.down { border-color: var(--tbl-dl-border, rgba(56, 189, 248, 0.35)); }
+.tbl-limit-box.up { border-color: var(--tbl-ul-border, rgba(192, 132, 252, 0.35)); }
+.tbl-limit-input {
+  width: 38px;
+  height: 22px;
+  padding: 1px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: center;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: inherit;
+}
+.tbl-limit-box.down .tbl-limit-input { color: var(--tbl-dl-color, #38bdf8); }
+.tbl-limit-box.up .tbl-limit-input { color: var(--tbl-ul-color, #c084fc); }
+
+/* Action Icon Buttons */
+.tbl-actions-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+.tbl-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.tbl-icon-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Distinctive semantic button styles */
+.tbl-icon-btn.btn-save {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34d399;
+}
+.tbl-icon-btn.btn-save:hover {
+  background: rgba(16, 185, 129, 0.35);
+  border-color: #10b981;
+}
+
+.tbl-icon-btn.btn-gaming {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+}
+.tbl-icon-btn.btn-gaming:hover {
+  background: rgba(245, 158, 11, 0.35);
+  border-color: #f59e0b;
+}
+.tbl-icon-btn.btn-gaming.active {
+  background: rgba(245, 158, 11, 0.4);
+  border-color: #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.55);
+}
+
+.tbl-icon-btn.btn-block {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+.tbl-icon-btn.btn-block:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: #ef4444;
+}
+
+.tbl-icon-btn.btn-unblock {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+.tbl-icon-btn.btn-unblock:hover {
+  background: rgba(16, 185, 129, 0.4);
+  border-color: #10b981;
+}
+
+.tbl-icon-btn.btn-reset {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #cbd5e1;
+}
+.tbl-icon-btn.btn-reset:hover {
+  background: rgba(148, 163, 184, 0.32);
+  border-color: #94a3b8;
+}
+
+.tbl-icon-btn.btn-delete {
+  background: rgba(159, 18, 57, 0.22);
+  border-color: rgba(225, 29, 72, 0.4);
+  color: #fda4af;
+}
+.tbl-icon-btn.btn-delete:hover {
+  background: rgba(225, 29, 72, 0.38);
+  border-color: #e11d48;
+}
+
+/* Floating Live Toast */
+.floating-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(6, 78, 59, 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #dcfce7;
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  animation: pulse-dot-anim 1.5s infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse-dot-anim {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
 </style>
 </head>
 <body>
@@ -1244,10 +1669,11 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 
 <nav class="tabs">
   <button class="tab-btn active" onclick="switchTab('tab-devices', this)">👥 الأجهزة والسرعات</button>
-  <button class="tab-btn" onclick="switchTab('tab-period', this)">🌐 باقة النت والدورة</button>
+  <button class="tab-btn" onclick="switchTab('tab-period', this)">🎯 باقة الإنترنت والاستهلاك</button>
   <button class="tab-btn" onclick="switchTab('tab-telegram', this)">بوت وتنبيهات التيليجرام 🤖</button>
   <button class="tab-btn" onclick="switchTab('tab-reboot', this)">📊 المراقبة وإعادة التشغيل (الريستارت)</button>
-    <button class="tab-btn" onclick="switchTab('tab-settings', this)">⚙️ إعدادات الجهاز والوايفاي</button>
+  <button class="tab-btn" onclick="switchTab('tab-settings', this)">⚙️ إعدادات الجهاز والوايفاي</button>
+  <button class="tab-btn" onclick="switchTab('tab-ota', this)">🚀 التحديثات (OTA)</button>
 </nav>
 
 <!-- TAB 1: DEVICES -->
@@ -1273,20 +1699,23 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 
   <div class="cards-view" id="cards-container"></div>
   <div class="table-view glass" id="table-container" style="display:none">
-    <table>
-      <thead>
-        <tr>
-          <th>الحالة</th><th>اسم الجهاز</th><th>IP / MAC</th><th>السرعة اللحظية</th>
-          <th>الاستهلاك (تحميل / رفع)</th>
-          <th>الكوتة والاستهلاك (GB)</th>
-          <th style="color:var(--cyan)">⬇️ حد التحميل</th>
-          <th style="color:var(--accent)">⬆️ حد الرفع</th>
-          <th style="color:#60a5fa">معرف التيليجرام</th>
-          <th>الإجراءات</th>
-        </tr>
-      </thead>
-      <tbody id="devices-tbody"></tbody>
-    </table>
+    <div class="table-responsive-wrapper">
+      <table class="devices-table">
+        <thead>
+          <tr>
+            <th>الحالة</th>
+            <th>اسم الجهاز</th>
+            <th>IP / MAC</th>
+            <th>السرعة اللحظية</th>
+            <th>الباقة والاستهلاك</th>
+            <th>تحديد السرعة</th>
+            <th>معرف التيليجرام</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="devices-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- ELEGANT DIVIDER BETWEEN CONNECTED & OFFLINE -->
@@ -1309,20 +1738,23 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 
     <div class="cards-view" id="offline-cards-container"></div>
     <div class="table-view glass" id="offline-table-container" style="display:none">
-      <table>
-        <thead>
-          <tr>
-            <th>الحالة</th><th>اسم الجهاز</th><th>آخر IP و MAC</th>
-            <th>الاستهلاك (تحميل / رفع)</th>
-            <th>الكوتة المسبقة والإجمالي</th>
-            <th style="color:var(--cyan)">⬇️ حد التحميل</th>
-            <th style="color:var(--accent)">⬆️ حد الرفع</th>
-            <th style="color:#60a5fa">معرف التيليجرام</th>
-            <th>حظر مسبق</th><th>الإجراءات</th>
-          </tr>
-        </thead>
-        <tbody id="offline-devices-tbody"></tbody>
-      </table>
+      <div class="table-responsive-wrapper">
+        <table class="devices-table">
+          <thead>
+            <tr>
+              <th>الحالة</th>
+              <th>اسم الجهاز</th>
+              <th>آخر IP و MAC</th>
+              <th>الاستهلاك السابق</th>
+              <th>الكوتة المسبقة</th>
+              <th>تحديد السرعة</th>
+              <th>معرف التيليجرام</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="offline-devices-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </section>
@@ -1330,79 +1762,122 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 <!-- TAB 2: MAIN ISP QUOTA -->
 <section id="tab-period" class="tab-content">
   <div class="card-section glass">
-    <h2>🌐 إعدادات باقة النت الأساسية (حسب الرزنامة)</h2>
-    <p class="note">أدخل سعة الباقة الإجمالية من شركة النت (بالـ GB) وتاريخ البداية والنهاية لحساب الرصيد المتبقي ومتابعة نصيب كل جهاز.</p>
-    <div class="form-group"><label>سعة باقة النت الأساسية (GB) - مثال 140 أو 200 أو 250:</label>
-      <input id="cfg_main_quota_gb" type="number" min="0" step="0.1" placeholder="مثال: 140">
-    </div>
-    <div class="form-row-2">
-      <div class="form-group"><label>تاريخ بداية الباقة (Start Date):</label><input id="cfg_start_date" type="date"></div>
-      <div class="form-group"><label>تاريخ نهاية / تجديد الباقة (End Date):</label><input id="cfg_end_date" type="date"></div>
-    </div>
-    <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)">💾 حفظ إعدادات الباقة الأساسية</button>
-  </div>
-
-      <!-- METER SCALING & GB STANDARD CARD -->
-    <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.35);background:rgba(16, 185, 129, 0.03);margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-        <h2 style="margin:0;color:#fff">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
-        <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b></span>
-      </div>
-      <p class="note" style="margin-bottom:16px">حدد النسبة المئوية لاحتساب استهلاك بايتات التحميل والرفع في العداد، ومعيار حساب الجيجابايت ليتطابق بدقة مع عداد شركة الإنترنت أو أنظمة التشغيل.</p>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">
-        <!-- 1. METER SCALING PERCENTAGE -->
-        <div class="form-group">
-          <label style="font-weight:600;margin-bottom:6px;display:block">نسبة احتساب العداد (Meter Scaling):</label>
-          <select id="cfg_meter_scale" onchange="onMeterScaleChange(this.value)">
-            <option value="110">110% (زيادة 10% لاحتساب ترويسات الحزم Overhead والتحوط الإضافي)</option>
-            <option value="105">105% (زيادة 5% للتحوط المسبق مع شركات الاتصالات)</option>
-            <option value="100" selected>100% (حساب حقيقي دقيق 1:1 - ملف 100MB يُحسب 100MB بالضبط) [الافتراضي]</option>
-            <option value="95">95% (تخفيض 5% لتجاوز حزم الشبكة التكرارية Re-transmissions)</option>
-            <option value="90">90% (تخفيض 10% عن الحجم الفعلي)</option>
-            <option value="85">85% (تخفيض 15% لتوفير الباقة)</option>
-            <option value="80">80% (تخفيض 20% لتوفير الباقة)</option>
-            <option value="75">75% (تخفيض 25% - ربع الحجم معفي)</option>
-            <option value="70">70% (تخفيض 30%)</option>
-            <option value="50">50% (تخفيض 50% - احتساب نصف الاستهلاك الفعلي 1:2)</option>
-          </select>
+    <h2 style="margin-bottom:16px">🎯 إعدادات ومراقبة باقة الإنترنت الرئيسية (ISP Quota)</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:20px;align-items:stretch">
+      <!-- RIGHT COLUMN: QUOTA CONFIGURATION INPUTS -->
+      <div style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">
+        <div class="form-group" style="margin:0">
+          <label>سعة الباقة الإجمالية (GB):</label>
+          <input id="cfg_main_quota_gb" type="number" min="0" step="0.1" placeholder="140">
         </div>
-
-        <!-- 2. GIGABYTE STANDARD (1024 MB vs 1000 MB) -->
-        <div class="form-group">
-          <label style="font-weight:600;margin-bottom:6px;display:block">معيار احتساب الجيجابايت (GB Unit Calculation):</label>
-          <select id="cfg_gb_std" onchange="onGbStandardChange(this.value)">
-            <option value="1024" selected>1024 MB = 1 GiB (معيار أنظمة التشغيل والكمبيوتر Binary) [الافتراضي]</option>
-            <option value="1000">1000 MB = 1 GB (معيار باقات شركات الإنترنت ISP - 1000 ميجا للجيجا لمطابقة عداد الشركة)</option>
-          </select>
+        <div class="form-group" style="margin:0">
+          <label>تاريخ بداية الدورة / الباقة:</label>
+          <input id="cfg_start_date" type="date">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>تاريخ التجديد القادم:</label>
+          <input id="cfg_end_date" type="date">
+        </div>
+        <div style="display:flex;justify-content:flex-start;margin-top:4px">
+          <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)" style="padding:10px 22px;background:linear-gradient(135deg,#f97316,#ea580c);border:none;box-shadow:0 4px 14px rgba(249,115,22,0.35)">💾 حفظ إعدادات الباقة</button>
         </div>
       </div>
 
-      <div style="background:rgba(0,0,0,0.22);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
-        ℹ️ <b>توضيح الفرق بين المعيارين:</b><br>
-        • <b>معيار 1024 MB (ثنائي):</b> 1 جيجا = 1,073,741,824 بايت، وهو المعيار البرمجي الدقيق المستخدم في أنظمة التشغيل (ويندوز، لينكس).<br>
-        • <b>معيار 1000 MB (عشري):</b> 1 جيجا = 1,000,000,000 بايت (1000 ميجا)، وهو المعيار التجاري المعتمد لدى شركات الاتصالات والراوترات لمطابقة استهلاك الباقة الرسمية.
-      </div>
+      <!-- LEFT COLUMN: LIVE CONSUMPTION & PROGRESS WIDGET -->
+      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">إجمالي المستهلك:</span>
+          <b id="isp-used-txt" style="font-size:1.1rem;color:#fff">0.00 GB (0.0%)</b>
+        </div>
 
-      <div style="display:flex;justify-content:flex-end">
-        <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
-          💾 حفظ وتطبيق إعدادات المعايرة
+        <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:6px;overflow:hidden">
+          <div id="isp-quota-bar" style="height:100%;width:0%;background:var(--green);border-radius:6px;transition:width 0.4s ease,background 0.4s ease"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">الرصيد المتبقي:</span>
+          <b id="isp-rem-txt" style="font-size:1.05rem;color:var(--green)">-- GB</b>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted);font-size:0.95rem">الوقت المتبقي حتى التجديد:</span>
+          <b id="isp-time-txt" style="font-size:0.98rem;color:#38bdf8">--</b>
+        </div>
+
+        <button type="button" class="danger-btn" onclick="resetMainQuota()" style="width:100%;padding:11px;border-radius:8px;font-weight:700;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.28);margin-top:4px">
+          🔄 تصفير عدادات الاستهلاك لدورة جديدة
         </button>
       </div>
     </div>
+  </div>
 
-  <div class="card-section glass">
-    <h2>⏳ دورة العداد الاحتياطية بالأيام</h2>
-    <p id="period_info" class="note">جاري تحميل بيانات الفترة...</p>
-    <form onsubmit="submitPeriodDays(event)">
-      <div class="form-group"><label>مدة الدورة التنازلية بالأيام (من 1 إلى 365):</label>
-        <input id="period_days" type="number" min="1" max="365" value="30" required>
+  <!-- METER SCALING & GB STANDARD CARD -->
+  <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.35);background:rgba(16, 185, 129, 0.03);margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0;color:#fff">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
+      <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b> | <b id="badge-meter-mode">فوري وشامل</b></span>
+    </div>
+    <p class="note" style="margin-bottom:16px">حدد النسبة المئوية لاحتساب استهلاك بايتات التحميل والرفع في العداد، ومعيار حساب الجيجابايت ليتطابق بدقة مع عداد شركة الإنترنت أو أنظمة التشغيل، دون أي تأثير على السرعة اللحظية الفعلية للخط.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">
+      <!-- 1. METER SCALING PERCENTAGE -->
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:6px;display:block">نسبة احتساب العداد (Meter Scaling):</label>
+        <select id="cfg_meter_scale" onchange="onMeterScaleChange(this.value)">
+          <option value="200">200% (مضاعفة 2:1 لاحتساب استهلاك سريع جداً)</option>
+          <option value="175">175% (زيادة 75% على الاستهلاك الفعلي)</option>
+          <option value="150">150% (زيادة 50% - كل 100MB تُحسب 150MB)</option>
+          <option value="140">140% (زيادة 40%)</option>
+          <option value="130">130% (زيادة 30%)</option>
+          <option value="125">125% (زيادة 25% - ربع إضافي)</option>
+          <option value="120">120% (زيادة 20% لمطابقة عداد الشركات الصارم)</option>
+          <option value="115">115% (زيادة 15%)</option>
+          <option value="110">110% (زيادة 10% لاحتساب ترويسات الحزم Overhead والتحوط الإضافي)</option>
+          <option value="105">105% (زيادة 5% للتحوط المسبق مع شركات الاتصالات)</option>
+          <option value="100" selected>100% (حساب حقيقي دقيق 1:1 - ملف 100MB يُحسب 100MB بالضبط) [الافتراضي]</option>
+          <option value="95">95% (تخفيض 5% لتجاوز حزم الشبكة التكرارية Re-transmissions)</option>
+          <option value="90">90% (تخفيض 10% عن الحجم الفعلي)</option>
+          <option value="85">85% (تخفيض 15% لتوفير الباقة)</option>
+          <option value="80">80% (تخفيض 20% لتوفير الباقة)</option>
+          <option value="75">75% (تخفيض 25% - ربع الحجم معفي)</option>
+          <option value="70">70% (تخفيض 30%)</option>
+          <option value="60">60% (تخفيض 40%)</option>
+          <option value="50">50% (تخفيض 50% - احتساب نصف الاستهلاك الفعلي 1:2)</option>
+        </select>
       </div>
-      <button class="primary-btn" type="submit">تطبيق المدة بالأيام</button>
-    </form>
-    <hr style="border:none;border-top:1px solid var(--glass-border);margin:18px 0">
-    <button type="button" class="danger-btn" onclick="resetMainQuota()">🔄 تصفير جميع العدادات وإعادة دورة الباقة</button>
-    <p class="note" style="margin-top:8px">ملاحظة: تصفير العداد يبدأ دورة جديدة ويصفر استهلاك الأجهزة، ويرفع الحظر، ويعيد تفعيل إشعارات التيليجرام.</p>
+
+      <!-- 2. GIGABYTE STANDARD (1024 MB vs 1000 MB) -->
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:6px;display:block">معيار احتساب الجيجابايت (GB Unit Calculation):</label>
+        <select id="cfg_gb_std" onchange="onGbStandardChange(this.value)">
+          <option value="1024" selected>1024 MB = 1 GiB (معيار أنظمة التشغيل والكمبيوتر Binary) [الافتراضي]</option>
+          <option value="1000">1000 MB = 1 GB (معيار باقات شركات الإنترنت ISP - 1000 ميجا للجيجا لمطابقة عداد الشركة)</option>
+        </select>
+      </div>
+
+      <!-- 3. METER SCALING MODE -->
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:6px;display:block">نمط تطبيق المعايرة (Scaling Mode):</label>
+        <select id="cfg_meter_mode" onchange="onMeterModeChange(this.value)">
+          <option value="0" selected>⚡ فوري وشامل — تطبيق النسبة فورياً على إجمالي الجيجات الحالية للباقة وللأجهزة دون تصفير [موصى به]</option>
+          <option value="1">📈 تراكمي للحزم الجديدة — احتساب النسبة تدريجياً على الحزم والبيانات المتدفقة من الآن فصاعداً</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="background:rgba(0,0,0,0.22);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
+      ℹ️ <b>توضيح الفرق بين الإعدادات:</b><br>
+      • <b>السرعة اللحظية:</b> تظل سرعة الأجهزة الفعلية وسرعة السحب والرفع الحقيقية 100% دقيقة دائماً دون أي تلاعب أو تغيير مهما كانت نسبة المعايرة.<br>
+      • <b>معيار 1024 MB (ثنائي):</b> 1 جيجا = 1,073,741,824 بايت، وهو المعيار البرمجي الدقيق المستخدم في أنظمة التشغيل (ويندوز، لينكس).<br>
+      • <b>معيار 1000 MB (عشري):</b> 1 جيجا = 1,000,000,000 بايت (1000 ميجا)، وهو المعيار التجاري المعتمد لدى شركات الاتصالات لمطابقة استهلاك الباقة الرسمية.<br>
+      • <b>نمط المعايرة:</b> "فوري وشامل" يطبق النسبة على كامل رصيد واستهلاك الجيجات المسجل فوراً، بينما "تراكمي" يطبقها على استهلاك الحزم القادمة فقط.
+    </div>
+
+    <div style="display:flex;justify-content:flex-start">
+      <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
+        💾 حفظ وتطبيق إعدادات المعايرة
+      </button>
+    </div>
   </div>
 </section>
 
@@ -1748,26 +2223,25 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         متصل بالإنترنت 🟢
       </span>
     </div>
-    <p class="note" style="margin-bottom:16px">قم بمسح شبكات الواي فاي القريبة والاتصال برواتر المودم الأساسي لتوزيع وتوجيه الإنترنت عبر تقنية NAPT.</p>
+    <p class="note" style="margin-bottom:16px">قم بإدخال بيانات شبكة الواي فاي للراوتر الأساسي لتوزيع وتوجيه الإنترنت عبر تقنية NAPT.</p>
 
     <form method="post" action="/save" onsubmit="if(!isAdmin){openLoginModal();return false;}">
-      <!-- NEARBY NETWORKS SCAN -->
-      <div class="form-group" style="margin-bottom:14px">
-        <label style="font-weight:700;margin-bottom:6px;display:block">شبكات الواي فاي القريبة:</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button type="button" id="scan_button" class="primary-btn" style="padding:10px 20px;font-size:0.88rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:var(--accent-grad);border:none;box-shadow:0 3px 12px var(--accent-shadow);flex-shrink:0" onclick="triggerScan()">
-            🔍 فحص
-          </button>
-          <select id="scan_results" style="flex:1;padding:10px 14px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);color:var(--text);border-radius:10px;font-size:0.9rem">
-            <option value="">اضغط فحص لاكتشاف شبكات الواي فاي المحيطة</option>
-          </select>
-        </div>
-      </div>
-
       <!-- UPSTREAM SSID -->
-      <div class="form-group" style="margin-bottom:14px">
-        <label style="font-weight:700;margin-bottom:6px;display:block">اسم شبكة الراوتر الأساسي (SSID):</label>
-        <input name="router_ssid" id="cfg_router_ssid" maxlength="32" required placeholder="مثال: Home_Fiber_5G" style="font-size:0.92rem;font-family:inherit">
+      <div class="form-group" style="margin-bottom:14px;position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+          <label style="font-weight:700;margin:0">اسم شبكة الراوتر الأساسي (SSID):</label>
+          <button type="button" id="btn_scan_wifi" class="btn btn-secondary" onclick="scanWifiNetworks()" style="font-size:0.8rem;padding:4px 12px;background:rgba(139,92,246,0.18);color:#c4b5fd;border:1px solid rgba(139,92,246,0.38);border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;transition:all 0.2s">
+            <span id="scan_spinner" style="display:none;animation:spin 1s linear infinite">🔄</span>
+            <span id="scan_icon">🔍</span>
+            <span id="scan_btn_text">فحص الشبكات المحيطة</span>
+          </button>
+        </div>
+        <div style="position:relative">
+          <input name="router_ssid" id="cfg_router_ssid" maxlength="32" required placeholder="مثال: Home_Fiber_5G" style="font-size:0.92rem;font-family:inherit;width:100%">
+          <!-- Scan Dropdown Results Container -->
+          <div id="wifi_scan_results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:999;background:rgba(18,22,34,0.96);backdrop-filter:blur(16px);border:1px solid rgba(139,92,246,0.35);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,0.6);max-height:280px;overflow-y:auto;padding:6px">
+          </div>
+        </div>
       </div>
 
       <!-- UPSTREAM PASSWORD -->
@@ -1778,7 +2252,7 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
           <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_router_pass',this)" style="position:absolute;left:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem">👁️</button>
         </div>
         <label class="checkbox-label" style="margin-top:8px;display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--muted);cursor:pointer">
-          <input type="checkbox" name="clear_router_password" value="1" style="accent-color:var(--accent)"> شبكة مفتوحة بدون كلمة مرور (Open Network)
+          <input type="checkbox" name="clear_router_password" id="cfg_clear_router_password" value="1" style="accent-color:var(--accent)"> شبكة مفتوحة بدون كلمة مرور (Open Network)
         </label>
       </div>
 
@@ -1857,12 +2331,12 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         </small>
       </div>
       <div class="form-group" style="margin-top:10px">
-        <label style="font-weight:600">معيار وسرعة بث الواي فاي (Wi-Fi Protocol / Bandwidth):</label>
+        <label style="font-weight:600">معيار وسرعة بث واستقبال الواي فاي (Wi-Fi Protocol / Bandwidth):</label>
         <select name="wifi_protocol" id="cfg_wifi_protocol">
-          <option value="1">Wi-Fi 6 (802.11ax Turbo) + 802.11n/ac (HT40) — حتى 150+ Mbps (أقصى سرعة وأداء)</option>
-          <option value="0">Wi-Fi 6 (802.11ax) + 802.11b/g/n (HT20) — استقرار فائق وتوافق شامل</option>
-          <option value="2">802.11ax/n Only (HT40) — للأجهزة الحديثة فقط</option>
-          <option value="3">802.11ax/n Only (HT20) — استقرار للأجهزة الحديثة</option>
+          <option value="1">🚀 أقصى سرعة وأداء: Wi-Fi 6 (802.11ax Turbo) + نطاق عريض 40MHz (HE40/HT40) للبث والاستقبال</option>
+          <option value="0">🛡️ استقرار فائق وتوافق شامل: Wi-Fi 6 + نطاق 20MHz (HE20/HT20) للأجهزة القديمة والمقويات</option>
+          <option value="2">⚡ للأجهزة الحديثة فقط: 802.11ax/n Only (نطاق عريض 40MHz أقصى سرعة)</option>
+          <option value="3">🔒 للأجهزة الحديثة فقط: 802.11ax/n Only (نطاق 20MHz للاستقرار)</option>
         </select>
       </div>
 
@@ -1950,13 +2424,31 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
     <hr style="border:none;border-top:1px solid var(--glass-border);margin:16px 0">
     <button type="button" class="danger-btn" onclick="rebootRouter()">🔄 إعادة تشغيل الراوتر الآن (Reboot)</button>
   </div>
+</section>
 
+<!-- TAB 6: OTA FIRMWARE UPDATES -->
+<section id="tab-ota" class="tab-content">
   <div class="card-section glass">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
       <h2 style="margin:0">🚀 التحديث الهوائي والترقية السحابية (OTA Firmware Updates)</h2>
-      <span class="badge badge-gaming" id="ota-version-badge">v3.2.0-PRO</span>
+      <span class="badge badge-gaming" id="ota-version-badge">v3.4.2</span>
     </div>
     <p class="note">ترقية نظام وتشغيل الراوتر هوائياً دون الحاجة لتوصيل كابل USB مع حماية كاملة عبر نظام الإقلاع المزدوج (Dual-Bank OTA) وميزة التراجع التلقائي الآمن (Anti-Rollback).</p>
+
+    <!-- Auto-Update Switch Feature Card -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:14px 0;background:rgba(255,255,255,0.03);padding:14px;border-radius:12px;border:1px solid var(--glass-border)">
+      <div style="max-width:580px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-weight:700;font-size:1rem;color:#fff">🔄 التحديث التلقائي السحابي من GitHub (Auto-Update)</span>
+          <span class="badge badge-gaming" id="ota-auto-status-badge">مفعّل ✅</span>
+        </div>
+        <div style="font-size:0.82rem;color:var(--muted)">فحص دوري في الخلفية (فور إقلاع الراوتر وكل 6 ساعات) وتثبيت التحديث مباشرة من GitHub عند استقرار حركة الإنترنت دون أي تدخل يدوي مع ضمان الأمان وحماية النظام وعدم التأثير على سرعة الاتصال.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="cfg_ota_auto_update" checked onchange="toggleOtaAutoUpdate(this.checked)" style="width:22px;height:22px;accent-color:var(--green);cursor:pointer">
+        <label for="cfg_ota_auto_update" style="font-weight:700;cursor:pointer;color:var(--text);font-size:0.92rem">تفعيل التحديث التلقائي</label>
+      </div>
+    </div>
     
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:14px 0 8px 0;background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;border:1px solid var(--glass-border)">
       <div>
@@ -1984,7 +2476,7 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
         <form onsubmit="triggerUrlOta(event)">
           <div class="form-group">
             <label>رابط الفيرموير المباشر (HTTP/HTTPS):</label>
-            <input type="url" id="ota_remote_url" placeholder="http://192.168.1.50:8000/esp32_napt_router.bin" style="direction:ltr;text-align:left">
+            <input type="url" id="ota_remote_url" placeholder="https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin" style="direction:ltr;text-align:left">
           </div>
           <button type="submit" class="primary-btn" style="width:100%">🌐 بدء الترقية السحابية المباشرة</button>
         </form>
@@ -2107,6 +2599,12 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   </button>
 </div>
 
+<!-- FLOATING LIVE METRICS & ACTION TOAST (Never shifts or pushes layout) -->
+<div class="floating-toast" id="live-floating-toast">
+  <span class="pulse-dot"></span>
+  <span id="toast-text">يتم تحديث السرعة اللحظية والاستهلاك مباشرة كل ثانيتين</span>
+</div>
+
 </main>
 
 <!-- LOGIN MODAL -->
@@ -2171,57 +2669,57 @@ function applyPageZoom(pct, saveToStorage = true) {
   }
 }
 
+let _toastTimer = null;
 function showToast(msg, type = 'success') {
-  let toast = document.getElementById('toast-notification');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast-notification';
-    document.body.appendChild(toast);
+  let toast = document.getElementById('live-floating-toast');
+  let txt = document.getElementById('toast-text');
+  if (!toast) return;
+  if (!txt) {
+    txt = document.createElement('span');
+    txt.id = 'toast-text';
+    toast.appendChild(txt);
   }
-  let bg = 'rgba(16, 185, 129, 0.95)';
-  let border = '#10b981';
+
   let icon = '✅';
-  if (type === 'error') { bg = 'rgba(239, 68, 68, 0.95)'; border = '#ef4444'; icon = '❌'; }
-  else if (type === 'warn') { bg = 'rgba(245, 158, 11, 0.95)'; border = '#f59e0b'; icon = '⚠️'; }
-  else if (type === 'info') { bg = 'rgba(14, 165, 233, 0.95)'; border = '#0ea5e9'; icon = 'ℹ️'; }
-  
-  toast.innerHTML = `<span style="font-size:1.1rem;margin-left:8px">${icon}</span> <span>${msg}</span>`;
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: ${bg};
-    border: 1px solid ${border};
-    color: #fff;
-    padding: 10px 22px;
-    border-radius: 30px;
-    font-size: 0.9rem;
-    font-weight: 700;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-    z-index: 100000;
-    pointer-events: none;
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    opacity: 1;
-    display: flex;
-    align-items: center;
-    backdrop-filter: blur(8px);
-  `;
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(-50%) translateY(10px)';
+  let bg = 'rgba(6, 78, 59, 0.94)';
+  let border = 'rgba(34, 197, 94, 0.6)';
+  let color = '#dcfce7';
+
+  if (type === 'error') {
+    bg = 'rgba(153, 27, 27, 0.94)';
+    border = 'rgba(239, 68, 68, 0.6)';
+    color = '#fee2e2';
+    icon = '❌';
+  } else if (type === 'warn') {
+    bg = 'rgba(146, 64, 14, 0.94)';
+    border = 'rgba(245, 158, 11, 0.6)';
+    color = '#fef3c7';
+    icon = '⚠️';
+  } else if (type === 'info') {
+    bg = 'rgba(12, 74, 110, 0.94)';
+    border = 'rgba(56, 189, 248, 0.6)';
+    color = '#e0f2fe';
+    icon = 'ℹ️';
+  }
+
+  toast.style.background = bg;
+  toast.style.borderColor = border;
+  toast.style.color = color;
+  txt.innerHTML = `<span style="margin-left:4px">${icon}</span> ${msg}`;
+
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    toast.style.background = 'rgba(6, 78, 59, 0.9)';
+    toast.style.borderColor = 'rgba(34, 197, 94, 0.45)';
+    toast.style.color = '#dcfce7';
+    txt.textContent = 'يتم تحديث السرعة اللحظية والاستهلاك مباشرة كل ثانيتين';
   }, 3200);
 }
 
 function formatLiveSpeed(bps) {
-  if (!bps || bps <= 0) return '0.00 <small style="font-size:0.68rem;opacity:0.8">Mbps</small>';
+  if (!bps || bps <= 0) return '0.00 Mbps';
   let mbps = bps / 1000000.0;
-  if (mbps >= 1.0) {
-    return `${mbps.toFixed(2)} <small style="font-size:0.68rem;opacity:0.8">Mbps</small>`;
-  }
-  let kbps = bps / 8000.0;
-  return `${mbps.toFixed(2)} <small style="font-size:0.68rem;opacity:0.8">Mbps</small> <span style="font-size:0.65rem;color:var(--cyan);opacity:0.9">(${Math.round(kbps)} KB/s)</span>`;
+  return `${mbps.toFixed(2)} Mbps`;
 }
 
 let _pendingAction = null;
@@ -2281,6 +2779,7 @@ setTheme(currentTheme);
 
 let gbStandard = 1024;
 let meterScalePct = 100;
+let meterScaleMode = 0;
 
 function formatSmartBytes(bytes) {
   if (!bytes || bytes <= 0) return '0 MB';
@@ -2288,7 +2787,7 @@ function formatSmartBytes(bytes) {
   let divMB = div * div;
   let divGB = divMB * div;
   if (bytes < divGB) {
-    let mb = Math.round(bytes / divMB);
+    let mb = (bytes / divMB).toFixed(bytes < (divMB * 10) ? 1 : 0);
     return mb + ' MB';
   }
   return (bytes / divGB).toFixed(2) + ' GB';
@@ -2319,13 +2818,14 @@ function setViewMode(mode, isManual = true) {
 }
 
 function handleResponsiveView() {
+  if (userOverrodeView) return;
   let isMobile = window.innerWidth <= 768;
-  if (isMobile) {
-    setViewMode('cards', false);
+  let saved = null;
+  try { saved = localStorage.getItem('esp_view'); } catch(e){}
+  if (saved) {
+    setViewMode(saved, false);
   } else {
-    let saved = null;
-    try { saved = localStorage.getItem('esp_view'); } catch(e){}
-    setViewMode(saved || 'table', false);
+    setViewMode(isMobile ? 'cards' : 'table', false);
   }
 }
 
@@ -2468,9 +2968,10 @@ let _isAuthenticating = false;
 async function ensureAdminAuth() {
   if (isAdmin) return true;
   if (_isAuthenticating) return false;
+  let u = localStorage.getItem('esp_admin_user');
+  let p = localStorage.getItem('esp_admin_pass');
+  if (!u || !p) return false;
   _isAuthenticating = true;
-  let u = localStorage.getItem('esp_admin_user') || 'admin';
-  let p = localStorage.getItem('esp_admin_pass') || 'admin';
   try {
     let res = await fetch('/api/login', {
       method: 'POST',
@@ -2482,8 +2983,6 @@ async function ensureAdminAuth() {
       if (data.ok) {
         isAdmin = true;
         if (data.token) localStorage.setItem('esp_session_token', data.token);
-        localStorage.setItem('esp_admin_user', u);
-        localStorage.setItem('esp_admin_pass', p);
         _isAuthenticating = false;
         return true;
       }
@@ -2491,6 +2990,56 @@ async function ensureAdminAuth() {
   } catch(e) {}
   _isAuthenticating = false;
   return false;
+}
+
+let _actionInFlight = false;
+let isOtaActive = false;
+async function postWithRetry(url, params, maxRetries = 1) {
+  _actionInFlight = true;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      let bodyData = (typeof params === 'string') ? params : new URLSearchParams(params);
+      let res = await fetch(url, {
+        method: 'POST',
+        headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
+        body: bodyData
+      });
+      if (res.status === 401) {
+        isAdmin = false;
+        _actionInFlight = false;
+        let authBtn = document.getElementById('auth-btn');
+        if (authBtn) {
+          authBtn.className = 'auth-btn';
+          authBtn.innerHTML = '<span>👁️</span> <span>وضع المراقبة (دخول المشرف)</span>';
+          authBtn.title = 'أنت في وضع المراقبة (عرض فقط). انقر لتسجيل الدخول كمشرف لتعديل الإعدادات.';
+        }
+        return { ok: false, status: 401, error: 'unauthorized' };
+      }
+      if (res.ok) {
+        let json = null;
+        try { json = await res.json(); } catch(e) {}
+        _actionInFlight = false;
+        return { ok: true, data: json };
+      }
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
+      let errTxt = '';
+      try { let j = await res.json(); errTxt = j.error || ''; } catch(e){}
+      _actionInFlight = false;
+      return { ok: false, status: res.status, error: errTxt };
+    } catch(e) {
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
+      _actionInFlight = false;
+      return { ok: false, status: 0, error: 'network_error' };
+    }
+  }
+  _actionInFlight = false;
+  return { ok: false, status: 0, error: 'network_error' };
 }
 
 function openLoginModal(msg) {
@@ -2603,7 +3152,7 @@ function drawSpeedChart() {
 
   // Draw Upload line
   ctx.beginPath();
-  let colorUp = (currentTheme === 'sunset') ? '#f43f5e' : '#38bdf8';
+  let colorUp = (currentTheme === 'sunset') ? '#f43f5e' : '#a3e635';
   ctx.strokeStyle = colorUp;
   ctx.lineWidth = 2.5;
   for (let i = 0; i < speedHistoryUp.length; i++) {
@@ -2615,27 +3164,17 @@ function drawSpeedChart() {
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
-  let gb = bytes / 1000000000;
-  if (gb >= 1) return gb.toFixed(2) + ' GB';
-  let mb = bytes / 1000000;
-  if (mb >= 1) return mb.toFixed(1) + ' MB';
-  return (bytes / 1000).toFixed(0) + ' KB';
+  return formatSmartBytes(bytes);
 }
 
 async function refreshData() {
+  if (_actionInFlight || isOtaActive) return;
   try {
     let res = await fetch('/api/devices', { headers: getAuthHeaders() });
     if (!res.ok) return;
     let data = await res.json();
 
     isAdmin = !!data.is_admin;
-    if (!isAdmin) {
-      // Auto authenticate in background using saved credentials or default admin
-      ensureAdminAuth().then(ok => {
-        if (ok) refreshData();
-      });
-    }
 
     let authBtn = document.getElementById('auth-btn');
     if (authBtn) {
@@ -2677,16 +3216,68 @@ async function refreshData() {
     let actCnt = data.active_clients || 0;
     document.getElementById('active-clients-str').textContent = actCnt + ' / 12 متصل';
 
-    // Main Quota Summary
-    let totalUsedGB = ((data.total_up + data.total_down) / 1000000000).toFixed(2);
+    // Sync GB Standard & Meter Scale early so quota calculations use active standard
+    if (data.meter_scale_pct) meterScalePct = data.meter_scale_pct;
+    if (data.gb_standard) gbStandard = data.gb_standard;
+
+    // Main Quota Summary & ISP Quota Live Monitor
+    let qDiv = (gbStandard === 1000) ? 1000000000 : 1073741824;
+    let usedGBNum = (data.total_up + data.total_down) / qDiv;
+    let totalUsedGB = usedGBNum.toFixed(2);
     let mainCapGB = data.main_quota_gb > 0 ? data.main_quota_gb.toFixed(2) : '--';
     document.getElementById('quota-summary-val').textContent = totalUsedGB + ' / ' + mainCapGB + ' GB';
-    let pct = (data.main_quota_gb > 0) ? Math.min(100, (totalUsedGB / data.main_quota_gb) * 100) : 0;
+    let pct = (data.main_quota_gb > 0) ? Math.min(100, (usedGBNum / data.main_quota_gb) * 100) : 0;
     let bar = document.getElementById('quota-summary-bar');
     bar.style.width = pct + '%';
     if (pct > 90) bar.style.background = 'var(--red)';
-    else if (pct > 75) bar.style.background = 'var(--amber)';
+    else if (pct >= 75) bar.style.background = 'var(--amber)';
     else bar.style.background = 'var(--accent-grad)';
+
+    // Update Tab 2 ISP Quota Live Monitor Widget
+    let ispUsedEl = document.getElementById('isp-used-txt');
+    if (ispUsedEl) ispUsedEl.textContent = totalUsedGB + ' GB (' + pct.toFixed(1) + '%)';
+    let ispBarEl = document.getElementById('isp-quota-bar');
+    if (ispBarEl) {
+      ispBarEl.style.width = pct + '%';
+      if (pct > 90) ispBarEl.style.background = 'var(--red)';
+      else if (pct >= 75) ispBarEl.style.background = 'var(--amber)';
+      else ispBarEl.style.background = 'var(--green)';
+    }
+    let ispRemEl = document.getElementById('isp-rem-txt');
+    if (ispRemEl) {
+      if (data.main_quota_gb > 0) {
+        let remGB = Math.max(0, data.main_quota_gb - usedGBNum).toFixed(2);
+        ispRemEl.textContent = remGB + ' GB';
+        ispRemEl.style.color = (pct > 90) ? 'var(--red)' : (pct >= 75 ? 'var(--amber)' : 'var(--green)');
+      } else {
+        ispRemEl.textContent = 'غير محدد';
+        ispRemEl.style.color = 'var(--muted)';
+      }
+    }
+    let ispTimeEl = document.getElementById('isp-time-txt');
+    if (ispTimeEl) {
+      if (data.q_end) {
+        let endMs = new Date(data.q_end + 'T23:59:59').getTime();
+        let diffMs = endMs - Date.now();
+        if (!isNaN(diffMs)) {
+          if (diffMs > 0) {
+            let rDays = Math.floor(diffMs / 86400000);
+            let rHours = Math.floor((diffMs % 86400000) / 3600000);
+            ispTimeEl.textContent = rDays + ' يوم و ' + rHours + ' ساعة';
+          } else {
+            ispTimeEl.textContent = 'حان موعد التجديد';
+          }
+        } else {
+          ispTimeEl.textContent = data.q_end;
+        }
+      } else {
+        let totSec = (data.period_days || 30) * 86400;
+        let remSec = Math.max(0, totSec - (data.elapsed_s || 0));
+        let rDays = Math.floor(remSec / 86400);
+        let rHours = Math.floor((remSec % 86400) / 3600);
+        ispTimeEl.textContent = rDays + ' يوم و ' + rHours + ' ساعة';
+      }
+    }
 
     // System Metrics
     document.getElementById('free-heap-kb').textContent = Math.round(data.free_heap / 1024) + ' KB';
@@ -2753,8 +3344,13 @@ async function refreshData() {
       let elStd = document.getElementById('cfg_gb_std');
       if (elStd && !document.activeElement?.isSameNode(elStd)) elStd.value = String(data.gb_standard);
     }
+    if (data.meter_scale_mode !== undefined) {
+      meterScaleMode = data.meter_scale_mode;
+      let elMode = document.getElementById('cfg_meter_mode');
+      if (elMode && !document.activeElement?.isSameNode(elMode)) elMode.value = String(data.meter_scale_mode);
+    }
     if (typeof updateMeterScaleBadges === 'function') {
-      updateMeterScaleBadges(meterScalePct, gbStandard);
+      updateMeterScaleBadges(meterScalePct, gbStandard, meterScaleMode);
     }
     if (document.getElementById('cfg_wifi_protocol') && data.wifi_proto !== undefined && !document.getElementById('cfg_wifi_protocol').dataset.loaded) {
       document.getElementById('cfg_wifi_protocol').value = data.wifi_proto;
@@ -2867,6 +3463,17 @@ async function refreshData() {
     if (document.getElementById('ota-build-date')) {
       document.getElementById('ota-build-date').textContent = new Date().toLocaleDateString('ar-EG');
     }
+    if (typeof data.ota_auto !== 'undefined') {
+      let chk = document.getElementById('cfg_ota_auto_update');
+      let badge = document.getElementById('ota-auto-status-badge');
+      if (chk && !chk.matches(':focus')) {
+        chk.checked = !!data.ota_auto;
+      }
+      if (badge) {
+        badge.textContent = data.ota_auto ? 'مفعّل ✅' : 'معطّل ⏸️';
+        badge.className = data.ota_auto ? 'badge badge-gaming' : 'badge badge-secondary';
+      }
+    }
 
     renderDevices(data.devices || []);
     if (data.tg_users) {
@@ -2925,19 +3532,23 @@ function renderDevices(devices) {
       let isGaming = !!dev.gaming;
       let quotaBarColor = quotaPct >= 100 ? 'var(--red)' : quotaPct >= 80 ? 'var(--amber)' : 'var(--green)';
 
-      let statusBadge = '';
-      if (quotaExceeded) statusBadge = '<span class="badge badge-blocked">⚠️ تجاوز الكوتة</span>';
-      else if (isBlocked) statusBadge = '<span class="badge badge-blocked">⛔ محظور</span>';
-      else statusBadge = '<span class="badge badge-online">🟢 متصل</span>';
-      if (isGaming) statusBadge += ' <span class="badge badge-gaming">🎮 VIP ألعاب</span>';
-
       let elStatus = tr.querySelector('.cell-status');
-      if (elStatus) elStatus.innerHTML = statusBadge;
+      if (elStatus) {
+        elStatus.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+            <span class="status-dot ${isBlocked ? 'blocked' : (dev.connected ? 'online' : 'offline')}"></span>
+            <span style="font-size:0.75rem;font-weight:700;color:${isBlocked ? 'var(--red)' : (dev.connected ? 'var(--green)' : 'var(--muted)')}">
+              ${isBlocked ? 'محظور' : (dev.connected ? 'متصل' : 'غير متصل')}
+            </span>
+            ${isGaming ? '<span title="وضع VIP للألعاب" style="font-size:0.75rem">👑</span>' : ''}
+          </div>
+        `;
+      }
 
       let elDownSpd = tr.querySelector('.cell-down-spd');
-      if (elDownSpd) elDownSpd.innerHTML = formatLiveSpeed(dev.cur_down_bps);
+      if (elDownSpd) elDownSpd.textContent = formatLiveSpeed(dev.cur_down_bps);
       let elUpSpd = tr.querySelector('.cell-up-spd');
-      if (elUpSpd) elUpSpd.innerHTML = formatLiveSpeed(dev.cur_up_bps);
+      if (elUpSpd) elUpSpd.textContent = formatLiveSpeed(dev.cur_up_bps);
 
       let elDownBytes = tr.querySelector('.cell-down-bytes');
       if (elDownBytes) elDownBytes.textContent = formatSmartBytes(dev.down);
@@ -2956,7 +3567,8 @@ function renderDevices(devices) {
       }
       let elPct = tr.querySelector('.cell-quota-pct');
       if (elPct) {
-        elPct.innerHTML = quotaGB > 0 ? `<span style="font-size:0.7rem;padding:1px 5px;border-radius:4px;font-weight:800;white-space:nowrap;background:${quotaPct >= 100 ? 'rgba(239,68,68,0.2)' : (quotaPct >= 80 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')};color:${quotaBarColor};border:1px solid ${quotaBarColor}">${quotaPct.toFixed(0)}%</span>` : '<span style="font-size:0.68rem;color:var(--muted);padding:1px 4px;border-radius:4px;white-space:nowrap;background:rgba(255,255,255,0.06)">مفتوح ∞</span>';
+        elPct.textContent = quotaGB > 0 ? (quotaPct.toFixed(0) + '%') : 'مفتوح ∞';
+        elPct.style.color = quotaBarColor;
       }
 
       // Safeguard: Never overwrite inputs if focused or modified by user!
@@ -2988,13 +3600,13 @@ function renderDevices(devices) {
       if (btnGaming) {
         btnGaming.setAttribute('onclick', `toggleGaming('${canonMac}', ${!isGaming})`);
         if (isGaming) {
-          btnGaming.classList.add('btn-gaming-active');
-          btnGaming.innerHTML = '👑 VIP نشط';
-          btnGaming.title = 'وضع الألعاب VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)';
+          btnGaming.classList.add('active');
+          btnGaming.innerHTML = '👑';
+          btnGaming.title = 'إلغاء وضع VIP للألعاب';
         } else {
-          btnGaming.classList.remove('btn-gaming-active');
+          btnGaming.classList.remove('active');
           btnGaming.innerHTML = '🎮';
-          btnGaming.title = 'تفعيل وضع الألعاب VIP (تجاوز السرعة وأولوية Ping)';
+          btnGaming.title = 'تفعيل وضع VIP للألعاب';
         }
       }
 
@@ -3002,11 +3614,11 @@ function renderDevices(devices) {
       if (btnBlock) {
         btnBlock.setAttribute('onclick', `toggleBlock('${canonMac}', ${!isBlocked})`);
         if (isBlocked) {
-          btnBlock.className = 'action-btn btn-unblock';
+          btnBlock.className = 'tbl-icon-btn btn-unblock';
           btnBlock.innerHTML = '🔓';
           btnBlock.title = 'الجهاز محظور حالياً (انقر لفك الحظر)';
         } else {
-          btnBlock.className = 'action-btn btn-block';
+          btnBlock.className = 'tbl-icon-btn btn-block';
           btnBlock.innerHTML = '⛔';
           btnBlock.title = 'حظر هذا الجهاز عن الإنترنت';
         }
@@ -3027,110 +3639,123 @@ function renderDevices(devices) {
       let upLimit = dev.upload_mbps !== undefined ? dev.upload_mbps : 0;
       let downLimit = dev.download_mbps !== undefined ? dev.download_mbps : 0;
       let tgChat = dev.telegram_chat_id || '';
-
-      let statusBadge = '';
-      if (quotaExceeded) statusBadge = '<span class="badge badge-blocked">⚠️ تجاوز الكوتة</span>';
-      else if (isBlocked) statusBadge = '<span class="badge badge-blocked">⛔ محظور</span>';
-      else statusBadge = '<span class="badge badge-online">🟢 متصل</span>';
-      if (isGaming) statusBadge += ' <span class="badge badge-gaming">👑 VIP ألعاب</span>';
-
       let quotaBarColor = quotaPct >= 100 ? 'var(--red)' : quotaPct >= 80 ? 'var(--amber)' : 'var(--green)';
 
       tableHtml += `
         <tr id="tbl_row_${canonMac}">
-          <td class="cell-status">${statusBadge}</td>
-          <td>
-            <div class="device-pill" title="انقر لتعديل اسم الجهاز ✏️">
-              <span class="dev-type-icon">${getDeviceIcon(name)}</span>
-              <input class="dev-name-input" value="${name}" id="tbl_n_${canonMac}" 
-                     oninput="this.dataset.dirty='1'"
-                     onchange="saveDeviceName('${canonMac}', this.value)" 
-                     onkeydown="if(event.key==='Enter') this.blur()" 
-                     title="انقر لتعديل اسم الجهاز ثم اضغط Enter">
-              <span class="rename-icon" onclick="this.previousElementSibling.focus()" title="تعديل اسم الجهاز">✏️</span>
+          <!-- 1. الحالة (7%) -->
+          <td class="cell-status text-center">
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+              <span class="status-dot ${isBlocked ? 'blocked' : (dev.connected ? 'online' : 'offline')}"></span>
+              <span style="font-size:0.75rem;font-weight:700;color:${isBlocked ? 'var(--red)' : (dev.connected ? 'var(--green)' : 'var(--muted)')}">
+                ${isBlocked ? 'محظور' : (dev.connected ? 'متصل' : 'غير متصل')}
+              </span>
+              ${isGaming ? '<span title="وضع VIP للألعاب" style="font-size:0.75rem">👑</span>' : ''}
             </div>
           </td>
+
+          <!-- 2. اسم الجهاز (16%) -->
           <td>
-            <div class="net-addr-stacked">
-              <div class="ip-pill">
-                <span class="cell-ip-text" style="direction:ltr">🌐 ${ip}</span>
-                ${dev.bound_ip ? '<span class="badge" style="background:rgba(16,185,129,0.2);color:var(--green);font-size:0.65rem;padding:1px 4px;border:1px solid rgba(16,185,129,0.4)">📌 ثابت</span>' : ''}
+            <div class="tbl-device-info">
+              <div class="tbl-device-icon" title="${name}">
+                ${getDeviceIcon(name)}
               </div>
-              <div class="mac-pill">
-                <span style="opacity:0.7">🏷️</span>
-                <span style="direction:ltr;letter-spacing:0.3px">${mac}</span>
-              </div>
-            </div>
-          </td>
-          <td>
-            <div class="flow-stacked">
-              <div class="flow-line down" title="سرعة التحميل اللحظية">
-                <span class="flow-label">⬇️ تنزيل</span>
-                <span class="flow-val cell-down-spd">${formatLiveSpeed(dev.cur_down_bps)}</span>
-              </div>
-              <div class="flow-line up" title="سرعة الرفع اللحظية">
-                <span class="flow-label">⬆️ رفع</span>
-                <span class="flow-val cell-up-spd">${formatLiveSpeed(dev.cur_up_bps)}</span>
+              <div class="tbl-device-text">
+                <input class="tbl-device-name-input" value="${name}" id="tbl_n_${canonMac}" 
+                       oninput="this.dataset.dirty='1'"
+                       onchange="saveDeviceName('${canonMac}', this.value)" 
+                       onkeydown="if(event.key==='Enter') this.blur()" 
+                       title="انقر لتعديل اسم الجهاز ثم اضغط Enter">
+                <div class="tbl-device-type">Wi-Fi • 2.4/5GHz</div>
               </div>
             </div>
           </td>
+
+          <!-- 3. IP / MAC (15%) -->
+          <td class="text-center">
+            <div class="tbl-net-info">
+              <div class="tbl-ip-addr" title="عنوان IP">${ip}</div>
+              <div class="tbl-mac-addr" title="عنوان MAC">${mac}</div>
+            </div>
+          </td>
+
+          <!-- 4. السرعة اللحظية (18%) -->
           <td>
-            <div class="flow-stacked">
-              <div class="flow-line down" title="إجمالي التحميل">
-                <span class="flow-label">⬇️ تنزيل</span>
-                <span class="flow-val cell-down-bytes">${formatSmartBytes(dev.down)}</span>
+            <div class="tbl-speed-group">
+              <div class="tbl-speed-pill down" title="سرعة التحميل اللحظية">
+                <span>↓ تنزيل</span>
+                <span class="tbl-speed-val cell-down-spd tabular-nums">${formatLiveSpeed(dev.cur_down_bps)}</span>
               </div>
-              <div class="flow-line up" title="إجمالي الرفع">
-                <span class="flow-label">⬆️ رفع</span>
-                <span class="flow-val cell-up-bytes">${formatSmartBytes(dev.up)}</span>
+              <div class="tbl-speed-pill up" title="سرعة الرفع اللحظية">
+                <span>↑ رفع</span>
+                <span class="tbl-speed-val cell-up-spd tabular-nums">${formatLiveSpeed(dev.cur_up_bps)}</span>
               </div>
             </div>
           </td>
+
+          <!-- 5. الباقة والاستهلاك (18%) -->
           <td>
-            <div class="quota-stacked">
-              <div class="quota-line-top">
-                <span>الاستهلاك: <b class="cell-tot-bytes" style="color:${quotaBarColor}">${formatSmartBytes(dev.up + dev.down)}</b></span>
+            <div class="tbl-quota-wrapper">
+              <div class="tbl-quota-labels">
+                <span class="tabular-nums" style="font-size:0.75rem">
+                  المستهلك: <b class="cell-tot-bytes" style="color:${quotaBarColor}">${formatSmartBytes(dev.up + dev.down)}</b>
+                </span>
                 <div style="display:inline-flex;align-items:center;gap:2px">
                   <input type="number" step="0.5" min="0" value="${quotaGB}" id="tbl_q_${canonMac}" 
                          oninput="this.dataset.dirty='1'"
                          onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                         style="width:46px;padding:1px 3px;font-size:0.75rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
-                  <span style="font-size:0.68rem;color:var(--muted)">GB</span>
+                         style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
+                  <span style="font-size:0.68rem;color:var(--text-secondary)">GB</span>
                 </div>
               </div>
-              <div class="quota-line-bottom">
-                <div class="quota-mini-bar" style="flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden">
-                  <div class="quota-mini-fill" style="width:${Math.min(100, quotaPct)}%;height:100%;background:${quotaBarColor};transition:width 0.3s"></div>
-                </div>
-                <div class="cell-quota-pct">${quotaGB > 0 ? `<span style="font-size:0.7rem;padding:1px 5px;border-radius:4px;font-weight:800;white-space:nowrap;background:${quotaPct >= 100 ? 'rgba(239,68,68,0.2)' : (quotaPct >= 80 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')};color:${quotaBarColor};border:1px solid ${quotaBarColor}">${quotaPct.toFixed(0)}%</span>` : '<span style="font-size:0.68rem;color:var(--muted);padding:1px 4px;border-radius:4px;white-space:nowrap;background:rgba(255,255,255,0.06)">مفتوح ∞</span>'}</div>
+              <div class="tbl-progress-track">
+                <div class="tbl-progress-fill quota-mini-fill" style="width:${Math.min(100, quotaPct)}%;background:${quotaBarColor}"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.68rem;color:var(--text-secondary)">
+                <span class="cell-quota-pct tabular-nums" style="color:${quotaBarColor};font-weight:700">${quotaGB > 0 ? quotaPct.toFixed(0) + '%' : 'مفتوح ∞'}</span>
+                <span>⬇️ <span class="cell-down-bytes">${formatSmartBytes(dev.down)}</span> | ⬆️ <span class="cell-up-bytes">${formatSmartBytes(dev.up)}</span></span>
               </div>
             </div>
           </td>
-          <td>
-            <input type="number" step="0.5" min="0" value="${downLimit}" id="tbl_dl_${canonMac}" 
-                   oninput="this.dataset.dirty='1'"
-                   onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--cyan);text-align:center;${isGaming ? 'border-color:var(--amber)' : ''}" title="${isGaming ? 'الحد مضبوط على ' + downLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة تحميل Mbps'}">
+
+          <!-- 6. تحديد السرعة (12%) -->
+          <td class="text-center">
+            <div class="tbl-limit-group">
+              <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
+                <span style="color:var(--tbl-dl-color, #38bdf8);font-size:0.68rem;font-weight:700">⬇️</span>
+                <input type="number" step="0.5" min="0" value="${downLimit}" id="tbl_dl_${canonMac}" 
+                       class="tbl-limit-input"
+                       oninput="this.dataset.dirty='1'"
+                       onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
+              </div>
+              <div class="tbl-limit-box up" title="أقصى سرعة رفع Mbps">
+                <span style="color:var(--tbl-ul-color, #c084fc);font-size:0.68rem;font-weight:700">⬆️</span>
+                <input type="number" step="0.5" min="0" value="${upLimit}" id="tbl_ul_${canonMac}" 
+                       class="tbl-limit-input"
+                       oninput="this.dataset.dirty='1'"
+                       onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
+              </div>
+            </div>
+            <div style="font-size:0.65rem;color:var(--text-secondary);margin-top:2px">${(downLimit > 0 || upLimit > 0) ? 'Mbps محدد' : 'مفتوح ∞'}</div>
           </td>
-          <td>
-            <input type="number" step="0.5" min="0" value="${upLimit}" id="tbl_ul_${canonMac}" 
-                   oninput="this.dataset.dirty='1'"
-                   onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--accent);text-align:center;${isGaming ? 'border-color:var(--amber)' : ''}" title="${isGaming ? 'الحد مضبوط على ' + upLimit + ' Mbps (مُعطل مؤقتاً بالـ VIP ويعود فور إلغائه)' : 'أقصى سرعة رفع Mbps'}">
-          </td>
-          <td>
+
+          <!-- 7. معرف التيليجرام (8%) -->
+          <td class="text-center">
             <input type="text" list="tg_users_datalist" value="${tgChat}" id="tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر (اختر من القائمة المكتشفة)">
+                   style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border, rgba(96,165,250,0.3));background:rgba(0,0,0,0.35);color:var(--tbl-tg-color, #93c5fd)" 
+                   placeholder="Chat ID" title="معرف التيليجرام">
           </td>
-          <td>
-            <div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap">
-              <button class="primary-btn" style="padding:3px 7px;font-size:0.75rem" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات">💾</button>
-              <button class="action-btn btn-gaming ${isGaming ? 'btn-gaming-active' : ''}" style="padding:3px 7px;font-size:0.75rem" onclick="toggleGaming('${canonMac}', ${!isGaming})" title="${isGaming ? 'وضع الألعاب VIP نشط (انقر للإلغاء والعودة للسرعة المحددة)' : 'تفعيل وضع الألعاب VIP (تجاوز السرعة وأولوية Ping)'}">${isGaming ? '👑 VIP نشط' : '🎮'}</button>
-              <button class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" style="padding:3px 7px;font-size:0.75rem" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'الجهاز محظور حالياً (انقر لفك الحظر)' : 'حظر هذا الجهاز عن الإنترنت'}">${isBlocked ? '🔓' : '⛔'}</button>
-              <button class="action-btn btn-reset" style="padding:3px 7px;font-size:0.75rem" onclick="resetDevice('${canonMac}')" title="تصفير العداد">🔄</button>
-              <button class="action-btn btn-delete" style="padding:3px 7px;font-size:0.75rem" onclick="deleteDevice('${canonMac}')" title="حذف">🗑️</button>
+
+          <!-- 8. الإجراءات (17%) -->
+          <td class="text-center">
+            <div class="tbl-actions-group">
+              <button class="tbl-icon-btn btn-save" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات 💾">💾</button>
+              <button class="tbl-icon-btn btn-gaming ${isGaming ? 'active' : ''}" onclick="toggleGaming('${canonMac}', ${!isGaming})" title="${isGaming ? 'إلغاء وضع VIP' : 'تفعيل وضع VIP للألعاب'}">${isGaming ? '👑' : '🎮'}</button>
+              <button class="tbl-icon-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'فك الحظر' : 'حظر الجهاز'}">${isBlocked ? '🔓' : '⛔'}</button>
+              <button class="tbl-icon-btn btn-reset" onclick="resetDevice('${canonMac}')" title="تصفير العداد">🔄</button>
+              <button class="tbl-icon-btn btn-delete" onclick="deleteDevice('${canonMac}')" title="حذف">🗑️</button>
             </div>
           </td>
         </tr>
@@ -3348,6 +3973,25 @@ function renderDevices(devices) {
       if (dlInput && document.activeElement !== dlInput && !dlInput.dataset.dirty) dlInput.value = dev.download_mbps || 0;
       let ulInput = document.getElementById('off_tbl_ul_' + canonMac);
       if (ulInput && document.activeElement !== ulInput && !ulInput.dataset.dirty) ulInput.value = dev.upload_mbps || 0;
+      let tgInput = document.getElementById('off_tbl_tg_' + canonMac);
+      if (tgInput && document.activeElement !== tgInput && !tgInput.dataset.dirty) tgInput.value = dev.telegram_chat_id || '';
+      let nInput = document.getElementById('off_tbl_n_' + canonMac);
+      if (nInput && document.activeElement !== nInput && !nInput.dataset.dirty) nInput.value = dev.name || 'جهاز مسجل';
+
+      let isBlocked = !!dev.blocked;
+      let btnBlock = tr.querySelector('.btn-block, .btn-unblock');
+      if (btnBlock) {
+        btnBlock.setAttribute('onclick', `toggleBlock('${canonMac}', ${!isBlocked})`);
+        if (isBlocked) {
+          btnBlock.className = 'tbl-icon-btn btn-unblock';
+          btnBlock.innerHTML = '🔓';
+          btnBlock.title = 'فك الحظر المسبق';
+        } else {
+          btnBlock.className = 'tbl-icon-btn btn-block';
+          btnBlock.innerHTML = '⛔';
+          btnBlock.title = 'حظر مسبق';
+        }
+      }
     });
   } else if (!isEditing) {
     let offCardsHtml = '';
@@ -3429,85 +4073,118 @@ function renderDevices(devices) {
 
       offTableHtml += `
         <tr id="off_tbl_row_${canonMac}">
-          <td>${statusBadge}</td>
-          <td>
-            <div class="device-pill" style="opacity:0.85">
-              <span class="dev-type-icon" style="opacity:0.75">${getDeviceIcon(name)}</span>
-              <input value="${name}" id="off_tbl_n_${canonMac}" 
-                     oninput="this.dataset.dirty='1'"
-                     onchange="saveDeviceName('${canonMac}', this.value)"
-                     style="width:100px;padding:2px 6px;font-weight:700;border:none;background:transparent;color:var(--muted)">
+          <!-- 1. الحالة (7%) -->
+          <td class="cell-status text-center">
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+              <span class="status-dot ${isBlocked ? 'blocked' : 'offline'}"></span>
+              <span style="font-size:0.75rem;font-weight:700;color:${isBlocked ? 'var(--red)' : 'var(--muted)'}">
+                ${isBlocked ? 'محظور' : 'غير متصل'}
+              </span>
             </div>
           </td>
+
+          <!-- 2. اسم الجهاز (16%) -->
           <td>
-            <div class="net-addr-stacked">
-              <div class="ip-pill" style="color:var(--muted);border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.03)">
-                <span style="direction:ltr">🌐 ${ip}</span>
+            <div class="tbl-device-info">
+              <div class="tbl-device-icon" style="opacity:0.75" title="${name}">
+                ${getDeviceIcon(name)}
               </div>
-              <div class="mac-pill">
-                <span style="opacity:0.7">🏷️</span>
-                <span style="direction:ltr;letter-spacing:0.3px">${mac}</span>
-              </div>
-            </div>
-          </td>
-          <td>
-            <div class="flow-stacked">
-              <div class="flow-line down" title="إجمالي التحميل">
-                <span class="flow-label">⬇️ تنزيل</span>
-                <span class="flow-val">${formatSmartBytes(dev.down)}</span>
-              </div>
-              <div class="flow-line up" title="إجمالي الرفع">
-                <span class="flow-label">⬆️ رفع</span>
-                <span class="flow-val">${formatSmartBytes(dev.up)}</span>
+              <div class="tbl-device-text">
+                <input class="tbl-device-name-input" value="${name}" id="off_tbl_n_${canonMac}" 
+                       oninput="this.dataset.dirty='1'"
+                       onchange="saveDeviceName('${canonMac}', this.value)" 
+                       onkeydown="if(event.key==='Enter') this.blur()" 
+                       style="color:var(--text-secondary)"
+                       title="اسم الجهاز المسجل (انقر للتعديل)">
+                <div class="tbl-device-type">مسجل مسبقاً</div>
               </div>
             </div>
           </td>
+
+          <!-- 3. IP / MAC (15%) -->
+          <td class="text-center">
+            <div class="tbl-net-info">
+              <div class="tbl-ip-addr" style="color:var(--text-secondary)" title="آخر عنوان IP">${ip}</div>
+              <div class="tbl-mac-addr" title="عنوان MAC">${mac}</div>
+            </div>
+          </td>
+
+          <!-- 4. الاستهلاك السابق (18%) -->
           <td>
-            <div class="quota-stacked">
-              <div class="quota-line-top">
-                <span>السابق: <b style="color:${quotaBarColor}">${formatSmartBytes(dev.up + dev.down)}</b></span>
+            <div class="tbl-speed-group">
+              <div class="tbl-speed-pill down" style="opacity:0.85" title="إجمالي التحميل السابق">
+                <span>↓ تنزيل</span>
+                <span class="tbl-speed-val tabular-nums">${formatSmartBytes(dev.down)}</span>
+              </div>
+              <div class="tbl-speed-pill up" style="opacity:0.85" title="إجمالي الرفع السابق">
+                <span>↑ رفع</span>
+                <span class="tbl-speed-val tabular-nums">${formatSmartBytes(dev.up)}</span>
+              </div>
+            </div>
+          </td>
+
+          <!-- 5. الكوتة المسبقة (18%) -->
+          <td>
+            <div class="tbl-quota-wrapper">
+              <div class="tbl-quota-labels">
+                <span class="tabular-nums" style="font-size:0.75rem">
+                  السابق: <b class="cell-tot-bytes" style="color:${quotaBarColor}">${formatSmartBytes(dev.up + dev.down)}</b>
+                </span>
                 <div style="display:inline-flex;align-items:center;gap:2px">
                   <input type="number" step="0.5" min="0" value="${quotaGB}" id="off_tbl_q_${canonMac}" 
                          oninput="this.dataset.dirty='1'"
                          onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                         style="width:46px;padding:1px 3px;font-size:0.75rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
-                  <span style="font-size:0.68rem;color:var(--muted)">GB</span>
+                         style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
+                  <span style="font-size:0.68rem;color:var(--text-secondary)">GB</span>
                 </div>
               </div>
-              <div class="quota-line-bottom">
-                <div class="quota-mini-bar" style="flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden">
-                  <div class="quota-mini-fill" style="width:${Math.min(100, quotaPct)}%;height:100%;background:${quotaBarColor};transition:width 0.3s"></div>
-                </div>
-                ${quotaGB > 0 ? `<span style="font-size:0.7rem;padding:1px 5px;border-radius:4px;font-weight:800;white-space:nowrap;background:${quotaPct >= 100 ? 'rgba(239,68,68,0.2)' : (quotaPct >= 80 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)')};color:${quotaBarColor};border:1px solid ${quotaBarColor}">${quotaPct.toFixed(0)}%</span>` : '<span style="font-size:0.68rem;color:var(--muted);padding:1px 4px;border-radius:4px;white-space:nowrap;background:rgba(255,255,255,0.06)">مفتوح ∞</span>'}
+              <div class="tbl-progress-track">
+                <div class="tbl-progress-fill quota-mini-fill" style="width:${Math.min(100, quotaPct)}%;background:${quotaBarColor}"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.68rem;color:var(--text-secondary)">
+                <span class="tabular-nums" style="color:${quotaBarColor};font-weight:700">${quotaGB > 0 ? quotaPct.toFixed(0) + '%' : 'مفتوح ∞'}</span>
+                <span>حصة الباقة: ${dev.share_pct ? dev.share_pct.toFixed(1) : 0}%</span>
               </div>
             </div>
           </td>
-          <td>
-            <input type="number" step="0.5" min="0" value="${downLimit}" id="off_tbl_dl_${canonMac}" 
-                   oninput="this.dataset.dirty='1'"
-                   onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--cyan);text-align:center" title="أقصى سرعة تحميل Mbps">
+
+          <!-- 6. تحديد السرعة (12%) -->
+          <td class="text-center">
+            <div class="tbl-limit-group">
+              <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
+                <span style="color:var(--tbl-dl-color, #38bdf8);font-size:0.68rem;font-weight:700">⬇️</span>
+                <input type="number" step="0.5" min="0" value="${downLimit}" id="off_tbl_dl_${canonMac}" 
+                       class="tbl-limit-input"
+                       oninput="this.dataset.dirty='1'"
+                       onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
+              </div>
+              <div class="tbl-limit-box up" title="أقصى سرعة رفع Mbps">
+                <span style="color:var(--tbl-ul-color, #c084fc);font-size:0.68rem;font-weight:700">⬆️</span>
+                <input type="number" step="0.5" min="0" value="${upLimit}" id="off_tbl_ul_${canonMac}" 
+                       class="tbl-limit-input"
+                       oninput="this.dataset.dirty='1'"
+                       onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
+              </div>
+            </div>
+            <div style="font-size:0.65rem;color:var(--text-secondary);margin-top:2px">${(downLimit > 0 || upLimit > 0) ? 'Mbps محدد' : 'مفتوح ∞'}</div>
           </td>
-          <td>
-            <input type="number" step="0.5" min="0" value="${upLimit}" id="off_tbl_ul_${canonMac}" 
-                   oninput="this.dataset.dirty='1'"
-                   onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:55px;padding:3px 5px;color:var(--accent);text-align:center" title="أقصى سرعة رفع Mbps">
-          </td>
-          <td>
+
+          <!-- 7. معرف التيليجرام (8%) -->
+          <td class="text-center">
             <input type="text" list="tg_users_datalist" value="${tgChat}" id="off_tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:90px;padding:3px 5px;direction:ltr;text-align:center;font-size:0.75rem" placeholder="Chat ID" title="معرف التيليجرام لربط التنبيهات والأوامر (اختر من القائمة المكتشفة)">
+                   style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border, rgba(96,165,250,0.3));background:rgba(0,0,0,0.35);color:var(--tbl-tg-color, #93c5fd)" 
+                   placeholder="Chat ID" title="معرف التيليجرام">
           </td>
-          <td>
-            <button class="action-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" style="padding:4px 8px" onclick="toggleBlock('${canonMac}', ${!isBlocked})">${isBlocked ? 'محظور مسبقاً' : 'نشط'}</button>
-          </td>
-          <td>
-            <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
-              <button class="primary-btn" style="padding:4px 8px;font-size:0.8rem" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات">💾</button>
-              <button class="action-btn btn-reset" style="padding:4px 8px" onclick="resetDevice('${canonMac}')" title="تصفير العداد">🔄</button>
-              <button class="action-btn btn-delete" style="padding:4px 8px" onclick="deleteDevice('${canonMac}')" title="حذف من السجل">🗑️</button>
+
+          <!-- 8. الإجراءات (17%) -->
+          <td class="text-center">
+            <div class="tbl-actions-group">
+              <button class="tbl-icon-btn btn-save" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات 💾">💾</button>
+              <button class="tbl-icon-btn ${isBlocked ? 'btn-unblock' : 'btn-block'}" onclick="toggleBlock('${canonMac}', ${!isBlocked})" title="${isBlocked ? 'فك الحظر المسبق' : 'حظر مسبق'}">${isBlocked ? '🔓' : '⛔'}</button>
+              <button class="tbl-icon-btn btn-reset" onclick="resetDevice('${canonMac}')" title="تصفير العداد">🔄</button>
+              <button class="tbl-icon-btn btn-delete" onclick="deleteDevice('${canonMac}')" title="حذف من السجل">🗑️</button>
             </div>
           </td>
         </tr>
@@ -3521,101 +4198,57 @@ function renderDevices(devices) {
 
 // Device Actions with Auto-Auth & Toast Notifications
 async function toggleGaming(mac, val) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => toggleGaming(mac, val);
-      openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لتفعيل وضع الألعاب VIP' : 'يرجى تسجيل الدخول كمشرف لإلغاء وضع VIP');
-      return;
-    }
-  }
-  try {
-    let res = await fetch('/api/device/gaming', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac, gaming: val ? '1' : '0'})
-    });
-    if (res.ok) {
-      showToast(val ? 'تم تفعيل وضع ألعاب VIP (أقصى سرعة وتخطي الحدود)! 👑' : 'تم إلغاء وضع VIP والعودة للسرعة المحددة بنجاح! 🚀', val ? 'warn' : 'success');
-      refreshData();
-    } else {
-      showToast('تعذر تغيير وضع VIP، يرجى المحاولة مجدداً', 'error');
-    }
-  } catch (e) {
-    showToast('خطأ في الاتصال بالراوتر', 'error');
+  let res = await postWithRetry('/api/device/gaming', {mac: mac, gaming: val ? '1' : '0'});
+  if (res.ok) {
+    showToast(val ? 'تم تفعيل وضع ألعاب VIP (أقصى سرعة وتخطي الحدود)! 👑' : 'تم إلغاء وضع VIP والعودة للسرعة المحددة بنجاح! 🚀', val ? 'warn' : 'success');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => toggleGaming(mac, val);
+    openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لتفعيل وضع الألعاب VIP' : 'يرجى تسجيل الدخول كمشرف لإلغاء وضع VIP');
+  } else {
+    showToast('تعذر تغيير وضع VIP، يرجى المحاولة مجدداً', 'error');
   }
 }
 
 async function toggleBlock(mac, val) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => toggleBlock(mac, val);
-      openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لحظر هذا الجهاز' : 'يرجى تسجيل الدخول كمشرف لفك الحظر عن هذا الجهاز');
-      return;
-    }
-  }
-  try {
-    let res = await fetch('/api/device/block', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac, blocked: val ? '1' : '0'})
-    });
-    if (res.ok) {
-      showToast(val ? 'تم حظر الجهاز بنجاح! ⛔' : 'تم فك الحظر عن الجهاز بنجاح! 🟢', val ? 'warn' : 'success');
-      refreshData();
-    } else {
-      showToast('تعذر تغيير حالة الحظر، يرجى المحاولة مجدداً', 'error');
-    }
-  } catch (e) {
-    showToast('خطأ في الاتصال بالراوتر', 'error');
+  let res = await postWithRetry('/api/device/block', {mac: mac, blocked: val ? '1' : '0'});
+  if (res.ok) {
+    showToast(val ? 'تم حظر الجهاز بنجاح! ⛔' : 'تم فك الحظر عن الجهاز بنجاح! 🟢', val ? 'warn' : 'success');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => toggleBlock(mac, val);
+    openLoginModal(val ? 'يرجى تسجيل الدخول كمشرف لحظر هذا الجهاز' : 'يرجى تسجيل الدخول كمشرف لفك الحظر عن هذا الجهاز');
+  } else {
+    showToast('تعذر تغيير حالة الحظر، يرجى المحاولة مجدداً', 'error');
   }
 }
 
 async function resetDevice(mac) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => resetDevice(mac);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لتصفير عداد الجهاز');
-      return;
-    }
-  }
   if (!confirm('هل تريد تصفير عدادات هذا الجهاز؟')) return;
-  try {
-    let res = await fetch('/api/device/reset', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac})
-    });
-    if (res.ok) {
-      showToast('تم تصفير استهلاك الجهاز بنجاح! 🔄', 'success');
-      refreshData();
-    }
-  } catch (e) {}
+  let res = await postWithRetry('/api/device/reset', {mac: mac});
+  if (res.ok) {
+    showToast('تم تصفير استهلاك الجهاز بنجاح! 🔄', 'success');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => resetDevice(mac);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لتصفير عداد الجهاز');
+  } else {
+    showToast('تعذر تصفير العداد، يرجى المحاولة مجدداً', 'error');
+  }
 }
 
 async function deleteDevice(mac) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => deleteDevice(mac);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لحذف هذا الجهاز');
-      return;
-    }
-  }
   if (!confirm('هل تريد حذف هذا الجهاز من السجل نهائياً؟')) return;
-  try {
-    let res = await fetch('/api/device/delete', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac})
-    });
-    if (res.ok) {
-      showToast('تم حذف الجهاز من السجل بنجاح! 🗑️', 'info');
-      refreshData();
-    }
-  } catch (e) {}
+  let res = await postWithRetry('/api/device/delete', {mac: mac});
+  if (res.ok) {
+    showToast('تم حذف الجهاز من السجل بنجاح! 🗑️', 'info');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => deleteDevice(mac);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لحذف هذا الجهاز');
+  } else {
+    showToast('تعذر حذف الجهاز، يرجى المحاولة مجدداً', 'error');
+  }
 }
 
 async function saveDeviceTable(mac) {
@@ -3630,14 +4263,6 @@ async function saveDeviceTable(mac) {
   let up = ulEl ? ulEl.value : null;
   let tgChat = tgEl ? tgEl.value : null;
 
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => saveDeviceTable(mac);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
-      return;
-    }
-  }
   if (qEl) qEl.dataset.dirty = '';
   if (dlEl) dlEl.dataset.dirty = '';
   if (ulEl) ulEl.dataset.dirty = '';
@@ -3656,97 +4281,56 @@ async function saveDeviceCard(mac) {
   let up = ulEl ? ulEl.value : null;
   let tgChat = tgEl ? tgEl.value : null;
 
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => saveDeviceCard(mac);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لتطبيق التعديلات وحفظها.');
-      return;
-    }
-  }
-  if (qEl) qEl.dataset.dirty = '';
-  if (dlEl) dlEl.dataset.dirty = '';
-  if (ulEl) ulEl.dataset.dirty = '';
-  if (tgEl) tgEl.dataset.dirty = '';
   await saveDeviceFull(mac, null, quota, down, up, tgChat);
 }
 
 async function saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لحفظ تعديلات الجهاز.');
-      return;
-    }
-  }
-  try {
-    let params = new URLSearchParams({mac: mac});
-    if (name) params.append('name', name);
-    if (quotaGb !== undefined && quotaGb !== null) params.append('quota_gb', quotaGb);
-    if (downMbps !== undefined && downMbps !== null) params.append('download_mbps', downMbps);
-    if (upMbps !== undefined && upMbps !== null) params.append('upload_mbps', upMbps);
-    if (tgChatId !== undefined && tgChatId !== null) params.append('telegram_chat_id', tgChatId);
-    let res = await fetch('/api/device/save', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: params
-    });
-    if (res.ok) {
-      showToast('تم حفظ إعدادات الجهاز والكوتة والسرعة بنجاح! 💾', 'success');
-      refreshData();
-    } else {
-      let errTxt = '';
-      try { let errJson = await res.json(); if (errJson.error) errTxt = ' (' + errJson.error + ')'; } catch(e){}
-      showToast('فشل حفظ الإعدادات' + errTxt + '، يرجى المحاولة لاحقاً', 'error');
-    }
-  } catch(e) {
-    showToast('حدث خطأ أثناء الاتصال بالراوتر', 'error');
+  let params = new URLSearchParams({mac: mac});
+  if (name) params.append('name', name);
+  if (quotaGb !== undefined && quotaGb !== null) params.append('quota_gb', quotaGb);
+  if (downMbps !== undefined && downMbps !== null) params.append('download_mbps', downMbps);
+  if (upMbps !== undefined && upMbps !== null) params.append('upload_mbps', upMbps);
+  if (tgChatId !== undefined && tgChatId !== null) params.append('telegram_chat_id', tgChatId);
+
+  let res = await postWithRetry('/api/device/save', params);
+  if (res.ok) {
+    showToast('تم حفظ إعدادات الجهاز والكوتة والسرعة بنجاح! 💾', 'success');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => saveDeviceFull(mac, name, quotaGb, downMbps, upMbps, tgChatId);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لحفظ تعديلات الجهاز.');
+  } else {
+    let errTxt = res.error ? ' (' + res.error + ')' : '';
+    showToast('فشل حفظ الإعدادات' + errTxt + '، يرجى المحاولة لاحقاً', 'error');
   }
 }
 
 async function saveDeviceName(mac, newName) {
   newName = (newName || '').trim();
   if (!newName) return;
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => saveDeviceName(mac, newName);
-      openLoginModal('لتعديل اسم الجهاز، يرجى تسجيل الدخول كمشرف');
-      return;
-    }
+  let res = await postWithRetry('/api/device/save', {mac: mac, name: newName});
+  if (res.ok) {
+    showToast(`تم تعديل اسم الجهاز إلى (${newName}) بنجاح! ✏️`, 'success');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => saveDeviceName(mac, newName);
+    openLoginModal('لتعديل اسم الجهاز، يرجى تسجيل الدخول كمشرف');
+  } else {
+    showToast('تعذر حفظ اسم الجهاز', 'error');
   }
-  try {
-    let res = await fetch('/api/device/save', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac, name: newName})
-    });
-    if (res.ok) {
-      showToast(`تم تعديل اسم الجهاز إلى (${newName}) بنجاح! ✏️`, 'success');
-      refreshData();
-    }
-  } catch (e) {}
 }
 
 async function saveDeviceSpeed(mac, upMbps, downMbps) {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) {
-      _pendingAction = () => saveDeviceSpeed(mac, upMbps, downMbps);
-      openLoginModal('يرجى تسجيل الدخول كمشرف لضبط السرعة');
-      return;
-    }
-  }
-  try {
-    await fetch('/api/device/save', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({mac: mac, upload_mbps: upMbps, download_mbps: downMbps})
-    });
+  let res = await postWithRetry('/api/device/save', {mac: mac, upload_mbps: upMbps, download_mbps: downMbps});
+  if (res.ok) {
     showToast('تم تحديث حدود السرعة للجهاز بنجاح! 🚀', 'success');
     refreshData();
-  } catch (e) {}
+  } else if (res.status === 401) {
+    _pendingAction = () => saveDeviceSpeed(mac, upMbps, downMbps);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لضبط السرعة');
+  } else {
+    showToast('تعذر تحديث السرعة', 'error');
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -3770,6 +4354,7 @@ async function uploadOtaFirmware(e) {
   let progressTxt = document.getElementById('ota-progress-text');
   let statusTxt = document.getElementById('ota-status-msg');
 
+  isOtaActive = true;
   progressBox.style.display = 'block';
   progressBar.style.width = '0%';
   progressTxt.textContent = '0%';
@@ -3789,6 +4374,7 @@ async function uploadOtaFirmware(e) {
   };
 
   xhr.onload = function() {
+    isOtaActive = false;
     if (xhr.status === 200) {
       progressBar.style.width = '100%';
       progressTxt.textContent = '100%';
@@ -3802,6 +4388,7 @@ async function uploadOtaFirmware(e) {
   };
 
   xhr.onerror = function() {
+    isOtaActive = false;
     statusTxt.innerHTML = '❌ <b style="color:var(--red)">انقطع الاتصال أثناء الرفع</b>';
   };
 
@@ -3845,6 +4432,7 @@ async function triggerUrlOta(e) {
 }
 
 function pollOtaStatus() {
+  isOtaActive = true;
   let timer = setInterval(async () => {
     try {
       let res = await fetch('/api/ota/status');
@@ -3859,11 +4447,13 @@ function pollOtaStatus() {
       if (st.state === 'downloading' || st.state === 'flashing') {
         statusTxt.textContent = `جاري التنزيل والبرمجة: ${st.progress}% (${(st.written/1024).toFixed(0)} KB)...`;
       } else if (st.state === 'success') {
+        isOtaActive = false;
         clearInterval(timer);
         progressBar.style.width = '100%';
         statusTxt.innerHTML = '🎉 <b style="color:var(--green)">اكتملت الترقية بنجاح!</b> جاري إعادة التشغيل على البارتيشن الجديد...';
         setTimeout(() => location.reload(), 5000);
       } else if (st.state === 'failed') {
+        isOtaActive = false;
         clearInterval(timer);
         statusTxt.innerHTML = '❌ <b style="color:var(--red)">فشل التحديث: ' + st.error + '</b>';
       }
@@ -3911,56 +4501,87 @@ function startAutoCloudOta(url) {
   triggerUrlOta({preventDefault: ()=>{}});
 }
 
-// Main Quota & Period
-async function saveMainQuotaConfig(btn) {
+async function toggleOtaAutoUpdate(enabled) {
   if (!isAdmin) {
     let ok = await ensureAdminAuth();
-    if (!ok) { openLoginModal(); return; }
+    if (!ok) {
+      openLoginModal();
+      let chk = document.getElementById('cfg_ota_auto_update');
+      if (chk) chk.checked = !enabled;
+      return;
+    }
   }
+  let badge = document.getElementById('ota-auto-status-badge');
+  try {
+    let res = await fetch('/api/ota/update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', ...getAuthHeaders()},
+      body: new URLSearchParams({auto_update: enabled ? '1' : '0'})
+    });
+    let d = await res.json();
+    if (d.ok) {
+      if (badge) {
+        badge.textContent = enabled ? 'مفعّل ✅' : 'معطّل ⏸️';
+        badge.className = enabled ? 'badge badge-gaming' : 'badge badge-secondary';
+      }
+    } else {
+      alert('تعذر حفظ إعداد التحديث التلقائي');
+      let chk = document.getElementById('cfg_ota_auto_update');
+      if (chk) chk.checked = !enabled;
+    }
+  } catch(e) {
+    alert('خطأ في الاتصال بالراوتر أثناء حفظ إعداد التحديث');
+    let chk = document.getElementById('cfg_ota_auto_update');
+    if (chk) chk.checked = !enabled;
+  }
+}
+
+// Main Quota & Period
+async function saveMainQuotaConfig(btn) {
   let gb = document.getElementById('cfg_main_quota_gb').value;
   let sDate = document.getElementById('cfg_start_date').value;
   let eDate = document.getElementById('cfg_end_date').value;
   btn.disabled = true;
-  try {
-    let res = await fetch('/api/main_quota', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({quota_gb: gb, start_date: sDate, end_date: eDate})
-    });
-    if (res.ok) showToast('تم حفظ إعدادات باقة النت بنجاح! 💾');
-    else showToast('تعذر حفظ الإعدادات', 'error');
-  } catch (e) { showToast('خطأ في الاتصال', 'error'); }
-  finally { btn.disabled = false; refreshData(); }
+  let res = await postWithRetry('/api/main_quota', {quota_gb: gb, start_date: sDate, end_date: eDate});
+  btn.disabled = false;
+  if (res.ok) {
+    showToast('تم حفظ إعدادات باقة النت بنجاح! 💾');
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => saveMainQuotaConfig(btn);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لتعديل إعدادات الباقة');
+  } else {
+    showToast('تعذر حفظ الإعدادات', 'error');
+  }
 }
 
 async function submitPeriodDays(e) {
   e.preventDefault();
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) { openLoginModal(); return; }
-  }
   let d = document.getElementById('period_days').value;
-  try {
-    await fetch('/meter/period', {
-      method: 'POST',
-      headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({period_days: d})
-    });
+  let res = await postWithRetry('/meter/period', {period_days: d});
+  if (res.ok) {
     showToast('تم تطبيق مدة الدورة الاحتياطية بنجاح!');
-  } catch (e) {}
+    refreshData();
+  } else if (res.status === 401) {
+    _pendingAction = () => submitPeriodDays(e);
+    openLoginModal('يرجى تسجيل الدخول كمشرف لتعديل مدة الدورة');
+  } else {
+    showToast('تعذر حفظ مدة الدورة', 'error');
+  }
 }
 
 async function resetMainQuota() {
-  if (!isAdmin) {
-    let ok = await ensureAdminAuth();
-    if (!ok) { openLoginModal(); return; }
-  }
   if (!confirm('تحذير: سيتم تصفير جميع العدادات وإعادة بدء الدورة ورفع الحظر. هل أنت متأكد؟')) return;
-  try {
-    await fetch('/meter/reset', {method: 'POST', headers: getAuthHeaders()});
+  let res = await postWithRetry('/meter/reset', {});
+  if (res.ok) {
     showToast('تم تصفير العدادات وتجديد الدورة بنجاح!');
     refreshData();
-  } catch (e) {}
+  } else if (res.status === 401) {
+    _pendingAction = () => resetMainQuota();
+    openLoginModal('يرجى تسجيل الدخول كمشرف لتصفير العدادات');
+  } else {
+    showToast('تعذر تصفير العدادات', 'error');
+  }
 }
 
 // Telegram Helpers & Interactive Chat
@@ -4438,22 +5059,29 @@ async function submitCountdownReboot(e) {
   } catch (e) {}
 }
 
-function updateMeterScaleBadges(sc, std) {
+function updateMeterScaleBadges(sc, std, mode) {
   let bSc = document.getElementById('badge-meter-scale');
   if (bSc) bSc.textContent = sc + '%';
   let bStd = document.getElementById('badge-gb-std');
   if (bStd) bStd.textContent = std + ' MB';
+  let bMode = document.getElementById('badge-meter-mode');
+  if (bMode) bMode.textContent = (mode === 1) ? 'تراكمي' : 'فوري وشامل';
 }
 
 function onMeterScaleChange(val) {
   meterScalePct = parseInt(val, 10) || 100;
-  updateMeterScaleBadges(meterScalePct, gbStandard);
+  updateMeterScaleBadges(meterScalePct, gbStandard, meterScaleMode);
 }
 
 function onGbStandardChange(val) {
   gbStandard = parseInt(val, 10) || 1024;
-  updateMeterScaleBadges(meterScalePct, gbStandard);
+  updateMeterScaleBadges(meterScalePct, gbStandard, meterScaleMode);
   renderDevices();
+}
+
+function onMeterModeChange(val) {
+  meterScaleMode = parseInt(val, 10) || 0;
+  updateMeterScaleBadges(meterScalePct, gbStandard, meterScaleMode);
 }
 
 async function saveMeterScaleConfig() {
@@ -4463,20 +5091,22 @@ async function saveMeterScaleConfig() {
   }
   let sc = document.getElementById('cfg_meter_scale').value;
   let std = document.getElementById('cfg_gb_std').value;
+  let mode = document.getElementById('cfg_meter_mode')?.value || '0';
   let btn = document.getElementById('scale_save_btn');
   if (btn) btn.disabled = true;
   try {
     let res = await fetch('/api/meter_scale', {
       method: 'POST',
       headers: getAuthHeaders({'Content-Type': 'application/x-www-form-urlencoded'}),
-      body: new URLSearchParams({scale: sc, gb_std: std})
+      body: new URLSearchParams({scale: sc, gb_std: std, mode: mode})
     });
     if (res.ok) {
       gbStandard = parseInt(std, 10) || 1024;
       meterScalePct = parseInt(sc, 10) || 100;
-      updateMeterScaleBadges(meterScalePct, gbStandard);
+      meterScaleMode = parseInt(mode, 10) || 0;
+      updateMeterScaleBadges(meterScalePct, gbStandard, meterScaleMode);
       renderDevices();
-      showToast('تم حفظ وتطبيق نسبة العداد ومعيار الجيجا بنجاح!');
+      showToast('تم حفظ وتطبيق إعدادات المعايرة ونمط الاحتساب بنجاح!');
     } else {
       showToast('فشل حفظ إعدادات المعايرة', 'error');
     }
@@ -4534,67 +5164,11 @@ async function rebootRouter() {
   } catch (e) {}
 }
 
-let pollScanAttempts = 0;
-async function triggerScan() {
-  let btn = document.getElementById('scan_button');
-  btn.disabled = true;
-  btn.textContent = '⏳ جاري الفحص...';
-  try {
-    let res = await fetch('/api/scan/start?t=' + Date.now(), {method: 'POST'});
-    let json = await res.json();
-    if (!json.ok) {
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-      alert('الواي فاي مشغول حالياً، يرجى إعادة المحاولة بعد ثوانٍ');
-      return;
-    }
-    pollScanAttempts = 0;
-    setTimeout(pollScanResults, 800);
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '🔍 فحص';
-    alert('حدث خطأ في الاتصال بالراوتر أثناء بدء الفحص');
-  }
-}
-
-async function pollScanResults() {
-  let btn = document.getElementById('scan_button');
-  pollScanAttempts++;
-  try {
-    let res = await fetch('/api/scan?t=' + Date.now());
-    let data = await res.json();
-    if (data.ready) {
-      let sel = document.getElementById('scan_results');
-      if (data.results && data.results.length > 0) {
-        sel.innerHTML = `<option value="">اختر شبكة للاتصال بها (${data.results.length} شبكة)</option>`;
-        data.results.forEach(net => {
-          let opt = document.createElement('option');
-          opt.value = net.ssid;
-          let bandTag = net.band === 2 ? '[5 GHz 🚀]' : '[2.4 GHz 📶]';
-          opt.textContent = `${bandTag} ${net.ssid} (${net.rssi} dBm)${net.secured ? ' 🔒' : ''}`;
-          sel.appendChild(opt);
-        });
-      } else {
-        sel.innerHTML = '<option value="">لم يتم العثور على شبكات (اضغط فحص لإعادة المحاولة)</option>';
-      }
-      sel.onchange = () => { if (sel.value) document.getElementById('cfg_router_ssid').value = sel.value; };
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-    } else if (pollScanAttempts < 45) {
-      setTimeout(pollScanResults, 800);
-    } else {
-      btn.disabled = false;
-      btn.textContent = '🔍 فحص';
-      alert('انتهت مهلة انتظار نتائج الفحص، يرجى المحاولة ثانية');
-    }
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = '🔍 فحص';
-  }
-}
-
 setInterval(refreshData, 2000);
 refreshData();
+if (!localStorage.getItem('esp_session_token') && localStorage.getItem('esp_admin_user') && localStorage.getItem('esp_admin_pass')) {
+  ensureAdminAuth().then(() => refreshData());
+}
 window.addEventListener('resize', drawSpeedChart);
 
 function autoDetectLocalTimezone() {
@@ -4620,6 +5194,157 @@ function autoDetectLocalTimezone() {
   }
   alert(`تم اكتشاف وتعيين المنطقة الزمنية بنجاح: UTC${offsetHours >= 0 ? '+' : ''}${offsetHours}`);
 }
+
+let _isScanningWifi = false;
+
+async function scanWifiNetworks() {
+  if (!isAdmin) {
+    let ok = await ensureAdminAuth();
+    if (!ok) { openLoginModal(); return; }
+  }
+  if (_isScanningWifi) return;
+  _isScanningWifi = true;
+
+  const btn = document.getElementById('btn_scan_wifi');
+  const spinner = document.getElementById('scan_spinner');
+  const icon = document.getElementById('scan_icon');
+  const btnText = document.getElementById('scan_btn_text');
+  const dropdown = document.getElementById('wifi_scan_results');
+
+  if (btn) btn.disabled = true;
+  if (spinner) spinner.style.display = 'inline-block';
+  if (icon) icon.style.display = 'none';
+  if (btnText) btnText.textContent = 'جاري الفحص...';
+
+  if (dropdown) {
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = `
+      <div style="padding:14px;text-align:center;color:var(--muted);font-size:0.86rem;display:flex;align-items:center;justify-content:center;gap:10px">
+        <span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>
+        <span>جاري فحص جميع قنوات 2.4GHz و 5GHz المحيطة...</span>
+      </div>`;
+  }
+
+  try {
+    const res = await fetch('/api/wifi/scan', {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      if (dropdown) {
+        dropdown.innerHTML = `
+          <div style="padding:12px;text-align:center;color:#ef4444;font-size:0.85rem">
+            ❌ تعذر إتمام فحص الشبكات (${data.error || 'خطأ'}). يرجى المحاولة لاحقاً.
+          </div>`;
+      }
+      return;
+    }
+
+    const aps = data.aps || [];
+    if (aps.length === 0) {
+      if (dropdown) {
+        dropdown.innerHTML = `
+          <div style="padding:14px;text-align:center;color:var(--muted);font-size:0.85rem">
+            لم يتم العثور على أي شبكات واي فاي قريبة.
+          </div>`;
+      }
+      return;
+    }
+
+    let html = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px">
+        <span style="font-weight:700;font-size:0.82rem;color:#c4b5fd">الشبكات المكتشفة (${aps.length})</span>
+        <button type="button" onclick="document.getElementById('wifi_scan_results').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:2px 6px">✕</button>
+      </div>
+      <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
+    `;
+
+    aps.forEach(ap => {
+      let sigIcon = '📶';
+      let sigColor = '#10b981';
+      if (ap.rssi < -75) { sigColor = '#ef4444'; }
+      else if (ap.rssi < -65) { sigColor = '#f59e0b'; }
+
+      const is5G = (ap.band === '5GHz');
+      const bandBadge = is5G
+        ? `<span class="badge" style="background:rgba(168,85,247,0.22);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45);font-size:0.72rem;padding:2px 6px;font-weight:700">5 GHz</span>`
+        : `<span class="badge" style="background:rgba(6,182,212,0.18);color:#67e8f9;border:1px solid rgba(6,182,212,0.4);font-size:0.72rem;padding:2px 6px;font-weight:700">2.4 GHz</span>`;
+
+      const openBadge = ap.open
+        ? `<span style="font-size:0.7rem;color:#10b981;background:rgba(16,185,129,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">🔓 مفتوحة</span>`
+        : `<span style="font-size:0.7rem;color:var(--muted)" title="مشفرة">🔒</span>`;
+
+      const safeSsid = ap.ssid.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+      html += `
+        <div onclick="selectScannedWifi('${safeSsid}', ${ap.open ? 'true' : 'false'}, '${ap.band}')" 
+             style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,0.03);transition:background 0.15s;gap:8px"
+             onmouseover="this.style.background='rgba(139,92,246,0.18)'" 
+             onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+            <span style="font-size:1.05rem;color:${sigColor}">${sigIcon}</span>
+            <span style="font-weight:700;font-size:0.88rem;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left">${ap.ssid}</span>
+            ${openBadge}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-size:0.75rem;color:${sigColor};font-family:monospace">${ap.rssi} dBm</span>
+            ${bandBadge}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    if (dropdown) dropdown.innerHTML = html;
+
+  } catch (err) {
+    if (dropdown) {
+      dropdown.innerHTML = `
+        <div style="padding:12px;text-align:center;color:#ef4444;font-size:0.85rem">
+          ❌ حدث خطأ أثناء الاتصال بالراوتر لفحص الشبكات.
+        </div>`;
+    }
+  } finally {
+    _isScanningWifi = false;
+    if (btn) btn.disabled = false;
+    if (spinner) spinner.style.display = 'none';
+    if (icon) icon.style.display = 'inline-block';
+    if (btnText) btnText.textContent = 'فحص الشبكات المحيطة';
+  }
+}
+
+function selectScannedWifi(ssid, isOpen, band) {
+  const ssidInput = document.getElementById('cfg_router_ssid');
+  const passInput = document.getElementById('cfg_router_pass');
+  const clearPassChk = document.getElementById('cfg_clear_router_password');
+  const dropdown = document.getElementById('wifi_scan_results');
+
+  if (ssidInput) ssidInput.value = ssid;
+  if (dropdown) dropdown.style.display = 'none';
+
+  if (isOpen) {
+    if (clearPassChk) clearPassChk.checked = true;
+    if (passInput) passInput.value = '';
+    showToast(`تم اختيار الشبكة المفتوحة: ${ssid} (${band})`, 'info');
+  } else {
+    if (clearPassChk) clearPassChk.checked = false;
+    if (passInput) {
+      passInput.focus();
+    }
+    showToast(`تم اختيار: ${ssid} (${band}) - أدخل كلمة المرور`, 'info');
+  }
+}
+
+document.addEventListener('click', function(e) {
+  const dropdown = document.getElementById('wifi_scan_results');
+  const btn = document.getElementById('btn_scan_wifi');
+  if (dropdown && dropdown.style.display !== 'none') {
+    if (!dropdown.contains(e.target) && (!btn || !btn.contains(e.target))) {
+      dropdown.style.display = 'none';
+    }
+  }
+});
 
 </script>
 </body>

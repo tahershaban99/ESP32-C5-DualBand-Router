@@ -22,6 +22,7 @@ extern uint8_t wifi_protocol_mode;
 extern uint8_t
     wifi_band_mode; // 1 = 2.4GHz Only, 2 = 5GHz Only, 3 = Auto Dual-Band
 extern uint8_t router_meter_scale_pct;
+extern uint8_t router_meter_scale_mode;
 
 // Daily Scheduled Auto-Reboot Settings
 extern bool auto_reboot_enabled;
@@ -55,7 +56,7 @@ void config_save_ota_auto_update(bool enabled);
 void config_save_telegram(bool enabled, bool interactive, const char *token,
                           const char *chat_id, const char *thresholds);
 void config_save_telegram_flags(uint32_t flags);
-void config_save_meter_scale(uint8_t scale_pct, uint16_t gb_std);
+void config_save_meter_scale(uint8_t scale_pct, uint16_t gb_std, uint8_t scale_mode);
 void config_save_wifi(const char *r_ssid, const char *r_pass, bool clear_r_pass,
                       const char *a_ssid, const char *a_pass, uint8_t band_mode,
                       uint8_t proto, bool static_en, const char *ip,

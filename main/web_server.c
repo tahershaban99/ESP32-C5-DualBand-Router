@@ -182,7 +182,8 @@ static void add_admin_session(const char *tok, int64_t expiry_us) {
   // 2. Find an empty/invalid or expired slot
   for (size_t i = 0; i < MAX_ADMIN_SESSIONS; ++i) {
     if (!s_admin_sessions[i].valid || now_us > s_admin_sessions[i].expiry_us) {
-      snprintf(s_admin_sessions[i].token, sizeof(s_admin_sessions[i].token), "%s", tok);
+      snprintf(s_admin_sessions[i].token, sizeof(s_admin_sessions[i].token),
+               "%s", tok);
       s_admin_sessions[i].expiry_us = expiry_us;
       s_admin_sessions[i].valid = true;
       return;
@@ -197,7 +198,8 @@ static void add_admin_session(const char *tok, int64_t expiry_us) {
       earliest_idx = i;
     }
   }
-  snprintf(s_admin_sessions[earliest_idx].token, sizeof(s_admin_sessions[earliest_idx].token), "%s", tok);
+  snprintf(s_admin_sessions[earliest_idx].token,
+           sizeof(s_admin_sessions[earliest_idx].token), "%s", tok);
   s_admin_sessions[earliest_idx].expiry_us = expiry_us;
   s_admin_sessions[earliest_idx].valid = true;
 }
@@ -318,8 +320,14 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   snprintf(q_start, sizeof(q_start), "%s", quota_start_date);
   snprintf(q_end, sizeof(q_end), "%s", quota_end_date);
   for (size_t i = 0; i < count; ++i) {
-    total_up += usage_records[i].upload_bytes;
-    total_down += usage_records[i].download_bytes;
+    uint64_t u_up = usage_records[i].upload_bytes;
+    uint64_t u_down = usage_records[i].download_bytes;
+    if (router_meter_scale_mode == 0 && router_meter_scale_pct != 100) {
+      u_up = (u_up * (uint64_t)router_meter_scale_pct) / 100ULL;
+      u_down = (u_down * (uint64_t)router_meter_scale_pct) / 100ULL;
+    }
+    total_up += u_up;
+    total_down += u_down;
   }
   portEXIT_CRITICAL(&data_mux);
 
@@ -420,7 +428,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       "\"free_heap\":%" PRIu32 ",\"min_free_heap\":%" PRIu32
       ",\"uptime_s\":%" PRIu32 ","
       "\"sta_rssi\":%d,\"sta_channel\":%d,\"active_clients\":%u,"
-      "\"cpu_freq_mhz\":%u,\"wifi_power_save\":%s,\"meter_scale_pct\":%u,\"gb_"
+      "\"cpu_freq_mhz\":%u,\"wifi_power_save\":%s,\"meter_scale_pct\":%u,"
+      "\"meter_scale_mode\":%u,\"gb_"
       "standard\":%u,"
       "\"main_quota_gb\":%.2f,\"q_start\":\"%s\",\"q_end\":\"%s\","
       "\"time_synced\":%s,\"rem_days\":%ld,\"rem_hours\":%ld,\"rem_main_gb\":%."
@@ -432,9 +441,9 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       live_total_down, free_heap, min_free_heap, uptime_s, sta_rssi,
       sta_channel, active_clients_count, (unsigned)esp_cpu_freq_mhz,
       esp_wifi_power_save ? "true" : "false", (unsigned)router_meter_scale_pct,
-      (unsigned)router_gb_standard, main_quota_gb, q_start, q_end,
-      time_synced ? "true" : "false", (long)rem_days, (long)rem_hours,
-      rem_main_gb, ota_inf.running_partition);
+      (unsigned)router_meter_scale_mode, (unsigned)router_gb_standard,
+      main_quota_gb, q_start, q_end, time_synced ? "true" : "false",
+      (long)rem_days, (long)rem_hours, rem_main_gb, ota_inf.running_partition);
   if (used >= sizeof(buf) - 64)
     used = sizeof(buf) - 64;
   used = append_json_string(buf, sizeof(buf), used, sta_ssid_safe);
@@ -608,7 +617,13 @@ static esp_err_t devices_handler(httpd_req_t *req) {
     uint64_t quota = pol.quota_bytes;
     uint32_t upload_limit_bps = spd.upload_bps;
     uint32_t download_limit_bps = spd.download_bps;
-    uint64_t dev_tot = rec.upload_bytes + rec.download_bytes;
+    uint64_t rec_up = rec.upload_bytes;
+    uint64_t rec_down = rec.download_bytes;
+    if (router_meter_scale_mode == 0 && router_meter_scale_pct != 100) {
+      rec_up = (rec_up * (uint64_t)router_meter_scale_pct) / 100ULL;
+      rec_down = (rec_down * (uint64_t)router_meter_scale_pct) / 100ULL;
+    }
+    uint64_t dev_tot = rec_up + rec_down;
     bool quota_exceeded = (quota > 0 && dev_tot >= quota);
     bool blocked = pol.blocked || quota_exceeded;
     bool gaming = pol.gaming_mode;
@@ -635,8 +650,8 @@ static esp_err_t devices_handler(httpd_req_t *req) {
         "\"upload_mbps\":%.2f,\"download_mbps\":%.2f,"
         "\"cur_up_bps\":%" PRIu32 ",\"cur_down_bps\":%" PRIu32
         ",\"share_pct\":%.2f,\"name\":",
-        ip_text, mac, canon_mac, rssi, rec.upload_bytes, rec.download_bytes,
-        quota, dev_quota_gb, dev_quota_pct, quota_exceeded ? "true" : "false",
+        ip_text, mac, canon_mac, rssi, rec_up, rec_down, quota, dev_quota_gb,
+        dev_quota_pct, quota_exceeded ? "true" : "false",
         upload_limit_bps / 1000000.0, download_limit_bps / 1000000.0,
         live.cur_up_bps, live.cur_down_bps, dev_share_pct);
 
@@ -1068,15 +1083,19 @@ static esp_err_t meter_scale_handler(httpd_req_t *req) {
   if (read_small_form(req, body, sizeof(body)) != ESP_OK)
     return ESP_FAIL;
 
-  char scale_s[12] = {0}, gb_std_s[12] = {0};
+  char scale_s[12] = {0}, gb_std_s[12] = {0}, mode_s[12] = {0};
   form_value(body, "scale", scale_s, sizeof(scale_s));
   form_value(body, "gb_std", gb_std_s, sizeof(gb_std_s));
+  form_value(body, "mode", mode_s, sizeof(mode_s));
   int sc = atoi(scale_s);
   int gb_std = atoi(gb_std_s);
+  int mode = atoi(mode_s);
   if (sc >= 10 && sc <= 200) {
     if (gb_std != 1000 && gb_std != 1024)
       gb_std = 1024;
-    config_save_meter_scale((uint8_t)sc, (uint16_t)gb_std);
+    if (mode != 0 && mode != 1)
+      mode = 0;
+    config_save_meter_scale((uint8_t)sc, (uint16_t)gb_std, (uint8_t)mode);
   }
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   return httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -1372,6 +1391,93 @@ static esp_err_t ota_check_handler(httpd_req_t *req) {
   return httpd_resp_sendstr(req, res);
 }
 
+static esp_err_t wifi_scan_handler(httpd_req_t *req) {
+  if (!require_admin(req))
+    return ESP_OK;
+
+  wifi_ap_record_t *records = NULL;
+  uint16_t ap_count = 0;
+  esp_err_t err = wifi_manager_scan_networks(&records, &ap_count);
+
+  httpd_resp_set_type(req, "application/json; charset=utf-8");
+
+  if (err != ESP_OK && err != ESP_ERR_TIMEOUT) {
+    if (records)
+      wifi_manager_free_scan_records(records);
+    char err_buf[64];
+    snprintf(err_buf, sizeof(err_buf), "{\"ok\":false,\"error\":\"%s\"}",
+             esp_err_to_name(err));
+    return httpd_resp_sendstr(req, err_buf);
+  }
+
+  httpd_resp_send_chunk(req, "{\"ok\":true,\"aps\":[", 18);
+
+  bool first = true;
+  char buf[256];
+
+  for (uint16_t i = 0; i < ap_count; i++) {
+    // Skip empty SSIDs (hidden networks)
+    if (records[i].ssid[0] == '\0')
+      continue;
+
+    const char *band = (records[i].primary > 14) ? "5GHz" : "2.4GHz";
+    bool is_open = (records[i].authmode == WIFI_AUTH_OPEN);
+
+    // Deduplicate: If an earlier record has the SAME SSID and SAME band, skip
+    // this one (since records are sorted by RSSI descending, the earlier one is
+    // stronger)
+    bool duplicate = false;
+    for (uint16_t k = 0; k < i; k++) {
+      if (records[k].ssid[0] != '\0' &&
+          strncmp((char *)records[k].ssid, (char *)records[i].ssid, 32) == 0) {
+        const char *k_band = (records[k].primary > 14) ? "5GHz" : "2.4GHz";
+        if (strcmp(k_band, band) == 0) {
+          duplicate = true;
+          break;
+        }
+      }
+    }
+    if (duplicate)
+      continue;
+
+    // Escape quotes and backslashes in SSID safely
+    char safe_ssid[68] = {0};
+    size_t s_idx = 0;
+    for (size_t c = 0;
+         c < sizeof(records[i].ssid) && records[i].ssid[c] != '\0' &&
+         s_idx < sizeof(safe_ssid) - 2;
+         c++) {
+      char ch = (char)records[i].ssid[c];
+      if (ch == '"' || ch == '\\') {
+        safe_ssid[s_idx++] = '\\';
+        safe_ssid[s_idx++] = ch;
+      } else if ((unsigned char)ch < 32) {
+        safe_ssid[s_idx++] = ' ';
+      } else {
+        safe_ssid[s_idx++] = ch;
+      }
+    }
+    safe_ssid[s_idx] = '\0';
+
+    int len = snprintf(buf, sizeof(buf),
+                       "%s{\"ssid\":\"%s\",\"rssi\":%d,\"band\":\"%s\","
+                       "\"channel\":%d,\"open\":%s}",
+                       first ? "" : ",", safe_ssid, (int)records[i].rssi, band,
+                       (int)records[i].primary, is_open ? "true" : "false");
+    first = false;
+    httpd_resp_send_chunk(req, buf, len);
+  }
+
+  httpd_resp_send_chunk(req, "]}", 2);
+  httpd_resp_send_chunk(req, NULL, 0);
+
+  if (records) {
+    wifi_manager_free_scan_records(records);
+  }
+
+  return ESP_OK;
+}
+
 // -----------------------------------------------------------------------------
 // SERVER INITIALIZATION & ROUTE REGISTRATION
 // -----------------------------------------------------------------------------
@@ -1382,7 +1488,7 @@ void web_server_start(void) {
   config.recv_wait_timeout = 8;
   config.send_wait_timeout = 8;
   config.stack_size = 8192; // 8KB stack for ESP-IDF v6.1 HTTPD (saves 2KB RAM)
-  config.max_uri_handlers = 26;
+  config.max_uri_handlers = 28;
   config.core_id = 0; // ESP32-C5 Unicore (Core 0)
 
   httpd_uri_t uris[] = {
@@ -1442,6 +1548,9 @@ void web_server_start(void) {
       {.uri = "/api/ota/check",
        .method = HTTP_GET,
        .handler = ota_check_handler},
+      {.uri = "/api/wifi/scan",
+       .method = HTTP_GET,
+       .handler = wifi_scan_handler},
   };
 
   if (httpd_start(&web_server, &config) == ESP_OK) {

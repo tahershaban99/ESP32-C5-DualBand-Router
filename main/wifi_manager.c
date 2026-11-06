@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include <string.h>
+#include <stdlib.h>
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -1235,4 +1236,94 @@ void wifi_manager_init(void) {
   ESP_LOGI(ROUTER_TAG, "Auth Mode: %s", (ap_config.ap.authmode == WIFI_AUTH_OPEN) ? "OPEN" : "WPA2-PSK");
   ESP_LOGI(ROUTER_TAG, "=================================================");
 }
+
+static bool s_scan_in_progress = false;
+
+esp_err_t wifi_manager_scan_networks(wifi_ap_record_t **out_records, uint16_t *out_count) {
+  if (!out_records || !out_count) return ESP_ERR_INVALID_ARG;
+  *out_records = NULL;
+  *out_count = 0;
+
+  if (s_scan_in_progress) {
+    return ESP_ERR_NOT_FINISHED;
+  }
+  s_scan_in_progress = true;
+
+  // Ensure dual-band scanning: if radio was locked to single-band mode, temporarily enable AUTO
+  wifi_band_mode_t orig_bmode = WIFI_BAND_MODE_AUTO;
+  esp_err_t b_err = esp_wifi_get_band_mode(&orig_bmode);
+  if (b_err == ESP_OK && orig_bmode != WIFI_BAND_MODE_AUTO) {
+    esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
+  }
+
+  wifi_scan_config_t scan_config = {
+    .ssid = NULL,
+    .bssid = NULL,
+    .channel = 0, // all channels across 2.4GHz & 5GHz
+    .show_hidden = false,
+    .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+    .scan_time.active.min = 100,
+    .scan_time.active.max = 120,
+  };
+
+  esp_err_t scan_err = esp_wifi_scan_start(&scan_config, true);
+
+  // Restore original band mode if altered
+  if (b_err == ESP_OK && orig_bmode != WIFI_BAND_MODE_AUTO) {
+    esp_wifi_set_band_mode(orig_bmode);
+  }
+
+  if (scan_err != ESP_OK) {
+    s_scan_in_progress = false;
+    ESP_LOGW(ROUTER_TAG, "Scan failed: %s", esp_err_to_name(scan_err));
+    return scan_err;
+  }
+
+  uint16_t ap_num = 0;
+  esp_wifi_scan_get_ap_num(&ap_num);
+  if (ap_num == 0) {
+    s_scan_in_progress = false;
+    return ESP_OK;
+  }
+
+  if (ap_num > 32) {
+    ap_num = 32;
+  }
+
+  wifi_ap_record_t *records = (wifi_ap_record_t *)malloc(ap_num * sizeof(wifi_ap_record_t));
+  if (!records) {
+    s_scan_in_progress = false;
+    return ESP_ERR_NO_MEM;
+  }
+
+  esp_err_t rec_err = esp_wifi_scan_get_ap_records(&ap_num, records);
+  if (rec_err != ESP_OK) {
+    free(records);
+    s_scan_in_progress = false;
+    return rec_err;
+  }
+
+  // Sort by RSSI descending (strongest first)
+  for (uint16_t i = 0; i < ap_num; i++) {
+    for (uint16_t j = i + 1; j < ap_num; j++) {
+      if (records[j].rssi > records[i].rssi) {
+        wifi_ap_record_t tmp = records[i];
+        records[i] = records[j];
+        records[j] = tmp;
+      }
+    }
+  }
+
+  *out_records = records;
+  *out_count = ap_num;
+  s_scan_in_progress = false;
+  return ESP_OK;
+}
+
+void wifi_manager_free_scan_records(wifi_ap_record_t *records) {
+  if (records) {
+    free(records);
+  }
+}
+
 

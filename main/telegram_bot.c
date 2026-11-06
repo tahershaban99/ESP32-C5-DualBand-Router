@@ -53,7 +53,7 @@ static const char *TG_ADMIN_KEYBOARD =
     "المتصلة\"}],"
     "[{\"text\":\"⚡ فحص السرعة\"},{\"text\":\"⚙️ حالة الراوتر\"}],"
     "[{\"text\":\"🚀 تردد المعالج\"},{\"text\":\"🔄 إعادة التشغيل\"}],"
-    "[{\"text\":\"📋 مساعدة\"}]],"
+    "[{\"text\":\"🚀 فحص التحديثات\"},{\"text\":\"📋 مساعدة\"}]],"
     "\"resize_keyboard\":true,\"is_persistent\":true}";
 
 static const char *TG_USER_KEYBOARD =
@@ -694,8 +694,8 @@ static void format_single_device_report(int p_idx, char *out, size_t max_out) {
   }
 
   int u = meter_find_usage_locked(mac, false);
-  uint64_t up = (u >= 0) ? usage_records[u].upload_bytes : 0;
-  uint64_t down = (u >= 0) ? usage_records[u].download_bytes : 0;
+  uint64_t up = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
+  uint64_t down = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
   uint32_t live_down = (u >= 0) ? device_live_speeds[u].cur_down_bps : 0;
   uint32_t live_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
 
@@ -786,8 +786,8 @@ static void format_multi_device_summary(const int *p_indices, size_t count,
     }
 
     int u = meter_find_usage_locked(mac, false);
-    uint64_t up = (u >= 0) ? usage_records[u].upload_bytes : 0;
-    uint64_t down = (u >= 0) ? usage_records[u].download_bytes : 0;
+    uint64_t up = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
+    uint64_t down = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
     portEXIT_CRITICAL(&data_mux);
 
     uint64_t dev_tot = up + down;
@@ -883,8 +883,9 @@ void telegram_check_quota_alerts(void) {
   uint64_t main_quota_bytes_val = 0;
   portENTER_CRITICAL(&data_mux);
   for (size_t i = 0; i < usage_count; ++i) {
-    total_used_bytes +=
-        (usage_records[i].upload_bytes + usage_records[i].download_bytes);
+    total_used_bytes += meter_calc_scaled_bytes(
+        (usage_records[i].upload_bytes + usage_records[i].download_bytes),
+        router_meter_scale_pct, router_meter_scale_mode);
   }
   main_quota_bytes_val = main_quota_bytes;
   portEXIT_CRITICAL(&data_mux);
@@ -1342,8 +1343,8 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
 
   portENTER_CRITICAL(&data_mux);
   for (size_t i = 0; i < usage_count; ++i) {
-    total_up += usage_records[i].upload_bytes;
-    total_down += usage_records[i].download_bytes;
+    total_up += meter_calc_scaled_bytes(usage_records[i].upload_bytes, router_meter_scale_pct, router_meter_scale_mode);
+    total_down += meter_calc_scaled_bytes(usage_records[i].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
   }
   live_up = total_cur_up_bps;
   live_down = total_cur_down_bps;
@@ -1429,8 +1430,9 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
           my_name[sizeof(my_name) - 1] = 0;
         }
         int u = meter_find_usage_locked(mac, false);
-        uint64_t my_used = (u >= 0) ? (usage_records[u].upload_bytes +
-                                       usage_records[u].download_bytes)
+        uint64_t my_used = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes +
+                                                               usage_records[u].download_bytes,
+                                                               router_meter_scale_pct, router_meter_scale_mode)
                                     : 0;
         portEXIT_CRITICAL(&data_mux);
 
@@ -1567,8 +1569,9 @@ static void send_admin_devices_report(const char *chat_id,
     if (!valid_device_mac(device_policies[p].mac))
       continue;
     int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
-    uint64_t used_b = (u_idx >= 0) ? (usage_records[u_idx].upload_bytes +
-                                      usage_records[u_idx].download_bytes)
+    uint64_t used_b = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                                              usage_records[u_idx].download_bytes,
+                                                              router_meter_scale_pct, router_meter_scale_mode)
                                    : 0;
     bool quota_full = (device_policies[p].quota_bytes > 0 &&
                        used_b >= device_policies[p].quota_bytes);
@@ -1622,8 +1625,9 @@ static void send_admin_devices_report(const char *chat_id,
     uint32_t cur_down =
         (u_idx >= 0) ? device_live_speeds[u_idx].cur_down_bps : 0;
     uint32_t cur_up = (u_idx >= 0) ? device_live_speeds[u_idx].cur_up_bps : 0;
-    uint64_t dev_used = (u_idx >= 0) ? (usage_records[u_idx].upload_bytes +
-                                        usage_records[u_idx].download_bytes)
+    uint64_t dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                                                usage_records[u_idx].download_bytes,
+                                                                router_meter_scale_pct, router_meter_scale_mode)
                                      : 0;
     uint64_t dev_quota = device_policies[p_idx].quota_bytes;
     bool is_blocked = device_policies[p_idx].blocked;
@@ -1736,6 +1740,94 @@ static void send_admin_device_control_menu(const char *chat_id,
 
   telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, rep, kb);
   free(rep);
+  free(kb);
+}
+
+static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
+  char *msg = (char *)calloc(1, 1200);
+  char *kb = (char *)calloc(1, 1024);
+  if (!msg || !kb) {
+    if (msg) free(msg);
+    if (kb) free(kb);
+    return;
+  }
+
+  ota_info_t ota_inf;
+  ota_updater_get_info(&ota_inf);
+
+  char r_ver[24] = {0};
+  char r_url[256] = {0};
+  char r_log[256] = {0};
+  bool update_available = false;
+
+  esp_err_t err = ota_check_remote_version(r_ver, sizeof(r_ver), r_url, sizeof(r_url),
+                                          r_log, sizeof(r_log), &update_available);
+
+  const char *auto_status_str = ota_auto_update_enabled ? "🟢 مفعل تلقائياً (بعد الإقلاع وكل 6س)" : "⚪ غير مفعل (يدوي فقط)";
+  const char *auto_toggle_btn = ota_auto_update_enabled ? "⏸️ إيقاف التحديث التلقائي" : "▶️ تفعيل التحديث التلقائي";
+
+  if (err == ESP_OK && update_available && r_ver[0]) {
+    snprintf(msg, 1200,
+             "🚀 <b>لوحة إدارة التحديثات والترقية السحابية (OTA):</b>\n\n"
+             "🎉 <b>يوجد تحديث سحابي جديد متاح!</b>\n\n"
+             "🔖 <b>الإصدار الحالي:</b> <code>%s</code>\n"
+             "🆕 <b>الإصدار الجديد:</b> <code>%s</code>\n"
+             "📝 <b>ملاحظات التحديث:</b> %s\n"
+             "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
+             "🛡️ <b>حماية التراجع:</b> Anti-Rollback Active ✅\n"
+             "⚙️ <b>التحديث التلقائي:</b> %s\n\n"
+             "👇 اضغط على <b>بدء التحديث الآن</b> لتحميل وتثبيت الفيرموير تلقائياً بأمان:",
+             ROUTER_FIRMWARE_VERSION, r_ver,
+             r_log[0] ? r_log : "تحسينات عامة في الأداء والاستقرار",
+             ota_inf.running_partition, auto_status_str);
+
+    snprintf(kb, 1024,
+             "{\"inline_keyboard\":["
+             "[{\"text\":\"⚡ بدء التحديث الآن (Update Now)\",\"callback_data\":\"ota_confirm\"}],"
+             "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}],"
+             "[{\"text\":\"🔍 إعادة الفحص\",\"callback_data\":\"ota_check\"}]"
+             "]}",
+             auto_toggle_btn);
+  } else if (err == ESP_OK) {
+    snprintf(msg, 1200,
+             "🚀 <b>لوحة إدارة التحديثات والترقية السحابية (OTA):</b>\n\n"
+             "✅ <b>جهازك يعمل بأحدث إصدار مستقر حالياً!</b>\n\n"
+             "🔖 <b>الإصدار الحالي:</b> <code>%s</code>\n"
+             "☁️ <b>آخر فحص سحابي:</b> %s\n"
+             "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
+             "🛡️ <b>حماية التراجع:</b> Anti-Rollback Active ✅\n"
+             "⚙️ <b>التحديث التلقائي:</b> %s\n\n"
+             "💡 <i>يقوم الراوتر بالفحص التلقائي وتثبيت أي تحديث يُرفع على GitHub دون أي تدخل عند تفعيل الميزة.</i>",
+             ROUTER_FIRMWARE_VERSION,
+             r_ver[0] ? r_ver : "متطابق مع GitHub",
+             ota_inf.running_partition, auto_status_str);
+
+    snprintf(kb, 1024,
+             "{\"inline_keyboard\":["
+             "[{\"text\":\"🔍 إعادة الفحص الآن\",\"callback_data\":\"ota_check\"}],"
+             "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
+             "]}",
+             auto_toggle_btn);
+  } else {
+    snprintf(msg, 1200,
+             "🚀 <b>لوحة إدارة التحديثات والترقية السحابية (OTA):</b>\n\n"
+             "⚠️ <b>تعذر الاتصال بـ GitHub للتحقق من التحديثات:</b>\n"
+             "تأكد من اتصال الراوتر بشبكة الإنترنت (WAN).\n\n"
+             "🔖 <b>الإصدار الحالي:</b> <code>%s</code>\n"
+             "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
+             "⚙️ <b>التحديث التلقائي:</b> %s",
+             ROUTER_FIRMWARE_VERSION, ota_inf.running_partition, auto_status_str);
+
+    snprintf(kb, 1024,
+             "{\"inline_keyboard\":["
+             "[{\"text\":\"🔄 إعادة المحاولة\",\"callback_data\":\"ota_check\"}],"
+             "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
+             "]}",
+             auto_toggle_btn);
+  }
+
+  telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, msg, kb);
+  free(msg);
   free(kb);
 }
 
@@ -1940,13 +2032,15 @@ static void telegram_task(void *pvParameters) {
       continue;
     }
 
-    // Background GitHub Cloud Auto-Update Check (3 min after boot, then every
-    // 6 hours when traffic < 1 Mbps) - works even if Telegram token isn't set
+    // Background GitHub Cloud Auto-Update Check:
+    // 1. Immediately after boot once internet is established (up_s >= 30)
+    // 2. Periodic every 6 hours (21600s) when traffic < 1 Mbps
+    // Works even if Telegram token isn't set
     uint32_t up_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
     uint32_t cur_traffic_bps = total_cur_down_bps + total_cur_up_bps;
     if (ota_auto_update_enabled && !ota_updater_is_busy() &&
         cur_traffic_bps < 1000000 &&
-        ((last_ota_check_s == 0 && up_s >= 180) ||
+        ((last_ota_check_s == 0 && up_s >= 30) ||
          (last_ota_check_s > 0 && (up_s - last_ota_check_s) >= 21600))) {
       last_ota_check_s = up_s;
       typedef struct {
@@ -1970,6 +2064,7 @@ static void telegram_task(void *pvParameters) {
                      ob->ver, ob->log[0] ? ob->log : "تحسينات عامة في الأداء");
             telegram_broadcast_admins(ob->msg);
           }
+          meter_save_usage();
           ota_updater_start_from_url(ob->url);
           free(ob);
           vTaskDelay(pdMS_TO_TICKS(5000));
@@ -2416,6 +2511,53 @@ static void telegram_task(void *pvParameters) {
               meter_save_usage();
               vTaskDelay(pdMS_TO_TICKS(1000));
               esp_restart();
+            } else if (strcmp(cb_data, "ota_check") == 0 && is_cb_admin) {
+              if (cb_id[0]) {
+                telegram_answer_callback_query(cb_id, "🔍 جاري فحص مستودع GitHub بحثاً عن تحديثات...");
+                answered_toast = true;
+              }
+              send_admin_ota_menu(cb_sender, cb_msg_id);
+            } else if (strcmp(cb_data, "ota_toggle") == 0 && is_cb_admin) {
+              ota_auto_update_enabled = !ota_auto_update_enabled;
+              config_save_ota_auto_update(ota_auto_update_enabled);
+              if (cb_id[0]) {
+                telegram_answer_callback_query(
+                    cb_id, ota_auto_update_enabled
+                               ? "✅ تم تفعيل التحديث التلقائي"
+                               : "⏸️ تم إيقاف التحديث التلقائي");
+                answered_toast = true;
+              }
+              send_admin_ota_menu(cb_sender, cb_msg_id);
+            } else if (strcmp(cb_data, "ota_confirm") == 0 && is_cb_admin) {
+              if (cb_id[0]) {
+                telegram_answer_callback_query(cb_id,
+                                               "🚀 جاري بدء تحميل التحديث...");
+                answered_toast = true;
+              }
+              telegram_ack_offset_before_reboot();
+              telegram_send_message_with_keyboard(
+                  cb_sender,
+                  "⏳ <b>جاري تنزيل الفيرموير وتحديث الراوتر هوائياً...</b>\n\n"
+                  "⚠️ يُرجى عدم فصل الطاقة عن الراوتر.\n"
+                  "🔄 سيتم إعادة تشغيل الراوتر تلقائياً على الإصدار الجديد بعد "
+                  "نجاح التثبيت والتحقق.",
+                  TG_ADMIN_KEYBOARD);
+              char r_ver[24] = {0};
+              char r_url[256] = {0};
+              char r_log[256] = {0};
+              bool avail = false;
+              if (ota_check_remote_version(r_ver, sizeof(r_ver), r_url,
+                                           sizeof(r_url), r_log, sizeof(r_log),
+                                           &avail) == ESP_OK &&
+                  r_url[0]) {
+                meter_save_usage();
+                ota_updater_start_from_url(r_url);
+              } else {
+                telegram_send_message_with_keyboard(
+                    cb_sender,
+                    "❌ <b>فشل بدء التحديث:</b> تعذر الوصول إلى رابط الفيرموير من GitHub.",
+                    TG_ADMIN_KEYBOARD);
+              }
             } else if (strncmp(cb_data, "dev_idx:", 8) == 0) {
               int dev_i = atoi(cb_data + 8);
               char *rep = (char *)calloc(1, 900);
@@ -2783,12 +2925,13 @@ static void telegram_task(void *pvParameters) {
                   int u_idx =
                       meter_find_usage_locked(device_policies[p].mac, false);
                   uint64_t dev_used =
-                      (u_idx >= 0) ? (usage_records[u_idx].upload_bytes +
-                                      usage_records[u_idx].download_bytes)
+                      (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                                              usage_records[u_idx].download_bytes,
+                                                              router_meter_scale_pct, router_meter_scale_mode)
                                    : 0;
-                  double u_gb = (double)dev_used / 1000000000.0;
-                  double q_gb =
-                      (double)device_policies[p].quota_bytes / 1000000000.0;
+                  double gb_div_t = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+                  double u_gb = (double)dev_used / gb_div_t;
+                  double q_gb = (double)device_policies[p].quota_bytes / gb_div_t;
 
                   char line[150];
                   if (device_policies[p].quota_bytes > 0) {
@@ -3050,12 +3193,17 @@ static void telegram_task(void *pvParameters) {
                      strstr(cmd_text, "حالة") || strstr(cmd_text, "الراوتر")) {
               send_admin_status_report(sender_chat_id, 0, &ap_info);
             }
+            // 9.5. Command: /ota, /update, تحديث, فحص التحديثات
+            else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "/update") ||
+                     strstr(cmd_text, "تحديث") || strstr(cmd_text, "التحديثات")) {
+              send_admin_ota_menu(sender_chat_id, 0);
+            }
             // 10. Command: /help, /start, مساعدة
             else {
-              char *reply = (char *)calloc(1, 1250);
+              char *reply = (char *)calloc(1, 1600);
               if (reply) {
                 snprintf(
-                    reply, 1250,
+                    reply, 1600,
                     "👋 <b>مرحباً بك في لوحة تحكم راوتر ESP32 (المدير)</b> "
                     "🌐\n\n"
                     "الأزرار والأوامر الإدارية المتاحة:\n"
@@ -3069,8 +3217,10 @@ static void telegram_task(void *pvParameters) {
                     "وتغيير تردد المعالج (80/160/240 MHz)\n"
                     "🔄 <b>إعادة التشغيل</b>: إعادة التشغيل الفوري أو الجدولة "
                     "اليومية التلقائية\n"
+                    "🚀 <b>فحص التحديثات</b>: فحص تحديثات GitHub والترقية الهوائية وإدارة التحديث التلقائي\n"
                     "📋 <b>مساعدة</b>: عرض هذا الدليل الإرشادي\n\n"
                     "💡 <i>أوامر إضافية مباشرة:</i>\n"
+                    "• <code>/ota</code> لفحص التحديثات والترقية الفورية\n"
                     "• <code>/add_quota [IP] [GB]</code> لزيادة باقة جهاز\n"
                     "• <code>/vip [IP]</code> لتفعيل/إلغاء وضع الـ VIP\n"
                     "• <code>/reboot_time [HH:MM]</code> لضبط وقت ريستارت "

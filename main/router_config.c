@@ -27,6 +27,7 @@ uint8_t wifi_protocol_mode = 1;
 uint8_t wifi_band_mode = 3; // Default 3 = Auto Dual-Band (2.4GHz + 5GHz)
 uint8_t router_meter_scale_pct = 100;
 uint16_t router_gb_standard = 1024;
+uint8_t router_meter_scale_mode = 0; // 0 = Dynamic/Retroactive (Instant), 1 = Cumulative (Live Packets)
 
 // Daily Scheduled Auto-Reboot
 bool auto_reboot_enabled = false;
@@ -113,6 +114,12 @@ void config_load(void) {
     router_gb_standard = loaded_gb_std;
   } else {
     router_gb_standard = 1024;
+  }
+  uint8_t loaded_mode = 0;
+  if (nvs_get_u8(nvs, "meter_mode", &loaded_mode) == ESP_OK && loaded_mode <= 1) {
+    router_meter_scale_mode = loaded_mode;
+  } else {
+    router_meter_scale_mode = 0;
   }
 
   uint8_t loaded_proto = 1;
@@ -234,16 +241,18 @@ void config_save_performance(uint16_t cpu_freq, bool wifi_ps) {
   }
 }
 
-void config_save_meter_scale(uint8_t scale_pct, uint16_t gb_std) {
+void config_save_meter_scale(uint8_t scale_pct, uint16_t gb_std, uint8_t scale_mode) {
   if (scale_pct < 10 || scale_pct > 200) return;
   router_meter_scale_pct = scale_pct;
   if (gb_std == 1000 || gb_std == 1024) {
     router_gb_standard = gb_std;
   }
+  router_meter_scale_mode = (scale_mode <= 1) ? scale_mode : 0;
   nvs_handle_t nvs;
   if (nvs_open("router", NVS_READWRITE, &nvs) == ESP_OK) {
     nvs_set_u8(nvs, "meter_scale", scale_pct);
     nvs_set_u16(nvs, "gb_std", router_gb_standard);
+    nvs_set_u8(nvs, "meter_mode", router_meter_scale_mode);
     nvs_commit(nvs);
     nvs_close(nvs);
   }

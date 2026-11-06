@@ -21,6 +21,14 @@
 #define METER_SCALE_DEFAULT_PCT 100
 extern uint8_t router_meter_scale_pct;
 extern uint16_t router_gb_standard;
+extern uint8_t router_meter_scale_mode; // 0 = Dynamic/Retroactive (Instant), 1 = Cumulative (Live Packets)
+
+static inline uint64_t meter_calc_scaled_bytes(uint64_t raw_bytes, uint8_t scale_pct, uint8_t scale_mode) {
+  if (scale_mode == 0 && scale_pct != 100) {
+    return (raw_bytes * (uint64_t)scale_pct) / 100ULL;
+  }
+  return raw_bytes;
+}
 
 #define DEVICE_NAME_BYTES 64
 
@@ -78,10 +86,10 @@ typedef struct {
 } device_speed_bucket_t;
 
 typedef struct {
-  uint64_t last_up_bytes;
-  uint64_t last_down_bytes;
-  uint32_t cur_up_bps;
-  uint32_t cur_down_bps;
+  uint32_t interval_up_bytes;   // raw unscaled bytes in current second
+  uint32_t interval_down_bytes; // raw unscaled bytes in current second
+  uint32_t cur_up_bps;          // true filtered live bps
+  uint32_t cur_down_bps;        // true filtered live bps
 } device_live_speed_t;
 
 // Fast O(1) device runtime cache structure for direct lookup array ip_lookup[256]
