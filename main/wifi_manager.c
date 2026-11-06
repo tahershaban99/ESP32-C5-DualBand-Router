@@ -1261,8 +1261,12 @@ void wifi_manager_init(void) {
   ESP_ERROR_CHECK(esp_wifi_start());
   esp_wifi_set_country(&country);
 
-  // SoftAP station inactivity timeout: automatically deauth silent/out-of-range stations within 20s
-  esp_wifi_set_inactive_time(WIFI_IF_AP, 20);
+  // SoftAP station inactivity timeout: keep stations connected indefinitely even when idle/sleeping (max 65535s)
+  // Prevents mobile phones (iOS/Android) from being deauthenticated when screen is locked / Doze mode
+  esp_err_t inact_err = esp_wifi_set_inactive_time(WIFI_IF_AP, 65535);
+  if (inact_err != ESP_OK) {
+    esp_wifi_set_inactive_time(WIFI_IF_AP, 3600);
+  }
 
   // Apply Wi-Fi Band Mode after esp_wifi_start()
   esp_err_t band_err = esp_wifi_set_band_mode(bmode);
