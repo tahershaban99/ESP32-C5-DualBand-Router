@@ -27,54 +27,65 @@ bool scan_running = false;
 bool scan_ready = false;
 static uint32_t scan_started_s = 0;
 
-static void collect_scan_results(void) {
-  uint16_t found = 0;
-  esp_err_t num_err = esp_wifi_scan_get_ap_num(&found);
-  if (num_err != ESP_OK) found = 0;
-  ESP_LOGI(ROUTER_TAG, "Scan completed: APs detected = %u", (unsigned)found);
+static void wifi_scan_task(void *pv) {
+  wifi_scan_default_params_t scan_params = {
+    .scan_time = {
+      .active = { .min = 35, .max = 75 },
+      .passive = 120,
+    },
+    .home_chan_dwell_time = 30,
+  };
+  esp_wifi_set_scan_parameters(&scan_params);
 
-  uint16_t fetch_count = (found > MAX_SCAN_RESULTS) ? MAX_SCAN_RESULTS : found;
-  wifi_ap_record_t *records = (fetch_count > 0) ? calloc(fetch_count, sizeof(wifi_ap_record_t)) : NULL;
+  // Synchronous scan in background task: sweeps all allowed channels cleanly
+  esp_err_t err = esp_wifi_scan_start(NULL, true);
+  if (err == ESP_OK) {
+    uint16_t found = 0;
+    esp_err_t num_err = esp_wifi_scan_get_ap_num(&found);
+    if (num_err != ESP_OK) found = 0;
+    ESP_LOGI(ROUTER_TAG, "Scan completed: APs detected = %u", (unsigned)found);
 
-  if (records) {
-    if (esp_wifi_scan_get_ap_records(&fetch_count, records) == ESP_OK) {
-      portENTER_CRITICAL(&data_mux);
-      scan_result_count = fetch_count;
-      memset(scan_results, 0, sizeof(scan_results));
-      for (uint16_t i = 0; i < fetch_count; ++i) {
-        memcpy(scan_results[i].ssid, records[i].ssid, sizeof(scan_results[i].ssid) - 1);
-        scan_results[i].ssid[sizeof(scan_results[i].ssid) - 1] = 0;
-        scan_results[i].rssi = records[i].rssi;
-        scan_results[i].secured = (records[i].authmode != WIFI_AUTH_OPEN);
-        scan_results[i].band = (records[i].primary >= 36) ? 2 : 1;
-        ESP_LOGI(ROUTER_TAG, "  Found AP[%u]: '%s', Ch %u (%s), RSSI %d dBm, %s",
-                 (unsigned)i, scan_results[i].ssid, (unsigned)records[i].primary,
-                 (scan_results[i].band == 2) ? "5GHz" : "2.4GHz",
-                 (int)scan_results[i].rssi, scan_results[i].secured ? "Secured" : "Open");
+    uint16_t fetch_count = (found > MAX_SCAN_RESULTS) ? MAX_SCAN_RESULTS : found;
+    if (fetch_count > 0) {
+      wifi_ap_record_t records[MAX_SCAN_RESULTS];
+      if (esp_wifi_scan_get_ap_records(&fetch_count, records) == ESP_OK) {
+        portENTER_CRITICAL(&data_mux);
+        scan_result_count = fetch_count;
+        memset(scan_results, 0, sizeof(scan_results));
+        for (uint16_t i = 0; i < fetch_count; ++i) {
+          memcpy(scan_results[i].ssid, records[i].ssid, sizeof(scan_results[i].ssid) - 1);
+          scan_results[i].ssid[sizeof(scan_results[i].ssid) - 1] = 0;
+          scan_results[i].rssi = records[i].rssi;
+          scan_results[i].secured = (records[i].authmode != WIFI_AUTH_OPEN);
+          scan_results[i].band = (records[i].primary >= 36) ? 2 : 1;
+          ESP_LOGI(ROUTER_TAG, "  Found AP[%u]: '%s', Ch %u (%s), RSSI %d dBm, %s",
+                   (unsigned)i, scan_results[i].ssid, (unsigned)records[i].primary,
+                   (scan_results[i].band == 2) ? "5GHz" : "2.4GHz",
+                   (int)scan_results[i].rssi, scan_results[i].secured ? "Secured" : "Open");
+        }
+        portEXIT_CRITICAL(&data_mux);
       }
-      scan_running = false;
-      scan_ready = true;
-      scan_started_s = 0;
-      portEXIT_CRITICAL(&data_mux);
     } else {
-      ESP_LOGW(ROUTER_TAG, "esp_wifi_scan_get_ap_records failed");
+      esp_wifi_clear_ap_list();
       portENTER_CRITICAL(&data_mux);
       scan_result_count = 0;
-      scan_running = false;
-      scan_ready = true;
-      scan_started_s = 0;
       portEXIT_CRITICAL(&data_mux);
     }
-    free(records);
   } else {
+    ESP_LOGW(ROUTER_TAG, "esp_wifi_scan_start blocking failed: %s (0x%x)", esp_err_to_name(err), err);
     esp_wifi_clear_ap_list();
     portENTER_CRITICAL(&data_mux);
     scan_result_count = 0;
-    scan_running = false;
-    scan_ready = true;
-    scan_started_s = 0;
     portEXIT_CRITICAL(&data_mux);
   }
+
+  portENTER_CRITICAL(&data_mux);
+  scan_running = false;
+  scan_ready = true;
+  scan_started_s = 0;
+  portEXIT_CRITICAL(&data_mux);
+
+  vTaskDelete(NULL);
 }
 
 void wifi_manager_check_scan_watchdog(void) {
@@ -83,7 +94,6 @@ void wifi_manager_check_scan_watchdog(void) {
   if (scan_started_s > 0 && (now_s - scan_started_s) > 16) {
     ESP_LOGW(ROUTER_TAG, "Scan watchdog: Wi-Fi scan exceeded 16s timeout - recovering state");
     esp_wifi_scan_stop();
-    collect_scan_results();
     portENTER_CRITICAL(&data_mux);
     scan_running = false;
     scan_ready = true;
@@ -642,7 +652,6 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
   if (base == WIFI_EVENT && id == WIFI_EVENT_AP_START) {
     tcpip_try_callback(dhcps_sync_tcpip_cb, NULL);
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
-    collect_scan_results();
     if (has_saved_config) {
       wifi_ap_record_t sta_ap;
       if (esp_wifi_sta_get_ap_info(&sta_ap) != ESP_OK) {
@@ -1142,57 +1151,17 @@ bool wifi_manager_start_scan(void) {
   scan_started_s = now_s;
   portEXIT_CRITICAL(&data_mux);
 
-  // Stop any pending scan or connection attempt
-  esp_wifi_scan_stop();
-  wifi_ap_record_t ap_info;
-  if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
-    esp_wifi_disconnect();
-    vTaskDelay(pdMS_TO_TICKS(150));
-  }
-
-  // Fast optimized scan config (35-70ms active, 100ms passive, 30ms dwell)
-  wifi_scan_config_t scan_cfg = {0};
-  scan_cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
-  scan_cfg.scan_time.active.min = 35;
-  scan_cfg.scan_time.active.max = 70;
-  scan_cfg.scan_time.passive = 100;
-  scan_cfg.home_chan_dwell_time = 30;
-
-  // Mask channels by user's current band configuration
-  if (wifi_band_mode == WIFI_BAND_MODE_2G_ONLY) {
-    scan_cfg.channel_bitmap.ghz_5_channels = 1;      // bypass all 5GHz channels
-    scan_cfg.channel_bitmap.ghz_2_channels = 0x3FFE; // channels 1..13
-  } else if (wifi_band_mode == WIFI_BAND_MODE_5G_ONLY) {
-    scan_cfg.channel_bitmap.ghz_2_channels = 1;      // bypass all 2.4GHz channels
-    scan_cfg.channel_bitmap.ghz_5_channels = 0x1FFFFFE; // all 5GHz channels
-  }
-
-  esp_err_t err = esp_wifi_scan_start(&scan_cfg, false);
-  if (err != ESP_OK) {
-    ESP_LOGW(ROUTER_TAG, "esp_wifi_scan_start returned %s (0x%x), retrying with default channels...", esp_err_to_name(err), err);
-    esp_wifi_scan_stop();
-    vTaskDelay(pdMS_TO_TICKS(150));
-    wifi_scan_config_t fallback_cfg = {
-        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time = { .active = { .min = 35, .max = 70 }, .passive = 100 },
-        .home_chan_dwell_time = 30
-    };
-    err = esp_wifi_scan_start(&fallback_cfg, false);
-  }
-  if (err != ESP_OK) {
-    err = esp_wifi_scan_start(NULL, false);
-  }
-  if (err != ESP_OK) {
-    ESP_LOGE(ROUTER_TAG, "esp_wifi_scan_start failed: %s (0x%x)", esp_err_to_name(err), err);
+  BaseType_t ret = xTaskCreatePinnedToCore(wifi_scan_task, "wifi_scan", 4096, NULL, 3, NULL, 0);
+  if (ret != pdPASS) {
+    ESP_LOGE(ROUTER_TAG, "Failed to create wifi_scan task");
     portENTER_CRITICAL(&data_mux);
     scan_running = false;
     scan_ready = true;
-    scan_result_count = 0;
     scan_started_s = 0;
     portEXIT_CRITICAL(&data_mux);
     return false;
   }
-  ESP_LOGI(ROUTER_TAG, "Wi-Fi accelerated scan initiated (band=%d)", (int)wifi_band_mode);
+  ESP_LOGI(ROUTER_TAG, "Wi-Fi dedicated scan task launched");
   return true;
 }
 
@@ -1268,6 +1237,9 @@ void wifi_manager_init(void) {
     .schan = 1,
     .nchan = 13,
     .policy = WIFI_COUNTRY_POLICY_MANUAL,
+#if CONFIG_SOC_WIFI_SUPPORT_5G
+    .wifi_5g_channel_mask = 0xFFFFFFFF,
+#endif
   };
   esp_wifi_set_country(&country);
 
