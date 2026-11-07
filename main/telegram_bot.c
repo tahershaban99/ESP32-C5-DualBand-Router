@@ -3054,24 +3054,10 @@ static void telegram_task(void *pvParameters) {
               send_admin_speed_report(sender_chat_id, 0, linked_indices,
                                       linked_count, &ap_info);
             }
-            // 7. Command: /ota, تحديث
-            else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "تحديث")) {
-              ota_info_t o_inf;
-              ota_updater_get_info(&o_inf);
-              char reply[650];
-              snprintf(reply, sizeof(reply),
-                       "🔄 <b>نظام التحديث الهوائي (Dual-Bank OTA):</b>\n\n"
-                       "🏷️ <b>الإصدار الحالي:</b> %s\n"
-                       "🕒 <b>تاريخ البناء:</b> %s\n"
-                       "💾 <b>القسم النشط:</b> %s\n"
-                       "🎯 <b>القسم البديل:</b> %s\n"
-                       "🛡️ <b>الحماية من الأعطال:</b> Anti-Rollback مفعل\n\n"
-                       "💡 <i>يمكنك رفع ملف .bin أو فحص التحديثات السحابية من "
-                       "لوحة تحكم الويب.</i>",
-                       o_inf.current_version, o_inf.build_timestamp,
-                       o_inf.running_partition, o_inf.target_partition);
-              telegram_send_message_with_keyboard(sender_chat_id, reply,
-                                                  TG_ADMIN_KEYBOARD);
+            // 7. Command: /ota, /update, تحديث, فحص التحديثات
+            else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "/update") ||
+                     strstr(cmd_text, "تحديث") || strstr(cmd_text, "التحديثات")) {
+              send_admin_ota_menu(sender_chat_id, 0);
             }
             // 7.5. Command: /add_quota, زيادة باقة
             else if (strncmp(cmd_text, "/add_quota", 10) == 0 ||
@@ -3192,11 +3178,6 @@ static void telegram_task(void *pvParameters) {
                      strstr(cmd_text, "تردد") || strstr(cmd_text, "المعالج") ||
                      strstr(cmd_text, "حالة") || strstr(cmd_text, "الراوتر")) {
               send_admin_status_report(sender_chat_id, 0, &ap_info);
-            }
-            // 9.5. Command: /ota, /update, تحديث, فحص التحديثات
-            else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "/update") ||
-                     strstr(cmd_text, "تحديث") || strstr(cmd_text, "التحديثات")) {
-              send_admin_ota_menu(sender_chat_id, 0);
             }
             // 10. Command: /help, /start, مساعدة
             else {

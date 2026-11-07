@@ -1,6 +1,6 @@
 {
-  "version": "v3.4.4",
+  "version": "v3.4.5",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "توحيد وتناسق خلفية شريط عناوين الجدول ومسار شريط الاستهلاك بالكامل مع الثيم الأخضر السيبراني Matrix والتخلص من الخلفية الكحلية."
+  "changelog": "إصلاح قائمة التحديثات الهوائية في بوت التيليجرام: فحص GitHub الفوري، وعرض أزرار التحديث المباشر والتحكم في تفعيل/إيقاف التحديث التلقائي OTA من البوت."
 }
