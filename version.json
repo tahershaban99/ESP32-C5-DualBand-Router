@@ -1,6 +1,6 @@
 {
-  "version": "v3.4.8",
+  "version": "v3.4.9",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "ترقية السرعة والأداء لكسر حاجز 30-40 Mbps: مضاعفة نافذة الـ Block ACK إلى 32، تفعيل TCP SACK، توسيع بافرات الوايفاي والـ TCP Window، تسريع توجيه الحزم (Zero-Copy Forwarding)، وتخفيض استهلاك الرام من مهام الخلفية بدون المساس بأي ميزة."
+  "changelog": "إصلاح جذري لمشكلة انخفاض السرعة واستهلاك الرام: إعادة ضبط بافرات الذاكرة ونوافذ الـ Block ACK لمنع انهيار السرعة عند اتصال أكثر من جهاز، حل مشكلة فشل التحديث الهوائي (Flash erase failed / Rollback State)، وتوفير أقصى استقرار وسرعة فائقة على تردد 5GHz Wi-Fi 6 بدون استنزاف الرام."
 }

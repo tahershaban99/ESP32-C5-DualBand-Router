@@ -21,4 +21,5 @@ venv/
 # Operating system files
 Thumbs.db
 .DS_Store
+.agents/
 

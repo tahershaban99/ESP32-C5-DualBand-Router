@@ -116,11 +116,14 @@ esp_err_t ota_updater_handle_stream(httpd_req_t *req) {
   ESP_LOGI(TAG, "Starting direct stream OTA flash into partition: %s (size %" PRIu32 " bytes)",
            update_partition->label, update_partition->size);
 
+  esp_ota_mark_app_valid_cancel_rollback();
   esp_ota_handle_t ota_handle = 0;
   esp_err_t err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
-    set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
+    char err_buf[64];
+    snprintf(err_buf, sizeof(err_buf), "OTA begin failed (%s)", esp_err_to_name(err));
+    ESP_LOGE(TAG, "%s", err_buf);
+    set_state(OTA_STATE_FAILED, 0, err_buf);
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA begin failed");
     return ESP_FAIL;
   }
@@ -287,10 +290,13 @@ static void ota_download_task(void *pvParameter) {
       if (clen > 0) {
         total_firmware_size = clen;
       }
+      esp_ota_mark_app_valid_cancel_rollback();
       err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
       if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
-        set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
+        char err_buf[64];
+        snprintf(err_buf, sizeof(err_buf), "OTA begin failed (%s)", esp_err_to_name(err));
+        ESP_LOGE(TAG, "%s", err_buf);
+        set_state(OTA_STATE_FAILED, 0, err_buf);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         break;
@@ -307,10 +313,13 @@ static void ota_download_task(void *pvParameter) {
         written = 0;
         first_chunk = true;
         if (clen > 0) total_firmware_size = clen;
+        esp_ota_mark_app_valid_cancel_rollback();
         err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle);
         if (err != ESP_OK) {
-          ESP_LOGE(TAG, "esp_ota_begin failed on restart: %s", esp_err_to_name(err));
-          set_state(OTA_STATE_FAILED, 0, "Flash erase failed");
+          char err_buf[64];
+          snprintf(err_buf, sizeof(err_buf), "OTA begin failed (%s)", esp_err_to_name(err));
+          ESP_LOGE(TAG, "%s", err_buf);
+          set_state(OTA_STATE_FAILED, 0, err_buf);
           esp_http_client_close(client);
           esp_http_client_cleanup(client);
           break;
