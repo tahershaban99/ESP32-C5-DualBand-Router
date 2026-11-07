@@ -861,11 +861,11 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
 
   uint32_t target_local_ip = 0;
   bool is_upload = false;
-  if ((source_ip & 0x00FFFFFF) == 0x0004A8C0 && (source_ip >> 24) != 1) {
+  if ((routed_destination_ip & 0x00FFFFFF) == 0x0004A8C0 && (routed_destination_ip >> 24) != 1) {
+    target_local_ip = routed_destination_ip;
+  } else if ((source_ip & 0x00FFFFFF) == 0x0004A8C0 && (source_ip >> 24) != 1) {
     target_local_ip = source_ip;
     is_upload = true;
-  } else if ((routed_destination_ip & 0x00FFFFFF) == 0x0004A8C0 && (routed_destination_ip >> 24) != 1) {
-    target_local_ip = routed_destination_ip;
   } else if ((destination_ip & 0x00FFFFFF) == 0x0004A8C0 && (destination_ip >> 24) != 1) {
     target_local_ip = destination_ip;
   }
