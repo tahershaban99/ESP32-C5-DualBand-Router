@@ -1510,10 +1510,10 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
 void web_server_start(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.lru_purge_enable = true;
-  config.max_open_sockets = 7;
+  config.max_open_sockets = 4; // 4 concurrent sockets is optimal for single-user router dashboard & saves RAM
   config.recv_wait_timeout = 8;
   config.send_wait_timeout = 8;
-  config.stack_size = 8192; // 8KB stack for ESP-IDF v6.1 HTTPD (saves 2KB RAM)
+  config.stack_size = 7168; // 7KB stack for HTTPD (saves 1KB RAM)
   config.max_uri_handlers = 28;
   config.core_id = 0; // ESP32-C5 Unicore (Core 0)
 

@@ -842,8 +842,14 @@ static inline uint32_t ipv4_total_len(const uint8_t *header, size_t avail) {
 int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
   (void)destination_host_order;
   if (packet == NULL) return -1;
-  uint8_t ip[20];
-  if (pbuf_copy_partial(packet, ip, sizeof(ip), 0) != sizeof(ip)) return -1;
+  const uint8_t *ip;
+  uint8_t ip_buf[20];
+  if (packet->len >= 20) {
+    ip = (const uint8_t *)packet->payload;
+  } else {
+    if (pbuf_copy_partial(packet, ip_buf, sizeof(ip_buf), 0) != sizeof(ip_buf)) return -1;
+    ip = ip_buf;
+  }
   uint32_t bytes = ipv4_total_len(ip, packet->tot_len);
   if (bytes == 0) return -1;
 

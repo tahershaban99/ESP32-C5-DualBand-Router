@@ -1,6 +1,6 @@
 {
-  "version": "v3.4.7",
+  "version": "v3.4.8",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "حل مشكلة بطء التصفح ودروب الفريمات (Jank & Drop Frames): إلغاء التداخل في بلور الخلفيات الثقيلة، قفل الـ reflow أثناء السكرول، تحسين ريندر الأجهزة المتصلة والمنفصلة، وتسريع استجابة الواجهة بدون أي استهلاك للرام."
+  "changelog": "ترقية السرعة والأداء لكسر حاجز 30-40 Mbps: مضاعفة نافذة الـ Block ACK إلى 32، تفعيل TCP SACK، توسيع بافرات الوايفاي والـ TCP Window، تسريع توجيه الحزم (Zero-Copy Forwarding)، وتخفيض استهلاك الرام من مهام الخلفية بدون المساس بأي ميزة."
 }

@@ -3222,9 +3222,8 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 12KB stack to guarantee safe TLS
-  // handshake and JSON handling
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 12288, NULL, 4, NULL,
+  // Pinned to Core 0 for ESP32-C5 Unicore with 8KB stack (saves 4KB RAM for high-throughput Wi-Fi NAPT)
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL,
                           0);
   ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
 }
