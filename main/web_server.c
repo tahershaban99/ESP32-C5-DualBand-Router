@@ -514,6 +514,7 @@ static esp_err_t devices_handler(httpd_req_t *req) {
   bool first = true;
   uint8_t seen_macs[MAX_RECORDS + MAX_CLIENTS][6];
   size_t seen_count = 0;
+  used = 0;
 
   for (size_t i = 0; i < count; ++i) {
     usage_record_t rec;
@@ -635,7 +636,14 @@ static esp_err_t devices_handler(httpd_req_t *req) {
                                                  : (1024.0 * 1024.0 * 1024.0);
     double dev_quota_gb = (double)quota / gb_div;
 
-    used = 0;
+    // Flush batch if buffer is getting full
+    if (used + 450 >= sizeof(buf)) {
+      err = httpd_resp_send_chunk(req, buf, used);
+      if (err != ESP_OK)
+        return err;
+      used = 0;
+    }
+
     if (!first) {
       buf[used++] = ',';
     }
@@ -689,7 +697,9 @@ static esp_err_t devices_handler(httpd_req_t *req) {
                              (unsigned long)conn_s, (unsigned long)last_seen_ago_s);
     if (used < sizeof(buf) - 1)
       buf[used++] = '}';
+  }
 
+  if (used > 0) {
     err = httpd_resp_send_chunk(req, buf, used);
     if (err != ESP_OK)
       return err;
