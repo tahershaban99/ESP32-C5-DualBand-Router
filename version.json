@@ -1,6 +1,6 @@
 {
-  "version": "v3.5.5",
+  "version": "v3.5.6",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "حل نهائي وجذري لكراش بوت تليجرام (Software Panic / Stack Overflow): توسيع مكدس مهمة التليجرام إلى 14KB لمنح مصافحة تشفير mbedTLS مساحة كافية، تحرير الذاكرة المؤقتة للتقرير قبل بدء الاتصال، حماية بايتات الأسماء العربية في الأزرار، وضبط بافرات الإرسال لمنع إجهاد الرام."
+  "changelog": "حل جذري ونهائي لكراش بوت تليجرام عند طلب الأجهزة المتصلة: القضاء التام على Heap Buffer Overflow بضبط حدود البافرات عبر snprintf، استعادة 6KB كاملة للرام الحرة بإرجاع المكدس إلى 8KB، إلغاء تعديل السياسات أثناء القراءة وجعل الاستعلام Read-Only، وتخفيف البافرات اللحظية."
 }

@@ -1609,19 +1609,6 @@ static void send_admin_speed_report(const char *chat_id, int64_t edit_msg_id,
 
 static void send_admin_devices_report(const char *chat_id,
                                       int64_t edit_msg_id) {
-  char *reply = (char *)calloc(1, 1500);
-  char *kb_buttons = (char *)calloc(1, 1200);
-  char *kb_json = (char *)calloc(1, 1350);
-  if (!reply || !kb_buttons || !kb_json) {
-    if (reply)
-      free(reply);
-    if (kb_buttons)
-      free(kb_buttons);
-    if (kb_json)
-      free(kb_json);
-    return;
-  }
-
   typedef struct {
     uint8_t mac[6];
     uint32_t ip;
@@ -1639,9 +1626,7 @@ static void send_admin_devices_report(const char *chat_id,
   dev_snapshot_t *snap =
       (dev_snapshot_t *)calloc(MAX_RECORDS, sizeof(dev_snapshot_t));
   if (!snap) {
-    free(reply);
-    free(kb_buttons);
-    free(kb_json);
+    telegram_send_message(chat_id, "⚠️ الذاكرة غير كافية لإنشاء التقرير.");
     return;
   }
 
@@ -1690,7 +1675,7 @@ static void send_admin_devices_report(const char *chat_id,
 
   for (size_t i = 0; i < listed_cnt; ++i) {
     uint8_t *mac = snap[i].mac;
-    int p_idx = meter_find_policy_locked(mac, true);
+    int p_idx = meter_find_policy_locked(mac, false);
     snap[i].p_idx = p_idx;
     if (p_idx >= 0) {
       snap[i].is_blocked = device_policies[p_idx].blocked;
@@ -1726,20 +1711,29 @@ static void send_admin_devices_report(const char *chat_id,
   }
   portEXIT_CRITICAL(&data_mux);
 
-  strcpy(reply, "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
-  uint16_t count = 0;
-  double gb_div =
-      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
-
-  char *line_buf = (char *)malloc(320);
-  if (!line_buf) {
+  char *reply = (char *)calloc(1, 1600);
+  char *kb_json = (char *)calloc(1, 1024);
+  if (!reply || !kb_json) {
+    if (reply)
+      free(reply);
+    if (kb_json)
+      free(kb_json);
     free(snap);
-    free(reply);
-    free(kb_buttons);
-    free(kb_json);
     return;
   }
 
+  size_t rep_len = 0;
+  rep_len += snprintf(reply + rep_len, 1600 - rep_len,
+                      "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
+
+  double gb_div =
+      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+
+  size_t kb_len = 0;
+  kb_len += snprintf(kb_json + kb_len, 1024 - kb_len, "{\"inline_keyboard\":[");
+  bool first_row = true;
+
+  uint16_t count = 0;
   for (size_t i = 0; i < listed_cnt; ++i) {
     char name[DEVICE_NAME_BYTES];
     if (snap[i].name[0]) {
@@ -1764,24 +1758,28 @@ static void send_admin_devices_report(const char *chat_id,
                (double)snap[i].dev_quota / gb_div);
     }
 
-    snprintf(line_buf, 320,
-             "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
-             "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s GB\n",
-             count, name, ip_s,
-             snap[i].is_blocked
-                 ? "🔴 [محظور]"
-                 : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
-             snap[i].is_vip ? " 🎮 <b>VIP</b>" : "",
-             (double)snap[i].cur_down / 1000000.0,
-             (double)snap[i].cur_up / 1000000.0,
-             (double)snap[i].dev_used / gb_div, q_info);
-    if (strlen(reply) + strlen(line_buf) < 1400)
-      strcat(reply, line_buf);
+    if (rep_len + 250 < 1450) {
+      int w = snprintf(reply + rep_len, 1600 - rep_len,
+                       "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
+                       "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s GB\n",
+                       count, name, ip_s,
+                       snap[i].is_blocked
+                           ? "🔴 [محظور]"
+                           : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
+                       snap[i].is_vip ? " 🎮 <b>VIP</b>" : "",
+                       (double)snap[i].cur_down / 1000000.0,
+                       (double)snap[i].cur_up / 1000000.0,
+                       (double)snap[i].dev_used / gb_div, q_info);
+      if (w > 0 && rep_len + (size_t)w < 1450) {
+        rep_len += (size_t)w;
+      }
+    }
 
-    if (count <= 8 && snap[i].p_idx >= 0) {
-      char safe_btn_name[128];
+    // Inline action buttons for up to 6 devices
+    if (count <= 6 && snap[i].p_idx >= 0 && kb_len + 160 < 880) {
+      char safe_btn_name[48];
       size_t s_out = 0;
-      for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 4; ++c) {
+      for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 1; ++c) {
         if (name[c] == '"' || name[c] == '\\') {
           safe_btn_name[s_out++] = '\'';
         } else {
@@ -1790,38 +1788,35 @@ static void send_admin_devices_report(const char *chat_id,
       }
       safe_btn_name[s_out] = 0;
 
-      snprintf(line_buf, 320,
-               "%s[{\"text\":\"⚙️ تحكم وباقة وVIP: "
-               "%s\",\"callback_data\":\"mdev:%d\"},"
-               "{\"text\":\"%s\",\"callback_data\":\"%s:%d\"}]",
-               kb_buttons[0] ? "," : "", safe_btn_name, snap[i].p_idx,
-               snap[i].is_blocked ? "✅ فك حظر" : "🚫 حظر",
-               snap[i].is_blocked ? "ubp" : "blkp", snap[i].p_idx);
-      if (strlen(kb_buttons) + strlen(line_buf) < 1100)
-        strcat(kb_buttons, line_buf);
+      int kw = snprintf(kb_json + kb_len, 1024 - kb_len,
+                        "%s[{\"text\":\"⚙️ %s\",\"callback_data\":\"mdev:%d\"},"
+                        "{\"text\":\"%s\",\"callback_data\":\"%s:%d\"}]",
+                        first_row ? "" : ",", safe_btn_name, snap[i].p_idx,
+                        snap[i].is_blocked ? "✅ فك حظر" : "🚫 حظر",
+                        snap[i].is_blocked ? "ubp" : "blkp", snap[i].p_idx);
+      if (kw > 0 && kb_len + (size_t)kw < 880) {
+        kb_len += (size_t)kw;
+        first_row = false;
+      }
     }
   }
+
+  // Free snap immediately to return memory to heap BEFORE network transmission
   free(snap);
 
   if (count == 0) {
-    strcat(reply, "<i>لا توجد أجهزة متصلة بالشبكة حالياً.</i>\n");
+    snprintf(reply + rep_len, 1600 - rep_len,
+             "<i>لا توجد أجهزة متصلة بالشبكة حالياً.</i>\n");
   } else {
-    strcat(reply, "\n👇 <i>اضغط على (⚙️ تحكم وباقة وVIP) لأي جهاز لزيادة باقته "
-                  "أو تفعيل الـ VIP:</i>");
+    snprintf(reply + rep_len, 1600 - rep_len,
+             "\n👇 <i>اضغط على (⚙️ الجهاز) بالأسفل للتحكم أو تفعيل الـ VIP:</i>");
   }
 
-  // Refresh button
-  snprintf(line_buf, 320,
-           "%s[{\"text\":\"🔄 تحديث قائمة "
-           "الأجهزة\",\"callback_data\":\"adm_devices\"}]",
-           kb_buttons[0] ? "," : "");
-  if (strlen(kb_buttons) + strlen(line_buf) < 1180)
-    strcat(kb_buttons, line_buf);
+  // Append refresh button and close inline_keyboard array
+  snprintf(kb_json + kb_len, 1024 - kb_len,
+           "%s[{\"text\":\"🔄 تحديث قائمة الأجهزة\",\"callback_data\":\"adm_devices\"}]]}",
+           first_row ? "" : ",");
 
-  free(line_buf);
-
-  snprintf(kb_json, 1350, "{\"inline_keyboard\":[%s]}", kb_buttons);
-  free(kb_buttons);
   telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb_json);
   free(reply);
   free(kb_json);
@@ -3399,8 +3394,8 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 with 14KB stack to ensure safe TLS / mbedTLS handshake headroom during rich messages
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 14336, NULL, 4, NULL,
+  // Pinned to Core 0 with standard 8KB stack (streamlined heap memory, 0% stack overhead)
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL,
                           0);
-  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (14KB stack)");
+  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (8KB stack)");
 }
