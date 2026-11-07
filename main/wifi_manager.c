@@ -326,22 +326,18 @@ static netif_input_fn orig_ap_netif_input = NULL;
 
 static err_t router_ap_netif_input(struct pbuf *p, struct netif *inp) {
   if (p != NULL && p->len >= 28) {
-    uint8_t eth_hdr[14];
-    if (pbuf_copy_partial(p, eth_hdr, 14, 0) == 14) {
-      uint16_t eth_type = ((uint16_t)eth_hdr[12] << 8) | eth_hdr[13];
-      if (eth_type == 0x0806) { // ARP packet
-        uint8_t arp_sender_ip[4];
-        if (pbuf_copy_partial(p, arp_sender_ip, 4, 28) == 4) {
-          if (arp_sender_ip[0] == AP_IP_A && arp_sender_ip[1] == AP_IP_B && arp_sender_ip[2] == AP_IP_C) {
-            uint8_t oct = arp_sender_ip[3];
-            if (oct >= 2 && oct <= 254) {
-              uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
-              uint32_t rip = 0;
-              memcpy(&rip, arp_sender_ip, 4);
-              wifi_manager_clear_aged_out_ip(rip);
-              meter_notify_client_active_ip(oct, now_s);
-            }
-          }
+    const uint8_t *payload = (const uint8_t *)p->payload;
+    uint16_t eth_type = ((uint16_t)payload[12] << 8) | payload[13];
+    if (eth_type == 0x0806) { // ARP packet
+      const uint8_t *arp_sender_ip = payload + 28;
+      if (arp_sender_ip[0] == AP_IP_A && arp_sender_ip[1] == AP_IP_B && arp_sender_ip[2] == AP_IP_C) {
+        uint8_t oct = arp_sender_ip[3];
+        if (oct >= 2 && oct <= 254) {
+          uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+          uint32_t rip = 0;
+          memcpy(&rip, arp_sender_ip, 4);
+          wifi_manager_clear_aged_out_ip(rip);
+          meter_notify_client_active_ip(oct, now_s);
         }
       }
     }
