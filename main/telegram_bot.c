@@ -221,8 +221,11 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
   }
   json_escape(text, escaped_text, 2048);
 
-  size_t body_sz = strlen(escaped_text) + (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) + 256;
-  if (body_sz < 2800) body_sz = 2800;
+  size_t body_sz = strlen(escaped_text) +
+                   (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) +
+                   256;
+  if (body_sz < 2800)
+    body_sz = 2800;
   char *body = (char *)malloc(body_sz);
   if (!body) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for sendMessage body");
@@ -249,7 +252,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
       .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = body_sz,
+      .buffer_size_tx = 1024,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -307,8 +310,11 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   }
   json_escape(text, escaped_text, 2048);
 
-  size_t body_sz = strlen(escaped_text) + (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) + 256;
-  if (body_sz < 2800) body_sz = 2800;
+  size_t body_sz = strlen(escaped_text) +
+                   (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) +
+                   256;
+  if (body_sz < 2800)
+    body_sz = 2800;
   char *body = (char *)malloc(body_sz);
   if (!body) {
     free(escaped_text);
@@ -336,7 +342,7 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
       .timeout_ms = 8000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = body_sz,
+      .buffer_size_tx = 1024,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -698,8 +704,16 @@ static void format_single_device_report(int p_idx, char *out, size_t max_out) {
   }
 
   int u = meter_find_usage_locked(mac, false);
-  uint64_t up = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
-  uint64_t down = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
+  uint64_t up = (u >= 0)
+                    ? meter_calc_scaled_bytes(usage_records[u].upload_bytes,
+                                              router_meter_scale_pct,
+                                              router_meter_scale_mode)
+                    : 0;
+  uint64_t down = (u >= 0)
+                      ? meter_calc_scaled_bytes(usage_records[u].download_bytes,
+                                                router_meter_scale_pct,
+                                                router_meter_scale_mode)
+                      : 0;
   uint32_t live_down = (u >= 0) ? device_live_speeds[u].cur_down_bps : 0;
   uint32_t live_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
 
@@ -790,8 +804,16 @@ static void format_multi_device_summary(const int *p_indices, size_t count,
     }
 
     int u = meter_find_usage_locked(mac, false);
-    uint64_t up = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
-    uint64_t down = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode) : 0;
+    uint64_t up = (u >= 0)
+                      ? meter_calc_scaled_bytes(usage_records[u].upload_bytes,
+                                                router_meter_scale_pct,
+                                                router_meter_scale_mode)
+                      : 0;
+    uint64_t down =
+        (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].download_bytes,
+                                           router_meter_scale_pct,
+                                           router_meter_scale_mode)
+                 : 0;
     portEXIT_CRITICAL(&data_mux);
 
     uint64_t dev_tot = up + down;
@@ -1387,8 +1409,12 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
 
   portENTER_CRITICAL(&data_mux);
   for (size_t i = 0; i < usage_count; ++i) {
-    total_up += meter_calc_scaled_bytes(usage_records[i].upload_bytes, router_meter_scale_pct, router_meter_scale_mode);
-    total_down += meter_calc_scaled_bytes(usage_records[i].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+    total_up += meter_calc_scaled_bytes(usage_records[i].upload_bytes,
+                                        router_meter_scale_pct,
+                                        router_meter_scale_mode);
+    total_down += meter_calc_scaled_bytes(usage_records[i].download_bytes,
+                                          router_meter_scale_pct,
+                                          router_meter_scale_mode);
   }
   live_up = total_cur_up_bps;
   live_down = total_cur_down_bps;
@@ -1474,10 +1500,13 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
           my_name[sizeof(my_name) - 1] = 0;
         }
         int u = meter_find_usage_locked(mac, false);
-        uint64_t my_used = (u >= 0) ? meter_calc_scaled_bytes(usage_records[u].upload_bytes +
-                                                               usage_records[u].download_bytes,
-                                                               router_meter_scale_pct, router_meter_scale_mode)
-                                    : 0;
+        uint64_t my_used =
+            (u >= 0)
+                ? meter_calc_scaled_bytes(usage_records[u].upload_bytes +
+                                              usage_records[u].download_bytes,
+                                          router_meter_scale_pct,
+                                          router_meter_scale_mode)
+                : 0;
         portEXIT_CRITICAL(&data_mux);
 
         double my_used_gb = (double)my_used / gb_div;
@@ -1607,7 +1636,8 @@ static void send_admin_devices_report(const char *chat_id,
     uint64_t dev_quota;
   } dev_snapshot_t;
 
-  dev_snapshot_t *snap = (dev_snapshot_t *)calloc(MAX_RECORDS, sizeof(dev_snapshot_t));
+  dev_snapshot_t *snap =
+      (dev_snapshot_t *)calloc(MAX_RECORDS, sizeof(dev_snapshot_t));
   if (!snap) {
     free(reply);
     free(kb_buttons);
@@ -1632,10 +1662,12 @@ static void send_admin_devices_report(const char *chat_id,
     if (!valid_device_mac(device_policies[p].mac))
       continue;
     int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
-    uint64_t used_b = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
-                                                              usage_records[u_idx].download_bytes,
-                                                              router_meter_scale_pct, router_meter_scale_mode)
-                                   : 0;
+    uint64_t used_b = (u_idx >= 0)
+                          ? meter_calc_scaled_bytes(
+                                usage_records[u_idx].upload_bytes +
+                                    usage_records[u_idx].download_bytes,
+                                router_meter_scale_pct, router_meter_scale_mode)
+                          : 0;
     bool quota_full = (device_policies[p].quota_bytes > 0 &&
                        used_b >= device_policies[p].quota_bytes);
     if (device_policies[p].blocked || quota_full ||
@@ -1681,12 +1713,16 @@ static void send_admin_devices_report(const char *chat_id,
     }
 
     int u_idx = meter_find_usage_locked(mac, false);
-    snap[i].cur_down = (u_idx >= 0) ? device_live_speeds[u_idx].cur_down_bps : 0;
+    snap[i].cur_down =
+        (u_idx >= 0) ? device_live_speeds[u_idx].cur_down_bps : 0;
     snap[i].cur_up = (u_idx >= 0) ? device_live_speeds[u_idx].cur_up_bps : 0;
-    snap[i].dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
-                                                               usage_records[u_idx].download_bytes,
-                                                               router_meter_scale_pct, router_meter_scale_mode)
-                                    : 0;
+    snap[i].dev_used =
+        (u_idx >= 0)
+            ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                          usage_records[u_idx].download_bytes,
+                                      router_meter_scale_pct,
+                                      router_meter_scale_mode)
+            : 0;
   }
   portEXIT_CRITICAL(&data_mux);
 
@@ -1695,10 +1731,16 @@ static void send_admin_devices_report(const char *chat_id,
   double gb_div =
       (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
-  for (size_t i = 0; i < listed_cnt; ++i) {
-    if (snap[i].p_idx < 0)
-      continue;
+  char *line_buf = (char *)malloc(320);
+  if (!line_buf) {
+    free(snap);
+    free(reply);
+    free(kb_buttons);
+    free(kb_json);
+    return;
+  }
 
+  for (size_t i = 0; i < listed_cnt; ++i) {
     char name[DEVICE_NAME_BYTES];
     if (snap[i].name[0]) {
       strncpy(name, snap[i].name, sizeof(name) - 1);
@@ -1722,24 +1764,24 @@ static void send_admin_devices_report(const char *chat_id,
                (double)snap[i].dev_quota / gb_div);
     }
 
-    char dev_line[280];
-    snprintf(dev_line, sizeof(dev_line),
-             "%u. <b>%.32s</b> (<code>%s</code>) %s%s\n"
+    snprintf(line_buf, 320,
+             "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
              "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s GB\n",
              count, name, ip_s,
-             snap[i].is_blocked ? "🔴 [محظور]"
-                                : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
+             snap[i].is_blocked
+                 ? "🔴 [محظور]"
+                 : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
              snap[i].is_vip ? " 🎮 <b>VIP</b>" : "",
              (double)snap[i].cur_down / 1000000.0,
              (double)snap[i].cur_up / 1000000.0,
              (double)snap[i].dev_used / gb_div, q_info);
-    if (strlen(reply) + strlen(dev_line) < 1400)
-      strcat(reply, dev_line);
+    if (strlen(reply) + strlen(line_buf) < 1400)
+      strcat(reply, line_buf);
 
-    if (count <= 8) {
-      char safe_btn_name[48];
+    if (count <= 8 && snap[i].p_idx >= 0) {
+      char safe_btn_name[128];
       size_t s_out = 0;
-      for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 1; ++c) {
+      for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 4; ++c) {
         if (name[c] == '"' || name[c] == '\\') {
           safe_btn_name[s_out++] = '\'';
         } else {
@@ -1748,17 +1790,15 @@ static void send_admin_devices_report(const char *chat_id,
       }
       safe_btn_name[s_out] = 0;
 
-      char row[260];
-      snprintf(row, sizeof(row),
+      snprintf(line_buf, 320,
                "%s[{\"text\":\"⚙️ تحكم وباقة وVIP: "
                "%s\",\"callback_data\":\"mdev:%d\"},"
                "{\"text\":\"%s\",\"callback_data\":\"%s:%d\"}]",
                kb_buttons[0] ? "," : "", safe_btn_name, snap[i].p_idx,
                snap[i].is_blocked ? "✅ فك حظر" : "🚫 حظر",
-               snap[i].is_blocked ? "ubp" : "blkp",
-               snap[i].p_idx);
-      if (strlen(kb_buttons) + strlen(row) < 1100)
-        strcat(kb_buttons, row);
+               snap[i].is_blocked ? "ubp" : "blkp", snap[i].p_idx);
+      if (strlen(kb_buttons) + strlen(line_buf) < 1100)
+        strcat(kb_buttons, line_buf);
     }
   }
   free(snap);
@@ -1771,13 +1811,14 @@ static void send_admin_devices_report(const char *chat_id,
   }
 
   // Refresh button
-  char refresh_btn[140];
-  snprintf(refresh_btn, sizeof(refresh_btn),
+  snprintf(line_buf, 320,
            "%s[{\"text\":\"🔄 تحديث قائمة "
            "الأجهزة\",\"callback_data\":\"adm_devices\"}]",
            kb_buttons[0] ? "," : "");
-  if (strlen(kb_buttons) + strlen(refresh_btn) < 1180)
-    strcat(kb_buttons, refresh_btn);
+  if (strlen(kb_buttons) + strlen(line_buf) < 1180)
+    strcat(kb_buttons, line_buf);
+
+  free(line_buf);
 
   snprintf(kb_json, 1350, "{\"inline_keyboard\":[%s]}", kb_buttons);
   free(kb_buttons);
@@ -1838,8 +1879,10 @@ static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
   char *msg = (char *)calloc(1, 1200);
   char *kb = (char *)calloc(1, 1024);
   if (!msg || !kb) {
-    if (msg) free(msg);
-    if (kb) free(kb);
+    if (msg)
+      free(msg);
+    if (kb)
+      free(kb);
     return;
   }
 
@@ -1851,11 +1894,16 @@ static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
   char r_log[256] = {0};
   bool update_available = false;
 
-  esp_err_t err = ota_check_remote_version(r_ver, sizeof(r_ver), r_url, sizeof(r_url),
-                                          r_log, sizeof(r_log), &update_available);
+  esp_err_t err =
+      ota_check_remote_version(r_ver, sizeof(r_ver), r_url, sizeof(r_url),
+                               r_log, sizeof(r_log), &update_available);
 
-  const char *auto_status_str = ota_auto_update_enabled ? "🟢 مفعل تلقائياً (بعد الإقلاع وكل 6س)" : "⚪ غير مفعل (يدوي فقط)";
-  const char *auto_toggle_btn = ota_auto_update_enabled ? "⏸️ إيقاف التحديث التلقائي" : "▶️ تفعيل التحديث التلقائي";
+  const char *auto_status_str = ota_auto_update_enabled
+                                    ? "🟢 مفعل تلقائياً (بعد الإقلاع وكل 6س)"
+                                    : "⚪ غير مفعل (يدوي فقط)";
+  const char *auto_toggle_btn = ota_auto_update_enabled
+                                    ? "⏸️ إيقاف التحديث التلقائي"
+                                    : "▶️ تفعيل التحديث التلقائي";
 
   if (err == ESP_OK && update_available && r_ver[0]) {
     snprintf(msg, 1200,
@@ -1867,14 +1915,16 @@ static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
              "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
              "🛡️ <b>حماية التراجع:</b> Anti-Rollback Active ✅\n"
              "⚙️ <b>التحديث التلقائي:</b> %s\n\n"
-             "👇 اضغط على <b>بدء التحديث الآن</b> لتحميل وتثبيت الفيرموير تلقائياً بأمان:",
+             "👇 اضغط على <b>بدء التحديث الآن</b> لتحميل وتثبيت الفيرموير "
+             "تلقائياً بأمان:",
              ROUTER_FIRMWARE_VERSION, r_ver,
              r_log[0] ? r_log : "تحسينات عامة في الأداء والاستقرار",
              ota_inf.running_partition, auto_status_str);
 
     snprintf(kb, 1024,
              "{\"inline_keyboard\":["
-             "[{\"text\":\"⚡ بدء التحديث الآن (Update Now)\",\"callback_data\":\"ota_confirm\"}],"
+             "[{\"text\":\"⚡ بدء التحديث الآن (Update "
+             "Now)\",\"callback_data\":\"ota_confirm\"}],"
              "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}],"
              "[{\"text\":\"🔍 إعادة الفحص\",\"callback_data\":\"ota_check\"}]"
              "]}",
@@ -1888,17 +1938,18 @@ static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
              "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
              "🛡️ <b>حماية التراجع:</b> Anti-Rollback Active ✅\n"
              "⚙️ <b>التحديث التلقائي:</b> %s\n\n"
-             "💡 <i>يقوم الراوتر بالفحص التلقائي وتثبيت أي تحديث يُرفع على GitHub دون أي تدخل عند تفعيل الميزة.</i>",
-             ROUTER_FIRMWARE_VERSION,
-             r_ver[0] ? r_ver : "متطابق مع GitHub",
+             "💡 <i>يقوم الراوتر بالفحص التلقائي وتثبيت أي تحديث يُرفع على "
+             "GitHub دون أي تدخل عند تفعيل الميزة.</i>",
+             ROUTER_FIRMWARE_VERSION, r_ver[0] ? r_ver : "متطابق مع GitHub",
              ota_inf.running_partition, auto_status_str);
 
-    snprintf(kb, 1024,
-             "{\"inline_keyboard\":["
-             "[{\"text\":\"🔍 إعادة الفحص الآن\",\"callback_data\":\"ota_check\"}],"
-             "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
-             "]}",
-             auto_toggle_btn);
+    snprintf(
+        kb, 1024,
+        "{\"inline_keyboard\":["
+        "[{\"text\":\"🔍 إعادة الفحص الآن\",\"callback_data\":\"ota_check\"}],"
+        "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
+        "]}",
+        auto_toggle_btn);
   } else {
     snprintf(msg, 1200,
              "🚀 <b>لوحة إدارة التحديثات والترقية السحابية (OTA):</b>\n\n"
@@ -1907,14 +1958,16 @@ static void send_admin_ota_menu(const char *chat_id, int64_t edit_msg_id) {
              "🔖 <b>الإصدار الحالي:</b> <code>%s</code>\n"
              "💾 <b>بنك الإقلاع الفعال:</b> %s\n"
              "⚙️ <b>التحديث التلقائي:</b> %s",
-             ROUTER_FIRMWARE_VERSION, ota_inf.running_partition, auto_status_str);
+             ROUTER_FIRMWARE_VERSION, ota_inf.running_partition,
+             auto_status_str);
 
-    snprintf(kb, 1024,
-             "{\"inline_keyboard\":["
-             "[{\"text\":\"🔄 إعادة المحاولة\",\"callback_data\":\"ota_check\"}],"
-             "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
-             "]}",
-             auto_toggle_btn);
+    snprintf(
+        kb, 1024,
+        "{\"inline_keyboard\":["
+        "[{\"text\":\"🔄 إعادة المحاولة\",\"callback_data\":\"ota_check\"}],"
+        "[{\"text\":\"%s\",\"callback_data\":\"ota_toggle\"}]"
+        "]}",
+        auto_toggle_btn);
   }
 
   telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, msg, kb);
@@ -2148,11 +2201,12 @@ static void telegram_task(void *pvParameters) {
                                      &avail) == ESP_OK &&
             avail && ob->url[0]) {
           if (telegram_enabled && telegram_token[0] && telegram_chat_id[0]) {
-            snprintf(ob->msg, sizeof(ob->msg),
-                     "🚀 <b>تحديث تلقائي جديد متاح (%s)!</b>\n\n"
-                     "📝 <b>التغييرات:</b> %s\n\n"
-                     "⏳ جاري تنزيل وتثبيت التحديث السحابي تلقائياً من GitHub...",
-                     ob->ver, ob->log[0] ? ob->log : "تحسينات عامة في الأداء");
+            snprintf(
+                ob->msg, sizeof(ob->msg),
+                "🚀 <b>تحديث تلقائي جديد متاح (%s)!</b>\n\n"
+                "📝 <b>التغييرات:</b> %s\n\n"
+                "⏳ جاري تنزيل وتثبيت التحديث السحابي تلقائياً من GitHub...",
+                ob->ver, ob->log[0] ? ob->log : "تحسينات عامة في الأداء");
             telegram_broadcast_admins(ob->msg);
           }
           meter_save_usage();
@@ -2604,7 +2658,8 @@ static void telegram_task(void *pvParameters) {
               esp_restart();
             } else if (strcmp(cb_data, "ota_check") == 0 && is_cb_admin) {
               if (cb_id[0]) {
-                telegram_answer_callback_query(cb_id, "🔍 جاري فحص مستودع GitHub بحثاً عن تحديثات...");
+                telegram_answer_callback_query(
+                    cb_id, "🔍 جاري فحص مستودع GitHub بحثاً عن تحديثات...");
                 answered_toast = true;
               }
               send_admin_ota_menu(cb_sender, cb_msg_id);
@@ -2646,7 +2701,8 @@ static void telegram_task(void *pvParameters) {
               } else {
                 telegram_send_message_with_keyboard(
                     cb_sender,
-                    "❌ <b>فشل بدء التحديث:</b> تعذر الوصول إلى رابط الفيرموير من GitHub.",
+                    "❌ <b>فشل بدء التحديث:</b> تعذر الوصول إلى رابط الفيرموير "
+                    "من GitHub.",
                     TG_ADMIN_KEYBOARD);
               }
             } else if (strncmp(cb_data, "dev_idx:", 8) == 0) {
@@ -3011,30 +3067,42 @@ static void telegram_task(void *pvParameters) {
                   bool blocked;
                   bool has_tg;
                 } all_dev_snap_t;
-                all_dev_snap_t *snaps = (all_dev_snap_t *)calloc(MAX_RECORDS, sizeof(all_dev_snap_t));
+                all_dev_snap_t *snaps = (all_dev_snap_t *)calloc(
+                    MAX_RECORDS, sizeof(all_dev_snap_t));
                 size_t p_count = 0;
                 if (snaps) {
                   portENTER_CRITICAL(&data_mux);
-                  p_count = (policy_count < MAX_RECORDS) ? policy_count : MAX_RECORDS;
+                  p_count =
+                      (policy_count < MAX_RECORDS) ? policy_count : MAX_RECORDS;
                   for (size_t p = 0; p < p_count; ++p) {
                     strcpy(snaps[p].d_name, "جهاز");
-                    int n_idx = meter_find_name_locked(device_policies[p].mac, false);
+                    int n_idx =
+                        meter_find_name_locked(device_policies[p].mac, false);
                     if (n_idx >= 0 && device_names[n_idx].name[0]) {
-                      strncpy(snaps[p].d_name, device_names[n_idx].name, sizeof(snaps[p].d_name) - 1);
+                      strncpy(snaps[p].d_name, device_names[n_idx].name,
+                              sizeof(snaps[p].d_name) - 1);
                       snaps[p].d_name[sizeof(snaps[p].d_name) - 1] = 0;
                     }
-                    int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
-                    snaps[p].dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
-                                                                               usage_records[u_idx].download_bytes,
-                                                                               router_meter_scale_pct, router_meter_scale_mode)
-                                                     : 0;
+                    int u_idx =
+                        meter_find_usage_locked(device_policies[p].mac, false);
+                    snaps[p].dev_used =
+                        (u_idx >= 0)
+                            ? meter_calc_scaled_bytes(
+                                  usage_records[u_idx].upload_bytes +
+                                      usage_records[u_idx].download_bytes,
+                                  router_meter_scale_pct,
+                                  router_meter_scale_mode)
+                            : 0;
                     snaps[p].quota_bytes = device_policies[p].quota_bytes;
                     snaps[p].blocked = device_policies[p].blocked;
-                    snaps[p].has_tg = (device_policies[p].telegram_chat_id[0] != 0);
+                    snaps[p].has_tg =
+                        (device_policies[p].telegram_chat_id[0] != 0);
                   }
                   portEXIT_CRITICAL(&data_mux);
 
-                  double gb_div_t = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+                  double gb_div_t = (router_gb_standard == 1000)
+                                        ? 1000000000.0
+                                        : (1024.0 * 1024.0 * 1024.0);
                   for (size_t p = 0; p < p_count; ++p) {
                     double u_gb = (double)snaps[p].dev_used / gb_div_t;
                     double q_gb = (double)snaps[p].quota_bytes / gb_div_t;
@@ -3042,14 +3110,15 @@ static void telegram_task(void *pvParameters) {
                     char line[150];
                     if (snaps[p].quota_bytes > 0) {
                       snprintf(line, sizeof(line),
-                               "• <b>%s</b>: %.2f / %.2f GB %s%s\n", snaps[p].d_name, u_gb,
-                               q_gb, snaps[p].blocked ? "🔴" : "🟢",
+                               "• <b>%s</b>: %.2f / %.2f GB %s%s\n",
+                               snaps[p].d_name, u_gb, q_gb,
+                               snaps[p].blocked ? "🔴" : "🟢",
                                snaps[p].has_tg ? " [TG]" : "");
                     } else {
-                      snprintf(
-                          line, sizeof(line), "• <b>%s</b>: %.2f GB %s%s\n",
-                          snaps[p].d_name, u_gb, snaps[p].blocked ? "🔴" : "🟢",
-                          snaps[p].has_tg ? " [TG]" : "");
+                      snprintf(line, sizeof(line),
+                               "• <b>%s</b>: %.2f GB %s%s\n", snaps[p].d_name,
+                               u_gb, snaps[p].blocked ? "🔴" : "🟢",
+                               snaps[p].has_tg ? " [TG]" : "");
                     }
                     if (strlen(reply) + strlen(line) < 1170) {
                       strcat(reply, line);
@@ -3162,7 +3231,8 @@ static void telegram_task(void *pvParameters) {
             }
             // 7. Command: /ota, /update, تحديث, فحص التحديثات
             else if (strstr(cmd_text, "/ota") || strstr(cmd_text, "/update") ||
-                     strstr(cmd_text, "تحديث") || strstr(cmd_text, "التحديثات")) {
+                     strstr(cmd_text, "تحديث") ||
+                     strstr(cmd_text, "التحديثات")) {
               send_admin_ota_menu(sender_chat_id, 0);
             }
             // 7.5. Command: /add_quota, زيادة باقة
@@ -3304,7 +3374,8 @@ static void telegram_task(void *pvParameters) {
                     "وتغيير تردد المعالج (80/160/240 MHz)\n"
                     "🔄 <b>إعادة التشغيل</b>: إعادة التشغيل الفوري أو الجدولة "
                     "اليومية التلقائية\n"
-                    "🚀 <b>فحص التحديثات</b>: فحص تحديثات GitHub والترقية الهوائية وإدارة التحديث التلقائي\n"
+                    "🚀 <b>فحص التحديثات</b>: فحص تحديثات GitHub والترقية "
+                    "الهوائية وإدارة التحديث التلقائي\n"
                     "📋 <b>مساعدة</b>: عرض هذا الدليل الإرشادي\n\n"
                     "💡 <i>أوامر إضافية مباشرة:</i>\n"
                     "• <code>/ota</code> لفحص التحديثات والترقية الفورية\n"
@@ -3328,8 +3399,8 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 for ESP32-C5 Unicore with 8KB stack (saves 4KB RAM for high-throughput Wi-Fi NAPT)
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL,
+  // Pinned to Core 0 with 14KB stack to ensure safe TLS / mbedTLS handshake headroom during rich messages
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 14336, NULL, 4, NULL,
                           0);
-  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0");
+  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (14KB stack)");
 }
