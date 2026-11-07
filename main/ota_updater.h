@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "esp_http_server.h"
 
-#define ROUTER_FIRMWARE_VERSION "v3.4.3"
+#define ROUTER_FIRMWARE_VERSION "v3.4.4"
 #define ROUTER_BUILD_TIMESTAMP __DATE__ " " __TIME__
 
 typedef enum {
