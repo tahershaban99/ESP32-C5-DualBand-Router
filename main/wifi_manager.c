@@ -417,9 +417,13 @@ typedef struct {
 
 static aged_out_entry_t recent_aged_out[8] = {0};
 static size_t recent_aged_out_idx = 0;
+static volatile uint8_t recent_aged_out_count = 0;
 
 void wifi_manager_record_aged_out(uint32_t ip, const uint8_t mac[6]) {
   uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+  if (recent_aged_out[recent_aged_out_idx].ip == 0 && ip != 0) {
+    recent_aged_out_count++;
+  }
   recent_aged_out[recent_aged_out_idx].ip = ip;
   if (mac) memcpy(recent_aged_out[recent_aged_out_idx].mac, mac, 6);
   else memset(recent_aged_out[recent_aged_out_idx].mac, 0, 6);
@@ -428,6 +432,7 @@ void wifi_manager_record_aged_out(uint32_t ip, const uint8_t mac[6]) {
 }
 
 bool wifi_manager_is_recent_aged_out(uint32_t ip, const uint8_t mac[6], uint32_t now_s) {
+  if (recent_aged_out_count == 0) return false;
   for (size_t i = 0; i < 8; ++i) {
     if (recent_aged_out[i].ip != 0 && (recent_aged_out[i].ip == ip || (mac && valid_device_mac(mac) && memcmp(recent_aged_out[i].mac, mac, 6) == 0))) {
       if (now_s >= recent_aged_out[i].aged_s && (now_s - recent_aged_out[i].aged_s) < 30) {
@@ -439,12 +444,13 @@ bool wifi_manager_is_recent_aged_out(uint32_t ip, const uint8_t mac[6], uint32_t
 }
 
 void wifi_manager_clear_aged_out_ip(uint32_t ip) {
-  if (ip == 0) return;
+  if (ip == 0 || recent_aged_out_count == 0) return;
   for (size_t i = 0; i < 8; ++i) {
     if (recent_aged_out[i].ip == ip) {
       recent_aged_out[i].ip = 0;
       memset(recent_aged_out[i].mac, 0, 6);
       recent_aged_out[i].aged_s = 0;
+      if (recent_aged_out_count > 0) recent_aged_out_count--;
     }
   }
 }
@@ -640,8 +646,10 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     uint8_t primary_ch = 1;
     wifi_second_chan_t sec_ch = WIFI_SECOND_CHAN_NONE;
     if (esp_wifi_get_channel(&primary_ch, &sec_ch) == ESP_OK) {
-      ESP_LOGI(ROUTER_TAG, "Operating on Channel %u (%s)",
-               (unsigned)primary_ch, (primary_ch >= 36) ? "5GHz Band" : "2.4GHz Band");
+      const char *sec_str = (sec_ch == WIFI_SECOND_CHAN_ABOVE) ? "HT40+ (40MHz High)" :
+                            (sec_ch == WIFI_SECOND_CHAN_BELOW) ? "HT40- (40MHz Low)" : "20MHz Narrow (HE20/HT20)";
+      ESP_LOGI(ROUTER_TAG, "Operating on Channel %u (%s - %s)",
+               (unsigned)primary_ch, (primary_ch >= 36) ? "5GHz Band" : "2.4GHz Band", sec_str);
       if (primary_ch > 11 && primary_ch <= 14) {
         wifi_bandwidth_t cur_bw = WIFI_BW20;
         if (esp_wifi_get_bandwidth(WIFI_IF_AP, &cur_bw) == ESP_OK && cur_bw == WIFI_BW40) {
@@ -1233,47 +1241,71 @@ void wifi_manager_init(void) {
   // Max TX Power: 18.0 dBm (72 * 0.25 dBm) - prevents USB current surge voltage dips
   esp_wifi_set_max_tx_power(72);
 
-  // Bandwidth & Protocol Tuning with Wi-Fi 6 (802.11ax) acceleration
+  // Bandwidth & Protocol Tuning:
+  // On ESP32-C5: Wi-Fi 6 (802.11ax) strictly supports 20MHz only (HE20).
+  // Wider 40MHz (HT40) with 150 Mbps link rate is unlocked via 802.11n / 802.11an.
   wifi_bandwidth_t user_bw = (wifi_protocol_mode == 0 || wifi_protocol_mode == 3) ? WIFI_BW20 : WIFI_BW40;
+  bool is_40mhz = (user_bw == WIFI_BW40);
 
   if (bmode == WIFI_BAND_MODE_AUTO) {
-    // Enable BOTH 2.4GHz and 5GHz protocols on SoftAP and STA!
-    // Because ESP32-C5 shares a single radio, when STA connects to a 5GHz router, SoftAP also operates on 5GHz!
-    wifi_protocols_t dual_protos = {
-      .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
-      .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX,
-    };
-    esp_wifi_set_protocols(WIFI_IF_AP, &dual_protos);
-    esp_wifi_set_protocols(WIFI_IF_STA, &dual_protos);
-
-    wifi_bandwidths_t ap_bws = {
-      .ghz_2g = user_bw,
-      .ghz_5g = user_bw,
-    };
-    wifi_bandwidths_t sta_bws = {
-      .ghz_2g = user_bw,
-      .ghz_5g = user_bw,
-    };
-    esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
-    esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 Dual-Band (AP+STA 2.4G/5G 11a/b/g/n/ac/ax, bw=%s, max_conn=%d)",
-             (user_bw == WIFI_BW40) ? "40MHz" : "20MHz", MAX_WIFI_STATIONS);
+    if (is_40mhz) {
+      wifi_protocols_t turbo_protos = {
+        .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N,
+        .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N,
+      };
+      esp_wifi_set_protocols(WIFI_IF_AP, &turbo_protos);
+      esp_wifi_set_protocols(WIFI_IF_STA, &turbo_protos);
+      wifi_bandwidths_t ap_bws = { .ghz_2g = WIFI_BW40, .ghz_5g = WIFI_BW40 };
+      wifi_bandwidths_t sta_bws = { .ghz_2g = WIFI_BW40, .ghz_5g = WIFI_BW40 };
+      esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
+      esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: Dual-Band HT40 Turbo (2.4G/5G 40MHz 150Mbps, max_conn=%d)", MAX_WIFI_STATIONS);
+    } else {
+      wifi_protocols_t dual_protos = {
+        .ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX,
+        .ghz_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX,
+      };
+      esp_wifi_set_protocols(WIFI_IF_AP, &dual_protos);
+      esp_wifi_set_protocols(WIFI_IF_STA, &dual_protos);
+      wifi_bandwidths_t ap_bws = { .ghz_2g = WIFI_BW20, .ghz_5g = WIFI_BW20 };
+      wifi_bandwidths_t sta_bws = { .ghz_2g = WIFI_BW20, .ghz_5g = WIFI_BW20 };
+      esp_wifi_set_bandwidths(WIFI_IF_AP, &ap_bws);
+      esp_wifi_set_bandwidths(WIFI_IF_STA, &sta_bws);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: Dual-Band HE20 Wi-Fi 6 (2.4G/5G 20MHz HE20, max_conn=%d)", MAX_WIFI_STATIONS);
+    }
   } else if (bmode == WIFI_BAND_MODE_5G_ONLY) {
-    uint16_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
-    esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, user_bw);
-    esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, user_bw);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only (11a/n/ac/ax Wi-Fi 6, bw=%s, Ch 36, max_conn=%d)",
-             (user_bw == WIFI_BW40) ? "40MHz" : "20MHz", MAX_WIFI_STATIONS);
+    if (is_40mhz) {
+      uint8_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N;
+      esp_err_t p_ap = esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
+      esp_err_t b_ap = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40);
+      esp_err_t p_sta = esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
+      esp_err_t b_sta = esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW40);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz HT40 Turbo (802.11an 40MHz 150Mbps) [p_ap:%s, b_ap:%s, p_sta:%s, b_sta:%s, max_conn=%d]",
+               esp_err_to_name(p_ap), esp_err_to_name(b_ap), esp_err_to_name(p_sta), esp_err_to_name(b_sta), MAX_WIFI_STATIONS);
+    } else {
+      uint8_t proto_5g = WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AC | WIFI_PROTOCOL_11AX;
+      esp_wifi_set_protocol(WIFI_IF_AP, proto_5g);
+      esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+      esp_wifi_set_protocol(WIFI_IF_STA, proto_5g);
+      esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 5GHz Only Wi-Fi 6 (11a/n/ac/ax 20MHz HE20, max_conn=%d)", MAX_WIFI_STATIONS);
+    }
   } else {
-    uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
-    esp_wifi_set_protocol(WIFI_IF_AP, proto_2g);
-    esp_wifi_set_bandwidth(WIFI_IF_AP, user_bw);
-    esp_wifi_set_protocol(WIFI_IF_STA, proto_2g);
-    esp_wifi_set_bandwidth(WIFI_IF_STA, user_bw);
-    ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz Only (11bgnax Wi-Fi 6, bw=%s, Ch 1, max_conn=%d)",
-             (user_bw == WIFI_BW40) ? "HT40" : "HT20", MAX_WIFI_STATIONS);
+    if (is_40mhz) {
+      uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+      esp_wifi_set_protocol(WIFI_IF_AP, proto_2g);
+      esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW40);
+      esp_wifi_set_protocol(WIFI_IF_STA, proto_2g);
+      esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW40);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz HT40 Turbo (11bgn 40MHz, max_conn=%d)", MAX_WIFI_STATIONS);
+    } else {
+      uint8_t proto_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX;
+      esp_wifi_set_protocol(WIFI_IF_AP, proto_2g);
+      esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20);
+      esp_wifi_set_protocol(WIFI_IF_STA, proto_2g);
+      esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW20);
+      ESP_LOGI(ROUTER_TAG, "Wi-Fi radio tuned: ESP32-C5 2.4GHz Wi-Fi 6 (11bgnax 20MHz HE20, max_conn=%d)", MAX_WIFI_STATIONS);
+    }
   }
 
   ESP_LOGI(ROUTER_TAG, "=================================================");

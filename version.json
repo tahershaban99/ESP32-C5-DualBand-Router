@@ -1,6 +1,6 @@
 {
-  "version": "v3.4.9",
+  "version": "v3.5.0",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إصلاح جذري لمشكلة انخفاض السرعة واستهلاك الرام: إعادة ضبط بافرات الذاكرة ونوافذ الـ Block ACK لمنع انهيار السرعة عند اتصال أكثر من جهاز، حل مشكلة فشل التحديث الهوائي (Flash erase failed / Rollback State)، وتوفير أقصى استقرار وسرعة فائقة على تردد 5GHz Wi-Fi 6 بدون استنزاف الرام."
+  "changelog": "ترقية السرعة والأداء لكسر حاجز 22 ميجا والوصول إلى 35-40 Mbps: تفعيل وضع HT40 Turbo العريض الحقيقي (40MHz) على تردد 5GHz و 2.4GHz بسرعة ربط عتادية تصل إلى 150 Mbps بدون قيود الـ 20MHz، مع تسريع توجيه الحزم (Zero-overhead aged IP check) وتوفير كامل مساحة الرام الحرة دون المساس بأي ميزة."
 }
