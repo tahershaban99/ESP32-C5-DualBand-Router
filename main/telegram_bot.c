@@ -1642,40 +1642,49 @@ static void send_admin_devices_report(const char *chat_id,
       listed_cnt++;
     }
   }
-  // 2. Also include any blocked or quota-exceeded devices from device_policies
-  for (size_t p = 0; p < policy_count && listed_cnt < MAX_RECORDS; ++p) {
+  // 2. If fewer than 12 devices, fill up from registered device_policies
+  for (size_t p = 0; p < policy_count && listed_cnt < 12; ++p) {
     if (!valid_device_mac(device_policies[p].mac))
       continue;
-    int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
-    uint64_t used_b = (u_idx >= 0)
-                          ? meter_calc_scaled_bytes(
-                                usage_records[u_idx].upload_bytes +
-                                    usage_records[u_idx].download_bytes,
-                                router_meter_scale_pct, router_meter_scale_mode)
-                          : 0;
-    bool quota_full = (device_policies[p].quota_bytes > 0 &&
-                       used_b >= device_policies[p].quota_bytes);
-    if (device_policies[p].blocked || quota_full ||
-        device_policies[p].quota_bytes > 0) {
-      bool exists = false;
-      for (size_t m = 0; m < listed_cnt; ++m) {
-        if (memcmp(snap[m].mac, device_policies[p].mac, 6) == 0) {
-          exists = true;
-          break;
-        }
+    bool exists = false;
+    for (size_t m = 0; m < listed_cnt; ++m) {
+      if (memcmp(snap[m].mac, device_policies[p].mac, 6) == 0) {
+        exists = true;
+        break;
       }
-      if (!exists) {
-        memcpy(snap[listed_cnt].mac, device_policies[p].mac, 6);
-        snap[listed_cnt].ip = 0;
-        snap[listed_cnt].is_online = false;
-        listed_cnt++;
+    }
+    if (!exists) {
+      memcpy(snap[listed_cnt].mac, device_policies[p].mac, 6);
+      snap[listed_cnt].ip = 0;
+      snap[listed_cnt].is_online = false;
+      listed_cnt++;
+    }
+  }
+  // 3. If still fewer than 12, fill up from registered device_names
+  for (size_t n = 0; n < name_count && listed_cnt < 12; ++n) {
+    if (!valid_device_mac(device_names[n].mac))
+      continue;
+    bool exists = false;
+    for (size_t m = 0; m < listed_cnt; ++m) {
+      if (memcmp(snap[m].mac, device_names[n].mac, 6) == 0) {
+        exists = true;
+        break;
       }
+    }
+    if (!exists) {
+      memcpy(snap[listed_cnt].mac, device_names[n].mac, 6);
+      snap[listed_cnt].ip = 0;
+      snap[listed_cnt].is_online = false;
+      listed_cnt++;
     }
   }
 
   for (size_t i = 0; i < listed_cnt; ++i) {
     uint8_t *mac = snap[i].mac;
     int p_idx = meter_find_policy_locked(mac, false);
+    if (p_idx < 0) {
+      p_idx = meter_find_policy_locked(mac, true);
+    }
     snap[i].p_idx = p_idx;
     if (p_idx >= 0) {
       snap[i].is_blocked = device_policies[p_idx].blocked;
@@ -1711,8 +1720,8 @@ static void send_admin_devices_report(const char *chat_id,
   }
   portEXIT_CRITICAL(&data_mux);
 
-  char *reply = (char *)calloc(1, 1600);
-  char *kb_json = (char *)calloc(1, 1024);
+  char *reply = (char *)calloc(1, 2048);
+  char *kb_json = (char *)calloc(1, 1400);
   if (!reply || !kb_json) {
     if (reply)
       free(reply);
@@ -1723,15 +1732,16 @@ static void send_admin_devices_report(const char *chat_id,
   }
 
   size_t rep_len = 0;
-  rep_len += snprintf(reply + rep_len, 1600 - rep_len,
+  rep_len += snprintf(reply + rep_len, 2048 - rep_len,
                       "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
 
   double gb_div =
       (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
   size_t kb_len = 0;
-  kb_len += snprintf(kb_json + kb_len, 1024 - kb_len, "{\"inline_keyboard\":[");
-  bool first_row = true;
+  kb_len += snprintf(kb_json + kb_len, 1400 - kb_len, "{\"inline_keyboard\":[");
+  bool in_row = false;
+  bool first_element = true;
 
   uint16_t count = 0;
   for (size_t i = 0; i < listed_cnt; ++i) {
@@ -1752,16 +1762,16 @@ static void send_admin_devices_report(const char *chat_id,
     if (snap[i].ip != 0)
       snprintf(ip_s, sizeof(ip_s), "%d.%d.%d.%d", IP2STR(&bip));
 
-    char q_info[64] = "";
+    char q_info[64] = " GB";
     if (snap[i].dev_quota > 0) {
       snprintf(q_info, sizeof(q_info), " / %.1f GB",
                (double)snap[i].dev_quota / gb_div);
     }
 
-    if (rep_len + 250 < 1450) {
-      int w = snprintf(reply + rep_len, 1600 - rep_len,
+    if (rep_len + 250 < 1900) {
+      int w = snprintf(reply + rep_len, 2048 - rep_len,
                        "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
-                       "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s GB\n",
+                       "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s\n",
                        count, name, ip_s,
                        snap[i].is_blocked
                            ? "🔴 [محظور]"
@@ -1770,14 +1780,14 @@ static void send_admin_devices_report(const char *chat_id,
                        (double)snap[i].cur_down / 1000000.0,
                        (double)snap[i].cur_up / 1000000.0,
                        (double)snap[i].dev_used / gb_div, q_info);
-      if (w > 0 && rep_len + (size_t)w < 1450) {
+      if (w > 0 && rep_len + (size_t)w < 1900) {
         rep_len += (size_t)w;
       }
     }
 
-    // Inline action buttons for up to 6 devices
-    if (count <= 6 && snap[i].p_idx >= 0 && kb_len + 160 < 880) {
-      char safe_btn_name[48];
+    // Single dedicated control button per device (2 per row for a compact, neat layout)
+    if (count <= 12 && snap[i].p_idx >= 0 && kb_len + 90 < 1250) {
+      char safe_btn_name[36];
       size_t s_out = 0;
       for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 1; ++c) {
         if (name[c] == '"' || name[c] == '\\') {
@@ -1788,15 +1798,27 @@ static void send_admin_devices_report(const char *chat_id,
       }
       safe_btn_name[s_out] = 0;
 
-      int kw = snprintf(kb_json + kb_len, 1024 - kb_len,
-                        "%s[{\"text\":\"⚙️ %s\",\"callback_data\":\"mdev:%d\"},"
-                        "{\"text\":\"%s\",\"callback_data\":\"%s:%d\"}]",
-                        first_row ? "" : ",", safe_btn_name, snap[i].p_idx,
-                        snap[i].is_blocked ? "✅ فك حظر" : "🚫 حظر",
-                        snap[i].is_blocked ? "ubp" : "blkp", snap[i].p_idx);
-      if (kw > 0 && kb_len + (size_t)kw < 880) {
-        kb_len += (size_t)kw;
-        first_row = false;
+      char btn_label[54];
+      snprintf(btn_label, sizeof(btn_label), "%s %u. %s",
+               snap[i].is_vip ? "🎮" : "⚙️", (unsigned)count, safe_btn_name);
+
+      if (!in_row) {
+        int kw = snprintf(kb_json + kb_len, 1400 - kb_len,
+                          "%s[{\"text\":\"%s\",\"callback_data\":\"mdev:%d\"}",
+                          first_element ? "" : ",", btn_label, snap[i].p_idx);
+        if (kw > 0 && kb_len + (size_t)kw < 1250) {
+          kb_len += (size_t)kw;
+          in_row = true;
+          first_element = false;
+        }
+      } else {
+        int kw = snprintf(kb_json + kb_len, 1400 - kb_len,
+                          ",{\"text\":\"%s\",\"callback_data\":\"mdev:%d\"}]",
+                          btn_label, snap[i].p_idx);
+        if (kw > 0 && kb_len + (size_t)kw < 1250) {
+          kb_len += (size_t)kw;
+          in_row = false;
+        }
       }
     }
   }
@@ -1804,18 +1826,24 @@ static void send_admin_devices_report(const char *chat_id,
   // Free snap immediately to return memory to heap BEFORE network transmission
   free(snap);
 
-  if (count == 0) {
-    snprintf(reply + rep_len, 1600 - rep_len,
-             "<i>لا توجد أجهزة متصلة بالشبكة حالياً.</i>\n");
-  } else {
-    snprintf(reply + rep_len, 1600 - rep_len,
-             "\n👇 <i>اضغط على (⚙️ الجهاز) بالأسفل للتحكم أو تفعيل الـ VIP:</i>");
+  // Close open button row if odd number of devices
+  if (in_row && kb_len + 2 < 1350) {
+    kb_json[kb_len++] = ']';
+    kb_json[kb_len] = '\0';
   }
 
-  // Append refresh button and close inline_keyboard array
-  snprintf(kb_json + kb_len, 1024 - kb_len,
+  if (count == 0) {
+    snprintf(reply + rep_len, 2048 - rep_len,
+             "<i>لا توجد أجهزة متصلة بالشبكة حالياً.</i>\n");
+  } else {
+    snprintf(reply + rep_len, 2048 - rep_len,
+             "\n👇 <i>اضغط على زر أي جهاز للتحكم بباقته أو تفعيل الـ VIP أو حظره:</i>");
+  }
+
+  // Append refresh button on its own row, then close inline_keyboard array
+  snprintf(kb_json + kb_len, 1400 - kb_len,
            "%s[{\"text\":\"🔄 تحديث قائمة الأجهزة\",\"callback_data\":\"adm_devices\"}]]}",
-           first_row ? "" : ",");
+           first_element ? "" : ",");
 
   telegram_edit_or_send_with_keyboard(chat_id, edit_msg_id, reply, kb_json);
   free(reply);
@@ -2240,25 +2268,24 @@ static void telegram_task(void *pvParameters) {
     // Check automated quota alerts safely within telegram_task
     telegram_check_quota_alerts();
 
-    // Anti-Congestion Priority: If user is actively browsing/streaming/testing
-    // speed (>3 Mbps), yield polling so packet forwarding achieves wire-speed
-    // throughput without TLS contention or latency!
+    // Anti-Congestion Priority: Only yield polling if traffic is saturating (>28 Mbps)
+    // so packet forwarding achieves wire-speed throughput without stalling the bot
     uint32_t traffic_bps = total_cur_down_bps + total_cur_up_bps;
-    if (traffic_bps > 3000000) {
-      vTaskDelay(pdMS_TO_TICKS(3000));
+    if (traffic_bps > 28000000) {
+      vTaskDelay(pdMS_TO_TICKS(300));
       continue;
     }
 
     char url[220];
     snprintf(url, sizeof(url),
              "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64
-             "&timeout=2&limit=1",
+             "&timeout=5&limit=1",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 8000,
+        .timeout_ms = 9000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 1536,
         .buffer_size_tx = 512,
@@ -3387,7 +3414,11 @@ static void telegram_task(void *pvParameters) {
         }
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    if (total_read > 0) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(200));
+    }
   }
   free(rx_buffer);
   vTaskDelete(NULL);
