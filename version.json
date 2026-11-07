@@ -1,6 +1,6 @@
 {
-  "version": "v3.4.5",
+  "version": "v3.4.6",
   "release_date": "2026-11-07",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إصلاح قائمة التحديثات الهوائية في بوت التيليجرام: فحص GitHub الفوري، وعرض أزرار التحديث المباشر والتحكم في تفعيل/إيقاف التحديث التلقائي OTA من البوت."
+  "changelog": "إضافة عمود مدة الاتصال للأجهزة المتصلة وآخر ظهور للأجهزة غير المتصلة في جداول لوحة التحكم مع ثبات الأبعاد وبدون استهلاك للرام."
 }

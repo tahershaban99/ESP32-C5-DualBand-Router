@@ -45,6 +45,7 @@ typedef struct __attribute__((packed)) {
   int8_t rssi;
   uint8_t aid;
   uint32_t last_seen_s;
+  uint32_t connected_at_s; // Timestamp in seconds when device connected
 } active_client_t;
 
 typedef struct __attribute__((packed)) {

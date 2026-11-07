@@ -509,6 +509,7 @@ static void handle_ap_station_connected(const wifi_event_ap_staconnected_t *even
   uint32_t known_ip = (b_idx >= 0) ? device_bindings[b_idx].bound_ip : 0;
 
   if (known_ip != 0) {
+    uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
     size_t slot = MAX_CLIENTS;
     for (size_t i = 0; i < MAX_CLIENTS; ++i) {
       if (memcmp(active_clients[i].mac, canon_mac, 6) == 0) {
@@ -521,9 +522,14 @@ static void handle_ap_station_connected(const wifi_event_ap_staconnected_t *even
       memcpy(active_clients[slot].mac, canon_mac, 6);
       active_clients[slot].ip = known_ip;
       active_clients[slot].aid = event->aid;
-      active_clients[slot].last_seen_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+      active_clients[slot].last_seen_s = now_s;
+      active_clients[slot].connected_at_s = now_s;
     }
-    meter_find_usage_locked(canon_mac, true);
+    int u_idx = meter_find_usage_locked(canon_mac, true);
+    if (u_idx >= 0 && (size_t)u_idx < MAX_RECORDS) {
+      device_connected_at_s[u_idx] = now_s;
+      device_last_seen_s[u_idx] = now_s;
+    }
     meter_find_policy_locked(canon_mac, true);
     meter_rebuild_fast_lookup();
   }
@@ -543,9 +549,16 @@ static void handle_ap_station_disconnected(const wifi_event_ap_stadisconnected_t
       disc_ip = active_clients[i].ip;
       active_clients[i].aid = 0;
       active_clients[i].ip = 0;
+      active_clients[i].connected_at_s = 0;
       memset(active_clients[i].mac, 0, 6);
       break;
     }
+  }
+  uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+  int u_idx = meter_find_usage_locked(canon_mac, false);
+  if (u_idx >= 0 && (size_t)u_idx < MAX_RECORDS) {
+    device_last_seen_s[u_idx] = now_s;
+    device_connected_at_s[u_idx] = 0;
   }
   if (disc_ip != 0) {
     uint8_t oct = ((uint8_t *)&disc_ip)[3];
@@ -682,14 +695,20 @@ void wifi_manager_refresh_clients(void) {
       }
     }
     uint8_t prev_aid = 0;
+    uint32_t prev_conn_s = 0;
     for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-      if (memcmp(active_clients[k].mac, fresh[i].mac, 6) == 0 &&
-          active_clients[k].aid != 0 && active_clients[k].aid != 0xFF) {
-        prev_aid = active_clients[k].aid;
+      if (memcmp(active_clients[k].mac, fresh[i].mac, 6) == 0) {
+        if (active_clients[k].aid != 0 && active_clients[k].aid != 0xFF) {
+          prev_aid = active_clients[k].aid;
+        }
+        if (active_clients[k].connected_at_s != 0) {
+          prev_conn_s = active_clients[k].connected_at_s;
+        }
         break;
       }
     }
     fresh[i].aid = (prev_aid != 0) ? prev_aid : (uint8_t)(i + 1);
+    fresh[i].connected_at_s = (prev_conn_s != 0) ? prev_conn_s : now_s;
   }
   portEXIT_CRITICAL(&data_mux);
 
@@ -826,11 +845,19 @@ void wifi_manager_refresh_clients(void) {
             }
           }
           if (!matched && count < MAX_CLIENTS) {
+            uint32_t prev_conn = 0;
+            for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+              if (memcmp(active_clients[k].mac, bound_mac, 6) == 0 && active_clients[k].connected_at_s != 0) {
+                prev_conn = active_clients[k].connected_at_s;
+                break;
+              }
+            }
             memcpy(fresh[count].mac, bound_mac, 6);
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF; // Bridged / Range Extender client
             fresh[count].rssi = -55;
             fresh[count].last_seen_s = assigned_last_seen;
+            fresh[count].connected_at_s = (prev_conn != 0) ? prev_conn : now_s;
             count++;
             matched = true;
           }
@@ -862,11 +889,19 @@ void wifi_manager_refresh_clients(void) {
             }
           }
           if (!matched && count < MAX_CLIENTS) {
+            uint32_t prev_conn = 0;
+            for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+              if (memcmp(active_clients[k].mac, resolved_mac, 6) == 0 && active_clients[k].connected_at_s != 0) {
+                prev_conn = active_clients[k].connected_at_s;
+                break;
+              }
+            }
             memcpy(fresh[count].mac, resolved_mac, 6);
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF;
             fresh[count].rssi = -55;
             fresh[count].last_seen_s = assigned_last_seen;
+            fresh[count].connected_at_s = (prev_conn != 0) ? prev_conn : now_s;
             count++;
             matched = true;
           }
@@ -885,11 +920,19 @@ void wifi_manager_refresh_clients(void) {
             }
           }
           if (!matched) {
+            uint32_t prev_conn = 0;
+            for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+              if (memcmp(active_clients[k].mac, vmac, 6) == 0 && active_clients[k].connected_at_s != 0) {
+                prev_conn = active_clients[k].connected_at_s;
+                break;
+              }
+            }
             memcpy(fresh[count].mac, vmac, 6);
             fresh[count].ip = ip4;
             fresh[count].aid = 0xFF;
             fresh[count].rssi = -55;
             fresh[count].last_seen_s = assigned_last_seen;
+            fresh[count].connected_at_s = (prev_conn != 0) ? prev_conn : now_s;
             count++;
           }
         }
@@ -1030,7 +1073,13 @@ void wifi_manager_refresh_clients(void) {
 
   memcpy(active_clients, final_clients, sizeof(final_clients));
   for (size_t i = 0; i < final_count; ++i) {
-    meter_find_usage_locked(final_clients[i].mac, true);
+    int u_idx = meter_find_usage_locked(final_clients[i].mac, true);
+    if (u_idx >= 0 && (size_t)u_idx < MAX_RECORDS) {
+      if (device_connected_at_s[u_idx] == 0 || (final_clients[i].connected_at_s > 0 && device_connected_at_s[u_idx] > final_clients[i].connected_at_s)) {
+        device_connected_at_s[u_idx] = final_clients[i].connected_at_s;
+      }
+      device_last_seen_s[u_idx] = final_clients[i].last_seen_s;
+    }
     meter_find_policy_locked(final_clients[i].mac, true);
   }
   meter_rebuild_fast_lookup();

@@ -668,9 +668,25 @@ static esp_err_t devices_handler(httpd_req_t *req) {
       ip4_addr_t bip = {.addr = bound_ip};
       snprintf(bound_ip_str, sizeof(bound_ip_str), "%d.%d.%d.%d", IP2STR(&bip));
     }
+
+    uint32_t conn_s = 0;
+    uint32_t last_seen_ago_s = 0;
+    if (connected) {
+      if (active_index >= 0 && active[active_index].connected_at_s > 0 && uptime_s >= active[active_index].connected_at_s) {
+        conn_s = uptime_s - active[active_index].connected_at_s;
+      } else if (device_connected_at_s[i] > 0 && uptime_s >= device_connected_at_s[i]) {
+        conn_s = uptime_s - device_connected_at_s[i];
+      }
+    } else {
+      if (device_last_seen_s[i] > 0 && uptime_s >= device_last_seen_s[i]) {
+        last_seen_ago_s = uptime_s - device_last_seen_s[i];
+      }
+    }
+
     used += (size_t)snprintf(buf + used, sizeof(buf) - used,
-                             ",\"is_static_ip\":%s,\"bound_ip\":\"%s\"",
-                             (bound_ip != 0) ? "true" : "false", bound_ip_str);
+                             ",\"is_static_ip\":%s,\"bound_ip\":\"%s\",\"conn_s\":%lu,\"last_seen_ago_s\":%lu",
+                             (bound_ip != 0) ? "true" : "false", bound_ip_str,
+                             (unsigned long)conn_s, (unsigned long)last_seen_ago_s);
     if (used < sizeof(buf) - 1)
       buf[used++] = '}';
 

@@ -1246,15 +1246,16 @@ table.devices-table {
   margin: 0;
 }
 
-/* 8 Fixed Column Widths (Sum = 100%) - Balanced layout */
+/* 9 Fixed Column Widths (Sum = 100%) - Balanced layout */
 .devices-table th:nth-child(1), .devices-table td:nth-child(1) { width: 6% !important; text-align: center; }  /* الحالة */
-.devices-table th:nth-child(2), .devices-table td:nth-child(2) { width: 16% !important; text-align: right; } /* اسم الجهاز */
-.devices-table th:nth-child(3), .devices-table td:nth-child(3) { width: 14% !important; text-align: center; }/* IP / MAC */
-.devices-table th:nth-child(4), .devices-table td:nth-child(4) { width: 13% !important; text-align: right; } /* السرعة اللحظية */
-.devices-table th:nth-child(5), .devices-table td:nth-child(5) { width: 14% !important; text-align: right; } /* الباقة والاستهلاك */
-.devices-table th:nth-child(6), .devices-table td:nth-child(6) { width: 12% !important; text-align: center; }/* تحديد السرعة */
-.devices-table th:nth-child(7), .devices-table td:nth-child(7) { width: 8% !important; text-align: center; }  /* معرف التيليجرام */
-.devices-table th:nth-child(8), .devices-table td:nth-child(8) { width: 17% !important; text-align: center; } /* الإجراءات */
+.devices-table th:nth-child(2), .devices-table td:nth-child(2) { width: 12% !important; text-align: right; } /* اسم الجهاز */
+.devices-table th:nth-child(3), .devices-table td:nth-child(3) { width: 8% !important; text-align: center; }  /* مدة الاتصال / آخر ظهور */
+.devices-table th:nth-child(4), .devices-table td:nth-child(4) { width: 10% !important; text-align: center; }/* IP / MAC */
+.devices-table th:nth-child(5), .devices-table td:nth-child(5) { width: 13% !important; text-align: right; } /* السرعة اللحظية */
+.devices-table th:nth-child(6), .devices-table td:nth-child(6) { width: 14% !important; text-align: right; } /* الباقة والاستهلاك */
+.devices-table th:nth-child(7), .devices-table td:nth-child(7) { width: 12% !important; text-align: center; }/* تحديد السرعة */
+.devices-table th:nth-child(8), .devices-table td:nth-child(8) { width: 8% !important; text-align: center; }  /* معرف التيليجرام */
+.devices-table th:nth-child(9), .devices-table td:nth-child(9) { width: 17% !important; text-align: center; } /* الإجراءات */
 
 .devices-table thead th {
   background-color: var(--tbl-header-bg, rgba(10, 28, 19, 0.92));
@@ -1357,6 +1358,33 @@ table.devices-table {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Connection Duration & Last Seen Pill */
+.tbl-time-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tbl-time-pill.connected {
+  background: rgba(0, 255, 157, 0.12);
+  color: #00ff9d;
+  border: 1px solid rgba(0, 255, 157, 0.3);
+}
+.tbl-time-pill.offline {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tbl-time-icon {
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 /* Network IP/MAC */
@@ -1713,6 +1741,7 @@ table.devices-table {
           <tr>
             <th>الحالة</th>
             <th>اسم الجهاز</th>
+            <th>مدة الاتصال / آخر ظهور</th>
             <th>IP / MAC</th>
             <th>السرعة اللحظية</th>
             <th>الباقة والاستهلاك</th>
@@ -1752,6 +1781,7 @@ table.devices-table {
             <tr>
               <th>الحالة</th>
               <th>اسم الجهاز</th>
+              <th>مدة الاتصال / آخر ظهور</th>
               <th>آخر IP و MAC</th>
               <th>الاستهلاك السابق</th>
               <th>الكوتة المسبقة</th>
@@ -2730,6 +2760,29 @@ function formatLiveSpeed(bps) {
   return `${mbps.toFixed(2)} Mbps`;
 }
 
+function formatDuration(sec) {
+  if (!sec || sec < 0) return 'الآن';
+  let d = Math.floor(sec / 86400);
+  let h = Math.floor((sec % 86400) / 3600);
+  let m = Math.floor((sec % 3600) / 60);
+  let s = Math.floor(sec % 60);
+  if (d > 0) return `${d}ي ${h}س`;
+  if (h > 0) return `${h}س ${m}د`;
+  if (m > 0) return `${m}د ${s}ث`;
+  return `${s}ث`;
+}
+
+function formatLastSeen(sec) {
+  if (!sec || sec <= 0) return 'غير محدد';
+  let d = Math.floor(sec / 86400);
+  let h = Math.floor((sec % 86400) / 3600);
+  let m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `منذ ${d}ي ${h}س`;
+  if (h > 0) return `منذ ${h}س`;
+  if (m > 0) return `منذ ${m}د`;
+  return `منذ ثوانٍ`;
+}
+
 let _pendingAction = null;
 
 function adjustZoom(delta) {
@@ -3553,6 +3606,9 @@ function renderDevices(devices) {
         `;
       }
 
+      let elConnTime = tr.querySelector('.cell-conn-time');
+      if (elConnTime) elConnTime.textContent = formatDuration(dev.conn_s);
+
       let elDownSpd = tr.querySelector('.cell-down-spd');
       if (elDownSpd) elDownSpd.textContent = formatLiveSpeed(dev.cur_down_bps);
       let elUpSpd = tr.querySelector('.cell-up-spd');
@@ -3679,7 +3735,15 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 3. IP / MAC (15%) -->
+          <!-- 3. مدة الاتصال (8%) -->
+          <td class="text-center">
+            <div class="tbl-time-pill connected" title="مدة اتصال الجهاز">
+              <span class="tbl-time-icon">⏱️</span>
+              <span class="tbl-time-val cell-conn-time tabular-nums">${formatDuration(dev.conn_s)}</span>
+            </div>
+          </td>
+
+          <!-- 4. IP / MAC (10%) -->
           <td class="text-center">
             <div class="tbl-net-info">
               <div class="tbl-ip-addr" title="عنوان IP">${ip}</div>
@@ -3687,7 +3751,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 4. السرعة اللحظية (18%) -->
+          <!-- 5. السرعة اللحظية (13%) -->
           <td>
             <div class="tbl-speed-group">
               <div class="tbl-speed-pill down" title="سرعة التحميل اللحظية">
@@ -3701,7 +3765,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 5. الباقة والاستهلاك (18%) -->
+          <!-- 6. الباقة والاستهلاك (14%) -->
           <td>
             <div class="tbl-quota-wrapper">
               <div class="tbl-quota-labels">
@@ -3726,7 +3790,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 6. تحديد السرعة (12%) -->
+          <!-- 7. تحديد السرعة (12%) -->
           <td class="text-center">
             <div class="tbl-limit-group">
               <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
@@ -3747,7 +3811,7 @@ function renderDevices(devices) {
             <div style="font-size:0.65rem;color:var(--text-secondary);margin-top:2px">${(downLimit > 0 || upLimit > 0) ? 'Mbps محدد' : 'مفتوح ∞'}</div>
           </td>
 
-          <!-- 7. معرف التيليجرام (8%) -->
+          <!-- 8. معرف التيليجرام (8%) -->
           <td class="text-center">
             <input type="text" list="tg_users_datalist" value="${tgChat}" id="tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
@@ -3756,7 +3820,7 @@ function renderDevices(devices) {
                    placeholder="Chat ID" title="معرف التيليجرام">
           </td>
 
-          <!-- 8. الإجراءات (17%) -->
+          <!-- 9. الإجراءات (17%) -->
           <td class="text-center">
             <div class="tbl-actions-group">
               <button class="tbl-icon-btn btn-save" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات 💾">💾</button>
@@ -3986,6 +4050,9 @@ function renderDevices(devices) {
       let nInput = document.getElementById('off_tbl_n_' + canonMac);
       if (nInput && document.activeElement !== nInput && !nInput.dataset.dirty) nInput.value = dev.name || 'جهاز مسجل';
 
+      let elLastSeen = tr.querySelector('.cell-last-seen');
+      if (elLastSeen) elLastSeen.textContent = formatLastSeen(dev.last_seen_ago_s);
+
       let isBlocked = !!dev.blocked;
       let btnBlock = tr.querySelector('.btn-block, .btn-unblock');
       if (btnBlock) {
@@ -4109,7 +4176,15 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 3. IP / MAC (15%) -->
+          <!-- 3. مدة الاتصال / آخر ظهور (8%) -->
+          <td class="text-center">
+            <div class="tbl-time-pill offline" title="آخر وقت شوهد فيه الجهاز">
+              <span class="tbl-time-icon">⌛</span>
+              <span class="tbl-time-val cell-last-seen tabular-nums">${formatLastSeen(dev.last_seen_ago_s)}</span>
+            </div>
+          </td>
+
+          <!-- 4. IP / MAC (10%) -->
           <td class="text-center">
             <div class="tbl-net-info">
               <div class="tbl-ip-addr" style="color:var(--text-secondary)" title="آخر عنوان IP">${ip}</div>
@@ -4117,7 +4192,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 4. الاستهلاك السابق (18%) -->
+          <!-- 5. الاستهلاك السابق (13%) -->
           <td>
             <div class="tbl-speed-group">
               <div class="tbl-speed-pill down" style="opacity:0.85" title="إجمالي التحميل السابق">
@@ -4131,7 +4206,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 5. الكوتة المسبقة (18%) -->
+          <!-- 6. الكوتة المسبقة (14%) -->
           <td>
             <div class="tbl-quota-wrapper">
               <div class="tbl-quota-labels">
@@ -4156,7 +4231,7 @@ function renderDevices(devices) {
             </div>
           </td>
 
-          <!-- 6. تحديد السرعة (12%) -->
+          <!-- 7. تحديد السرعة (12%) -->
           <td class="text-center">
             <div class="tbl-limit-group">
               <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
@@ -4177,7 +4252,7 @@ function renderDevices(devices) {
             <div style="font-size:0.65rem;color:var(--text-secondary);margin-top:2px">${(downLimit > 0 || upLimit > 0) ? 'Mbps محدد' : 'مفتوح ∞'}</div>
           </td>
 
-          <!-- 7. معرف التيليجرام (8%) -->
+          <!-- 8. معرف التيليجرام (8%) -->
           <td class="text-center">
             <input type="text" list="tg_users_datalist" value="${tgChat}" id="off_tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
@@ -4186,7 +4261,7 @@ function renderDevices(devices) {
                    placeholder="Chat ID" title="معرف التيليجرام">
           </td>
 
-          <!-- 8. الإجراءات (17%) -->
+          <!-- 9. الإجراءات (17%) -->
           <td class="text-center">
             <div class="tbl-actions-group">
               <button class="tbl-icon-btn btn-save" onclick="saveDeviceTable('${canonMac}')" title="حفظ التعديلات 💾">💾</button>

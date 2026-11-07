@@ -19,6 +19,8 @@ extern device_speed_bucket_t speed_buckets[MAX_RECORDS];
 extern device_live_speed_t device_live_speeds[MAX_RECORDS];
 extern device_binding_t device_bindings[MAX_RECORDS];
 extern size_t binding_count;
+extern uint32_t device_last_seen_s[MAX_RECORDS];
+extern uint32_t device_connected_at_s[MAX_RECORDS];
 
 extern uint32_t total_cur_up_bps;
 extern uint32_t total_cur_down_bps;

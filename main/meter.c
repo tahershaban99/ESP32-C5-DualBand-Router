@@ -29,6 +29,8 @@ device_speed_bucket_t speed_buckets[MAX_RECORDS];
 device_live_speed_t device_live_speeds[MAX_RECORDS];
 device_binding_t device_bindings[MAX_RECORDS];
 size_t binding_count = 0;
+uint32_t device_last_seen_s[MAX_RECORDS] = {0};
+uint32_t device_connected_at_s[MAX_RECORDS] = {0};
 
 uint32_t total_cur_up_bps = 0;
 uint32_t total_cur_down_bps = 0;
@@ -114,6 +116,9 @@ void meter_notify_client_active_ip(uint8_t oct, uint32_t now_s) {
   dev_fast_entry_t *fast = ip_lookup[oct];
   if (fast) {
     fast->last_seen_s = now_s;
+    if (fast->usage_idx >= 0 && (size_t)fast->usage_idx < MAX_RECORDS) {
+      device_last_seen_s[fast->usage_idx] = now_s;
+    }
     for (size_t k = 0; k < MAX_CLIENTS; ++k) {
       if (active_clients[k].ip == fast->ip) {
         active_clients[k].last_seen_s = now_s;
@@ -913,6 +918,7 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
 
   // Byte Accounting & Quota Enforcement (Pure Integer Math)
   if (dev->usage_idx >= 0 && (size_t)dev->usage_idx < usage_count) {
+    device_last_seen_s[dev->usage_idx] = (uint32_t)(now_us / 1000000ULL);
     // 1. Live speed tracking: ALWAYS accumulates pure raw unscaled physical bytes
     if (is_upload) {
       device_live_speeds[dev->usage_idx].interval_up_bytes += bytes;
@@ -1016,6 +1022,15 @@ void meter_tick_second(uint32_t elapsed_s) {
         memset(&fast_device_pool[k], 0, sizeof(fast_device_pool[k]));
         wifi_manager_invalidate_arp_entry(dead_ip);
         wifi_manager_record_aged_out(dead_ip, dead_mac);
+        int u_idx = meter_find_usage_locked(dead_mac, false);
+        if (u_idx >= 0 && (size_t)u_idx < MAX_RECORDS) {
+          device_connected_at_s[u_idx] = 0;
+          if (active_clients[k].last_seen_s > 0) {
+            device_last_seen_s[u_idx] = active_clients[k].last_seen_s;
+          } else {
+            device_last_seen_s[u_idx] = now_s;
+          }
+        }
       }
     }
   }
