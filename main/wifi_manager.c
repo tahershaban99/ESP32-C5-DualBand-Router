@@ -1238,8 +1238,8 @@ void wifi_manager_init(void) {
 
   ESP_ERROR_CHECK(esp_wifi_set_ps(esp_wifi_power_save ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE));
 
-  // Max TX Power: 18.0 dBm (72 * 0.25 dBm) - prevents USB current surge voltage dips
-  esp_wifi_set_max_tx_power(72);
+  // Max TX Power: 20.0 dBm (80 * 0.25 dBm) - Full maximum legal RF output for sustained MCS7 150 Mbps link
+  esp_wifi_set_max_tx_power(80);
 
   // Bandwidth & Protocol Tuning:
   // On ESP32-C5: Wi-Fi 6 (802.11ax) strictly supports 20MHz only (HE20).

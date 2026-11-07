@@ -52,6 +52,7 @@ char quota_end_date[12] = {0};
 
 int32_t reboot_countdown_s = -1;
 volatile uint32_t pending_discovered_ip = 0;
+static volatile uint32_t s_fast_now_s = 0;
 static int last_fired_hour = -1;
 static int last_fired_min = -1;
 
@@ -878,14 +879,13 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
     return -1; // Fast-forward unmapped packet and queue zero-overhead L3 discovery
   }
 
-  wifi_manager_clear_aged_out_ip(target_local_ip);
-  int64_t now_us = esp_timer_get_time();
-  dev->last_seen_s = (uint32_t)(now_us / 1000000ULL);
-
   // 1-cycle O(1) Block Check
   if (dev->blocked) {
     return 0; // DROP
   }
+
+  wifi_manager_clear_aged_out_ip(target_local_ip);
+  dev->last_seen_s = s_fast_now_s;
 
   // Smart QoS Fast-Track: ICMP (Ping), small UDP packets (<= 450B), small TCP ACKs (<= 70B), or VIP Gaming
   uint8_t ip_proto = ip[9];
@@ -894,11 +894,12 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
                           (ip_proto == 6 && bytes <= 70);
   bool is_priority = is_gaming_packet || dev->gaming_mode;
 
-  // Rate Limiting (Token Bucket with pure integer microsecond arithmetic)
+  // Rate Limiting (Token Bucket with pure integer microsecond arithmetic - only calls hardware timer when limit is configured)
   if (!is_priority && dev->speed_idx >= 0 && (size_t)dev->speed_idx < speed_count) {
     int s_idx = dev->speed_idx;
     uint32_t limit_bps = is_upload ? device_speeds[s_idx].upload_bps : device_speeds[s_idx].download_bps;
     if (limit_bps > 0) {
+      int64_t now_us = esp_timer_get_time();
       uint64_t rate_Bps = ((uint64_t)limit_bps + 7U) >> 3;
       uint64_t capacity = rate_Bps >> 2; // 250ms burst
       if (capacity < 1500U) capacity = 1500U;
@@ -924,7 +925,7 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
 
   // Byte Accounting & Quota Enforcement (Pure Integer Math)
   if (dev->usage_idx >= 0 && (size_t)dev->usage_idx < usage_count) {
-    device_last_seen_s[dev->usage_idx] = (uint32_t)(now_us / 1000000ULL);
+    device_last_seen_s[dev->usage_idx] = s_fast_now_s;
     // 1. Live speed tracking: ALWAYS accumulates pure raw unscaled physical bytes
     if (is_upload) {
       device_live_speeds[dev->usage_idx].interval_up_bytes += bytes;
@@ -968,6 +969,7 @@ int meter_ip4_canforward(struct pbuf *packet, uint32_t destination_host_order) {
 
 void meter_tick_second(uint32_t elapsed_s) {
   if (elapsed_s == 0) elapsed_s = 1;
+  s_fast_now_s = (uint32_t)(esp_timer_get_time() / 1000000ULL);
   uint32_t agg_up_bps = 0;
   uint32_t agg_down_bps = 0;
   uint64_t grand_total_used = 0;

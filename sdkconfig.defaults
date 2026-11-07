@@ -36,6 +36,8 @@ CONFIG_FREERTOS_IN_IRAM=y
 
 # Compiler performance optimization (-O2 / -O3 for maximum throughput and low forwarding latency)
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE=y
+CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL=0
 
 # lwIP TCP window, SACK and buffer tuning (tuned for low RAM footprint, smooth wire forwarding, and low bufferbloat)
 CONFIG_LWIP_TCP_MSS=1460
