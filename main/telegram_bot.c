@@ -221,7 +221,9 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
   }
   json_escape(text, escaped_text, 2048);
 
-  char *body = (char *)malloc(2800);
+  size_t body_sz = strlen(escaped_text) + (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) + 256;
+  if (body_sz < 2800) body_sz = 2800;
+  char *body = (char *)malloc(body_sz);
   if (!body) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for sendMessage body");
     free(escaped_text);
@@ -230,12 +232,12 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
   }
 
   if (inline_keyboard_json && inline_keyboard_json[0]) {
-    snprintf(body, 2800,
+    snprintf(body, body_sz,
              "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\","
              "\"reply_markup\":%s}",
              chat_id, escaped_text, inline_keyboard_json);
   } else {
-    snprintf(body, 2800,
+    snprintf(body, body_sz,
              "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
              chat_id, escaped_text);
   }
@@ -247,7 +249,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
       .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = 2800,
+      .buffer_size_tx = body_sz,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -305,7 +307,9 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   }
   json_escape(text, escaped_text, 2048);
 
-  char *body = (char *)malloc(2800);
+  size_t body_sz = strlen(escaped_text) + (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) + 256;
+  if (body_sz < 2800) body_sz = 2800;
+  char *body = (char *)malloc(body_sz);
   if (!body) {
     free(escaped_text);
     tg_http_unlock();
@@ -314,12 +318,12 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   }
 
   if (inline_keyboard_json && inline_keyboard_json[0]) {
-    snprintf(body, 2800,
+    snprintf(body, body_sz,
              "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64
              ",\"text\":\"%s\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
              chat_id, message_id, escaped_text, inline_keyboard_json);
   } else {
-    snprintf(body, 2800,
+    snprintf(body, body_sz,
              "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64
              ",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
              chat_id, message_id, escaped_text);
@@ -332,7 +336,7 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
       .timeout_ms = 8000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = 2800,
+      .buffer_size_tx = body_sz,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -1241,40 +1245,63 @@ static void send_user_speed_report(const char *chat_id, int64_t edit_msg_id,
   if (!spd_rep)
     return;
   strcpy(spd_rep, "⚡ <b>تقرير سرعة أجهزتك اللحظية:</b>\n\n");
+
+  typedef struct {
+    char name[DEVICE_NAME_BYTES];
+    uint32_t c_down;
+    uint32_t c_up;
+    uint32_t cap_down;
+    uint32_t cap_up;
+  } user_spd_snap_t;
+
+  user_spd_snap_t snaps[MAX_CLIENTS];
+  size_t s_cnt = (linked_count < MAX_CLIENTS) ? linked_count : MAX_CLIENTS;
+  memset(snaps, 0, sizeof(snaps));
+
   portENTER_CRITICAL(&data_mux);
-  for (size_t li = 0; li < linked_count; ++li) {
+  for (size_t li = 0; li < s_cnt; ++li) {
     int p_idx = linked_indices[li];
+    if (p_idx < 0 || (size_t)p_idx >= policy_count)
+      continue;
     uint8_t mac[6];
     memcpy(mac, device_policies[p_idx].mac, 6);
-    char d_name[DEVICE_NAME_BYTES] = "جهاز";
+    strcpy(snaps[li].name, "جهاز");
     int n = meter_find_name_locked(mac, false);
     if (n >= 0 && device_names[n].name[0]) {
-      strncpy(d_name, device_names[n].name, sizeof(d_name) - 1);
+      strncpy(snaps[li].name, device_names[n].name, sizeof(snaps[li].name) - 1);
+      snaps[li].name[sizeof(snaps[li].name) - 1] = 0;
     }
     int u = meter_find_usage_locked(mac, false);
-    uint32_t c_down = (u >= 0) ? device_live_speeds[u].cur_down_bps : 0;
-    uint32_t c_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
+    snaps[li].c_down = (u >= 0) ? device_live_speeds[u].cur_down_bps : 0;
+    snaps[li].c_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
     int s = meter_find_speed_locked(mac, false);
-    uint32_t cap_down = (s >= 0) ? device_speeds[s].download_bps : 0;
-    uint32_t cap_up = (s >= 0) ? device_speeds[s].upload_bps : 0;
+    snaps[li].cap_down = (s >= 0) ? device_speeds[s].download_bps : 0;
+    snaps[li].cap_up = (s >= 0) ? device_speeds[s].upload_bps : 0;
+  }
+  portEXIT_CRITICAL(&data_mux);
 
-    char lbuf[180];
-    if (cap_down > 0 || cap_up > 0) {
+  for (size_t li = 0; li < s_cnt; ++li) {
+    if (snaps[li].name[0] == 0)
+      continue;
+    char lbuf[260];
+    if (snaps[li].cap_down > 0 || snaps[li].cap_up > 0) {
       snprintf(lbuf, sizeof(lbuf),
-               "• <b>%s</b>:\n   ⬇️ %.2f Mbps (حد: %.1f M) | ⬆️ %.2f Mbps (حد: "
+               "• <b>%.32s</b>:\n   ⬇️ %.2f Mbps (حد: %.1f M) | ⬆️ %.2f Mbps (حد: "
                "%.1f M)\n",
-               d_name, (double)c_down / 1000000.0, (double)cap_down / 1000000.0,
-               (double)c_up / 1000000.0, (double)cap_up / 1000000.0);
+               snaps[li].name, (double)snaps[li].c_down / 1000000.0,
+               (double)snaps[li].cap_down / 1000000.0,
+               (double)snaps[li].c_up / 1000000.0,
+               (double)snaps[li].cap_up / 1000000.0);
     } else {
       snprintf(lbuf, sizeof(lbuf),
-               "• <b>%s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة "
+               "• <b>%.32s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة "
                "مفتوحة 🚀)\n",
-               d_name, (double)c_down / 1000000.0, (double)c_up / 1000000.0);
+               snaps[li].name, (double)snaps[li].c_down / 1000000.0,
+               (double)snaps[li].c_up / 1000000.0);
     }
     if (strlen(spd_rep) + strlen(lbuf) < 730)
       strcat(spd_rep, lbuf);
   }
-  portEXIT_CRITICAL(&data_mux);
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 فحص وتحديث "
                    "السرعة\",\"callback_data\":\"user_speed\"}]]}";
@@ -1289,44 +1316,61 @@ static void send_user_status_report(const char *chat_id, int64_t edit_msg_id,
   if (!st_rep)
     return;
   strcpy(st_rep, "🌐 <b>فحص حالة اتصال أجهزتك:</b>\n\n");
+
+  typedef struct {
+    char name[DEVICE_NAME_BYTES];
+    bool is_conn;
+    uint32_t ip;
+    bool blk;
+  } user_st_snap_t;
+
+  user_st_snap_t snaps[MAX_CLIENTS];
+  size_t s_cnt = (linked_count < MAX_CLIENTS) ? linked_count : MAX_CLIENTS;
+  memset(snaps, 0, sizeof(snaps));
+
   portENTER_CRITICAL(&data_mux);
-  for (size_t li = 0; li < linked_count; ++li) {
+  for (size_t li = 0; li < s_cnt; ++li) {
     int p_idx = linked_indices[li];
+    if (p_idx < 0 || (size_t)p_idx >= policy_count)
+      continue;
     uint8_t mac[6];
     memcpy(mac, device_policies[p_idx].mac, 6);
-    char d_name[DEVICE_NAME_BYTES] = "جهاز";
+    strcpy(snaps[li].name, "جهاز");
     int n = meter_find_name_locked(mac, false);
     if (n >= 0 && device_names[n].name[0]) {
-      strncpy(d_name, device_names[n].name, sizeof(d_name) - 1);
+      strncpy(snaps[li].name, device_names[n].name, sizeof(snaps[li].name) - 1);
+      snaps[li].name[sizeof(snaps[li].name) - 1] = 0;
     }
-    bool is_conn = false;
-    uint32_t d_ip = 0;
     for (size_t k = 0; k < MAX_CLIENTS; ++k) {
       if (memcmp(active_clients[k].mac, mac, 6) == 0 &&
           active_clients[k].aid != 0) {
-        is_conn = true;
-        d_ip = active_clients[k].ip;
+        snaps[li].is_conn = true;
+        snaps[li].ip = active_clients[k].ip;
         break;
       }
     }
-    bool blk = device_policies[p_idx].blocked;
+    snaps[li].blk = device_policies[p_idx].blocked;
+  }
+  portEXIT_CRITICAL(&data_mux);
 
-    char lbuf[180];
-    ip4_addr_t dip = {.addr = d_ip};
-    if (is_conn) {
+  for (size_t li = 0; li < s_cnt; ++li) {
+    if (snaps[li].name[0] == 0)
+      continue;
+    char lbuf[260];
+    ip4_addr_t dip = {.addr = snaps[li].ip};
+    if (snaps[li].is_conn) {
       snprintf(
           lbuf, sizeof(lbuf),
-          "• <b>%s</b>: 🟢 متصل بالواي فاي (<code>%d.%d.%d.%d</code>) %s\n",
-          d_name, IP2STR(&dip),
-          blk ? "🔴 [محظور من النت]" : "✅ [الإنترنت نشط]");
+          "• <b>%.32s</b>: 🟢 متصل بالواي فاي (<code>%d.%d.%d.%d</code>) %s\n",
+          snaps[li].name, IP2STR(&dip),
+          snaps[li].blk ? "🔴 [محظور من النت]" : "✅ [الإنترنت نشط]");
     } else {
-      snprintf(lbuf, sizeof(lbuf), "• <b>%s</b>: ⚪ غير متصل بالشبكة حالياً\n",
-               d_name);
+      snprintf(lbuf, sizeof(lbuf), "• <b>%.32s</b>: ⚪ غير متصل بالشبكة حالياً\n",
+               snaps[li].name);
     }
     if (strlen(st_rep) + strlen(lbuf) < 730)
       strcat(st_rep, lbuf);
   }
-  portEXIT_CRITICAL(&data_mux);
 
   const char *kb = "{\"inline_keyboard\":[[{\"text\":\"🔄 تحديث حالة "
                    "الاتصال\",\"callback_data\":\"user_status\"}]]}";
@@ -1548,23 +1592,42 @@ static void send_admin_devices_report(const char *chat_id,
       free(kb_json);
     return;
   }
-  strcpy(reply, "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
-  uint16_t count = 0;
-  double gb_div =
-      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
-  uint8_t listed_macs[MAX_RECORDS][6];
+  typedef struct {
+    uint8_t mac[6];
+    uint32_t ip;
+    bool is_online;
+    bool is_blocked;
+    bool is_vip;
+    int p_idx;
+    char name[DEVICE_NAME_BYTES];
+    uint32_t cur_down;
+    uint32_t cur_up;
+    uint64_t dev_used;
+    uint64_t dev_quota;
+  } dev_snapshot_t;
+
+  dev_snapshot_t *snap = (dev_snapshot_t *)calloc(MAX_RECORDS, sizeof(dev_snapshot_t));
+  if (!snap) {
+    free(reply);
+    free(kb_buttons);
+    free(kb_json);
+    return;
+  }
+
   size_t listed_cnt = 0;
 
   portENTER_CRITICAL(&data_mux);
   // 1. Active connected clients first
   for (size_t k = 0; k < MAX_CLIENTS && listed_cnt < MAX_RECORDS; ++k) {
     if (valid_device_mac(active_clients[k].mac) && active_clients[k].aid != 0) {
-      memcpy(listed_macs[listed_cnt++], active_clients[k].mac, 6);
+      memcpy(snap[listed_cnt].mac, active_clients[k].mac, 6);
+      snap[listed_cnt].ip = active_clients[k].ip;
+      snap[listed_cnt].is_online = true;
+      listed_cnt++;
     }
   }
   // 2. Also include any blocked or quota-exceeded devices from device_policies
-  // so admin can top-up/unblock them even if offline
   for (size_t p = 0; p < policy_count && listed_cnt < MAX_RECORDS; ++p) {
     if (!valid_device_mac(device_policies[p].mac))
       continue;
@@ -1579,98 +1642,126 @@ static void send_admin_devices_report(const char *chat_id,
         device_policies[p].quota_bytes > 0) {
       bool exists = false;
       for (size_t m = 0; m < listed_cnt; ++m) {
-        if (memcmp(listed_macs[m], device_policies[p].mac, 6) == 0) {
+        if (memcmp(snap[m].mac, device_policies[p].mac, 6) == 0) {
           exists = true;
           break;
         }
       }
       if (!exists) {
-        memcpy(listed_macs[listed_cnt++], device_policies[p].mac, 6);
+        memcpy(snap[listed_cnt].mac, device_policies[p].mac, 6);
+        snap[listed_cnt].ip = 0;
+        snap[listed_cnt].is_online = false;
+        listed_cnt++;
       }
     }
   }
 
   for (size_t i = 0; i < listed_cnt; ++i) {
-    uint8_t *mac = listed_macs[i];
+    uint8_t *mac = snap[i].mac;
     int p_idx = meter_find_policy_locked(mac, true);
-    if (p_idx < 0)
-      continue;
-
-    bool is_online = false;
-    uint32_t ip = 0;
-    for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-      if (memcmp(active_clients[k].mac, mac, 6) == 0) {
-        ip = active_clients[k].ip;
-        is_online = (active_clients[k].aid != 0);
-        break;
-      }
+    snap[i].p_idx = p_idx;
+    if (p_idx >= 0) {
+      snap[i].is_blocked = device_policies[p_idx].blocked;
+      snap[i].is_vip = device_policies[p_idx].gaming_mode;
+      snap[i].dev_quota = device_policies[p_idx].quota_bytes;
     }
-    if (ip == 0) {
+
+    if (snap[i].ip == 0) {
       int b_idx = meter_find_binding_locked(mac, false);
       if (b_idx >= 0)
-        ip = device_bindings[b_idx].bound_ip;
+        snap[i].ip = device_bindings[b_idx].bound_ip;
     }
 
-    char name[DEVICE_NAME_BYTES] = "جهاز";
     int n_idx = meter_find_name_locked(mac, false);
     if (n_idx >= 0 && device_names[n_idx].name[0]) {
-      strncpy(name, device_names[n_idx].name, sizeof(name) - 1);
-      name[sizeof(name) - 1] = 0;
-    } else if (ip != 0) {
-      ip4_addr_t tip = {.addr = ip};
-      snprintf(name, sizeof(name), "%d.%d.%d.%d", IP2STR(&tip));
+      strncpy(snap[i].name, device_names[n_idx].name, sizeof(snap[i].name) - 1);
+      snap[i].name[sizeof(snap[i].name) - 1] = 0;
+    } else {
+      snap[i].name[0] = 0;
     }
 
     int u_idx = meter_find_usage_locked(mac, false);
-    uint32_t cur_down =
-        (u_idx >= 0) ? device_live_speeds[u_idx].cur_down_bps : 0;
-    uint32_t cur_up = (u_idx >= 0) ? device_live_speeds[u_idx].cur_up_bps : 0;
-    uint64_t dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
-                                                                usage_records[u_idx].download_bytes,
-                                                                router_meter_scale_pct, router_meter_scale_mode)
-                                     : 0;
-    uint64_t dev_quota = device_policies[p_idx].quota_bytes;
-    bool is_blocked = device_policies[p_idx].blocked;
-    bool is_vip = device_policies[p_idx].gaming_mode;
+    snap[i].cur_down = (u_idx >= 0) ? device_live_speeds[u_idx].cur_down_bps : 0;
+    snap[i].cur_up = (u_idx >= 0) ? device_live_speeds[u_idx].cur_up_bps : 0;
+    snap[i].dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                                               usage_records[u_idx].download_bytes,
+                                                               router_meter_scale_pct, router_meter_scale_mode)
+                                    : 0;
+  }
+  portEXIT_CRITICAL(&data_mux);
+
+  strcpy(reply, "👥 <b>الأجهزة المتصلة والمسجلة بالراوتر:</b>\n\n");
+  uint16_t count = 0;
+  double gb_div =
+      (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+
+  for (size_t i = 0; i < listed_cnt; ++i) {
+    if (snap[i].p_idx < 0)
+      continue;
+
+    char name[DEVICE_NAME_BYTES];
+    if (snap[i].name[0]) {
+      strncpy(name, snap[i].name, sizeof(name) - 1);
+      name[sizeof(name) - 1] = 0;
+    } else if (snap[i].ip != 0) {
+      ip4_addr_t tip = {.addr = snap[i].ip};
+      snprintf(name, sizeof(name), "%d.%d.%d.%d", IP2STR(&tip));
+    } else {
+      strcpy(name, "جهاز");
+    }
 
     count++;
-    ip4_addr_t bip = {.addr = ip};
+    ip4_addr_t bip = {.addr = snap[i].ip};
     char ip_s[24] = "--";
-    if (ip != 0)
+    if (snap[i].ip != 0)
       snprintf(ip_s, sizeof(ip_s), "%d.%d.%d.%d", IP2STR(&bip));
 
     char q_info[64] = "";
-    if (dev_quota > 0) {
+    if (snap[i].dev_quota > 0) {
       snprintf(q_info, sizeof(q_info), " / %.1f GB",
-               (double)dev_quota / gb_div);
+               (double)snap[i].dev_quota / gb_div);
     }
 
-    char dev_line[260];
+    char dev_line[280];
     snprintf(dev_line, sizeof(dev_line),
-             "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
+             "%u. <b>%.32s</b> (<code>%s</code>) %s%s\n"
              "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s GB\n",
              count, name, ip_s,
-             is_blocked ? "🔴 [محظور]"
-                        : (is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
-             is_vip ? " 🎮 <b>VIP</b>" : "", (double)cur_down / 1000000.0,
-             (double)cur_up / 1000000.0, (double)dev_used / gb_div, q_info);
+             snap[i].is_blocked ? "🔴 [محظور]"
+                                : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
+             snap[i].is_vip ? " 🎮 <b>VIP</b>" : "",
+             (double)snap[i].cur_down / 1000000.0,
+             (double)snap[i].cur_up / 1000000.0,
+             (double)snap[i].dev_used / gb_div, q_info);
     if (strlen(reply) + strlen(dev_line) < 1400)
       strcat(reply, dev_line);
 
     if (count <= 8) {
+      char safe_btn_name[48];
+      size_t s_out = 0;
+      for (size_t c = 0; name[c] && s_out < sizeof(safe_btn_name) - 1; ++c) {
+        if (name[c] == '"' || name[c] == '\\') {
+          safe_btn_name[s_out++] = '\'';
+        } else {
+          safe_btn_name[s_out++] = name[c];
+        }
+      }
+      safe_btn_name[s_out] = 0;
+
       char row[260];
       snprintf(row, sizeof(row),
                "%s[{\"text\":\"⚙️ تحكم وباقة وVIP: "
                "%s\",\"callback_data\":\"mdev:%d\"},"
                "{\"text\":\"%s\",\"callback_data\":\"%s:%d\"}]",
-               kb_buttons[0] ? "," : "", name, p_idx,
-               is_blocked ? "✅ فك حظر" : "🚫 حظر", is_blocked ? "ubp" : "blkp",
-               p_idx);
+               kb_buttons[0] ? "," : "", safe_btn_name, snap[i].p_idx,
+               snap[i].is_blocked ? "✅ فك حظر" : "🚫 حظر",
+               snap[i].is_blocked ? "ubp" : "blkp",
+               snap[i].p_idx);
       if (strlen(kb_buttons) + strlen(row) < 1100)
         strcat(kb_buttons, row);
     }
   }
-  portEXIT_CRITICAL(&data_mux);
+  free(snap);
 
   if (count == 0) {
     strcat(reply, "<i>لا توجد أجهزة متصلة بالشبكة حالياً.</i>\n");
@@ -2913,44 +3004,59 @@ static void telegram_task(void *pvParameters) {
               char *reply = (char *)calloc(1, 1200);
               if (reply) {
                 strcpy(reply, "📋 <b>سجل كافة أجهزة الشبكة المسجلة:</b>\n\n");
-                portENTER_CRITICAL(&data_mux);
-                for (size_t p = 0; p < policy_count; ++p) {
-                  char d_name[DEVICE_NAME_BYTES] = "جهاز";
-                  int n_idx =
-                      meter_find_name_locked(device_policies[p].mac, false);
-                  if (n_idx >= 0 && device_names[n_idx].name[0]) {
-                    strncpy(d_name, device_names[n_idx].name,
-                            sizeof(d_name) - 1);
+                typedef struct {
+                  char d_name[DEVICE_NAME_BYTES];
+                  uint64_t dev_used;
+                  uint64_t quota_bytes;
+                  bool blocked;
+                  bool has_tg;
+                } all_dev_snap_t;
+                all_dev_snap_t *snaps = (all_dev_snap_t *)calloc(MAX_RECORDS, sizeof(all_dev_snap_t));
+                size_t p_count = 0;
+                if (snaps) {
+                  portENTER_CRITICAL(&data_mux);
+                  p_count = (policy_count < MAX_RECORDS) ? policy_count : MAX_RECORDS;
+                  for (size_t p = 0; p < p_count; ++p) {
+                    strcpy(snaps[p].d_name, "جهاز");
+                    int n_idx = meter_find_name_locked(device_policies[p].mac, false);
+                    if (n_idx >= 0 && device_names[n_idx].name[0]) {
+                      strncpy(snaps[p].d_name, device_names[n_idx].name, sizeof(snaps[p].d_name) - 1);
+                      snaps[p].d_name[sizeof(snaps[p].d_name) - 1] = 0;
+                    }
+                    int u_idx = meter_find_usage_locked(device_policies[p].mac, false);
+                    snaps[p].dev_used = (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
+                                                                               usage_records[u_idx].download_bytes,
+                                                                               router_meter_scale_pct, router_meter_scale_mode)
+                                                     : 0;
+                    snaps[p].quota_bytes = device_policies[p].quota_bytes;
+                    snaps[p].blocked = device_policies[p].blocked;
+                    snaps[p].has_tg = (device_policies[p].telegram_chat_id[0] != 0);
                   }
-                  int u_idx =
-                      meter_find_usage_locked(device_policies[p].mac, false);
-                  uint64_t dev_used =
-                      (u_idx >= 0) ? meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes +
-                                                              usage_records[u_idx].download_bytes,
-                                                              router_meter_scale_pct, router_meter_scale_mode)
-                                   : 0;
-                  double gb_div_t = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
-                  double u_gb = (double)dev_used / gb_div_t;
-                  double q_gb = (double)device_policies[p].quota_bytes / gb_div_t;
+                  portEXIT_CRITICAL(&data_mux);
 
-                  char line[150];
-                  if (device_policies[p].quota_bytes > 0) {
-                    snprintf(line, sizeof(line),
-                             "• <b>%s</b>: %.2f / %.2f GB %s%s\n", d_name, u_gb,
-                             q_gb, device_policies[p].blocked ? "🔴" : "🟢",
-                             device_policies[p].telegram_chat_id[0] ? " [TG]"
-                                                                    : "");
-                  } else {
-                    snprintf(
-                        line, sizeof(line), "• <b>%s</b>: %.2f GB %s%s\n",
-                        d_name, u_gb, device_policies[p].blocked ? "🔴" : "🟢",
-                        device_policies[p].telegram_chat_id[0] ? " [TG]" : "");
+                  double gb_div_t = (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
+                  for (size_t p = 0; p < p_count; ++p) {
+                    double u_gb = (double)snaps[p].dev_used / gb_div_t;
+                    double q_gb = (double)snaps[p].quota_bytes / gb_div_t;
+
+                    char line[150];
+                    if (snaps[p].quota_bytes > 0) {
+                      snprintf(line, sizeof(line),
+                               "• <b>%s</b>: %.2f / %.2f GB %s%s\n", snaps[p].d_name, u_gb,
+                               q_gb, snaps[p].blocked ? "🔴" : "🟢",
+                               snaps[p].has_tg ? " [TG]" : "");
+                    } else {
+                      snprintf(
+                          line, sizeof(line), "• <b>%s</b>: %.2f GB %s%s\n",
+                          snaps[p].d_name, u_gb, snaps[p].blocked ? "🔴" : "🟢",
+                          snaps[p].has_tg ? " [TG]" : "");
+                    }
+                    if (strlen(reply) + strlen(line) < 1170) {
+                      strcat(reply, line);
+                    }
                   }
-                  if (strlen(reply) + strlen(line) < 1170) {
-                    strcat(reply, line);
-                  }
+                  free(snaps);
                 }
-                portEXIT_CRITICAL(&data_mux);
                 telegram_send_message_with_keyboard(sender_chat_id, reply,
                                                     TG_ADMIN_KEYBOARD);
                 free(reply);
