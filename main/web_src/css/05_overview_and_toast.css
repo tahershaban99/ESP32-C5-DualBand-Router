@@ -1,3 +1,36 @@
+/* Floating Live Toast */
+.floating-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateZ(0);
+  will-change: transform;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--green);
+  border: 1px solid var(--green-hover);
+  color: var(--btn-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: var(--card-shadow);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.pulse-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text);
+  flex-shrink: 0;
+}
+
 /* =============================================================================
    OVERVIEW TAB DASHBOARD (MODERN RESPONSIVE SOLID DESIGN)
    ============================================================================= */
