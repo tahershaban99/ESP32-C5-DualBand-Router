@@ -1,0 +1,261 @@
+<section id="tab-settings" class="tab-content">
+  <div class="card-section glass" style="border:1px solid var(--green-border);background:var(--green-subtle);margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0;color:var(--text)">⚡ أداء المعالج وتوفير الطاقة (ESP32 Performance)</h2>
+      <span class="badge badge-online" style="background:var(--green-subtle);color:var(--green);border:1px solid var(--green)">تردد نشط: <b id="perf-badge-freq">240 MHz</b></span>
+    </div>
+    <p class="note" style="margin-bottom:16px">تحكم بتردد معالج الـ ESP32 ووضع توفير طاقة الواي فاي للوصول لأقصى سرعة ممكنة أو تقليل الحرارة واستهلاك الكهرباء.</p>
+
+    <!-- 3 PRESET BUTTONS -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">
+      <button type="button" class="perf-preset-btn active" id="btn-preset-240" onclick="selectCpuPreset(240, false)">
+        🚀 أقصى أداء 240MHz + طاقة كاملة
+      </button>
+      <button type="button" class="perf-preset-btn" id="btn-preset-160" onclick="selectCpuPreset(160, false)">
+        ⚖️ متوازن 160MHz
+      </button>
+      <button type="button" class="perf-preset-btn" id="btn-preset-80" onclick="selectCpuPreset(80, true)">
+        🍃 توفير فائق 80MHz + توفير مفعل
+      </button>
+    </div>
+
+    <form onsubmit="submitPerformance(event)">
+      <!-- MANUAL CPU FREQUENCY SELECT -->
+      <div class="form-group" style="margin-bottom:14px">
+        <label style="font-weight:600;margin-bottom:6px;display:block">تردد المعالج اليدوي:</label>
+        <select id="cfg_cpu_freq" onchange="onManualCpuFreqChange(this.value)">
+          <option value="240" selected>240 MHz (السرعة القصوى - أقصى تدفق بيانات NAPT وأدنى Ping)</option>
+          <option value="160">160 MHz (السرعة القياسية)</option>
+          <option value="80">80 MHz (تردد اقتصادي)</option>
+        </select>
+      </div>
+
+      <!-- WI-FI POWER SAVE CHECKBOX -->
+      <div style="margin-bottom:18px;display:flex;align-items:center">
+        <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;width:auto">
+          <input type="checkbox" id="cfg_wifi_ps" onchange="onManualPowerSaveChange(this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green);margin:0;flex-shrink:0">
+          <span style="font-weight:600">تفعيل وضع توفير طاقة الواي فاي (Wi-Fi Power Save)</span>
+        </label>
+      </div>
+
+      <!-- SAVE BUTTON -->
+      <div style="display:flex;justify-content:flex-end">
+        <button id="perf_save_btn" type="submit" class="primary-btn" style="padding:10px 24px;font-size:0.9rem;background:var(--green);">
+          💾 حفظ إعدادات الأداء
+        </button>
+      </div>
+    </form>
+  </div>
+  <div class="card-section glass" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
+        <span>📶</span> الاتصال بالراوتر الأساسي والواي فاي
+      </h2>
+      <span class="badge" id="wifi-status-badge" style="background:var(--green-subtle);color:var(--green);border:1px solid var(--green-border)">
+        متصل بالإنترنت 🟢
+      </span>
+    </div>
+    <p class="note" style="margin-bottom:16px">قم بإدخال بيانات شبكة الواي فاي للراوتر الأساسي لتوزيع وتوجيه الإنترنت عبر تقنية NAPT.</p>
+
+    <form method="post" action="/save" onsubmit="if(!isAdmin){openLoginModal();return false;}">
+      <!-- UPSTREAM SSID -->
+      <div class="form-group" style="margin-bottom:14px;position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+          <label style="font-weight:700;margin:0">اسم شبكة الراوتر الأساسي (SSID):</label>
+          <button type="button" id="btn_scan_wifi" class="btn btn-secondary" onclick="scanWifiNetworks()" style="font-size:0.8rem;padding:4px 12px;background:var(--purple-subtle);color:var(--purple-color);border:1px solid var(--purple-border);border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;transition:all 0.2s">
+            <span id="scan_spinner" style="display:none;animation:spin 1s linear infinite">🔄</span>
+            <span id="scan_icon">🔍</span>
+            <span id="scan_btn_text">فحص الشبكات المحيطة</span>
+          </button>
+        </div>
+        <div style="position:relative">
+          <input name="router_ssid" id="cfg_router_ssid" maxlength="32" required placeholder="مثال: Home_Fiber_5G" style="font-size:0.92rem;font-family:inherit;width:100%">
+          <!-- Scan Dropdown Results Container -->
+          <div id="wifi_scan_results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:999;background:var(--glass-bg);backdrop-filter:blur(16px);border:1px solid var(--purple-border);border-radius:12px;box-shadow:var(--card-shadow);max-height:280px;overflow-y:auto;padding:6px">
+          </div>
+        </div>
+      </div>
+
+      <!-- UPSTREAM PASSWORD -->
+      <div class="form-group" style="margin-bottom:14px">
+        <label style="font-weight:700;margin-bottom:6px;display:block">كلمة مرور الراوتر الأساسي:</label>
+        <div class="pw-wrap" style="position:relative;display:flex;align-items:center">
+          <input name="router_password" id="cfg_router_pass" type="password" maxlength="63" placeholder="أدخل كلمة المرور (أو اتركها فارغة إذا لم تتغير)" style="flex:1;padding-left:42px">
+          <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_router_pass',this)" style="position:absolute;left:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem">👁️</button>
+        </div>
+        <label class="checkbox-label" style="margin-top:8px;display:inline-flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" name="clear_router_password" id="cfg_clear_router_password" value="1" style="accent-color:var(--accent)"> شبكة مفتوحة بدون كلمة مرور (Open Network)
+        </label>
+      </div>
+
+      <!-- STATIC IP SECTION -->
+      <div class="glass" style="margin:18px 0;padding:16px 18px;border-radius:14px;border:1px solid var(--cyan);background:var(--surface-alt)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;color:var(--text);cursor:pointer;margin:0">
+            <input type="checkbox" name="static_enabled" value="1" id="static_toggle" onchange="document.getElementById('static_fields').style.display=this.checked?'block':'none'" style="width:18px;height:18px;accent-color:var(--cyan);cursor:pointer">
+            <span>🌐 تفعيل ميزة تثبيت عنوان الـ IP للراوتر (Static IP) بدل DHCP</span>
+          </label>
+          <span class="badge" style="background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border);font-size:0.75rem">اتصال فائق الاستقرار</span>
+        </div>
+        <p class="note" style="margin-bottom:12px;font-size:0.8rem;line-height:1.6">
+          تثبيت الـ IP يمنح راوتر الـ ESP32 عنواناً ثابتاً ومحدداً لا يتغير داخل شبكة المودم الرئيسي، مما يمنع انقطاع الاتصال ويسهل فتح المنافذ (Port Forwarding) وإدارة الشبكة بدقة.
+        </p>
+
+        <div id="static_fields" style="display:none;padding-top:10px;border-top:1px solid var(--glass-border)">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label style="font-weight:600;font-size:0.85rem">📌 عنوان الـ IP الثابت للراوتر (Static IP):</label>
+              <input name="sta_ip" id="cfg_sta_ip" placeholder="192.168.1.50" style="direction:ltr;text-align:left;font-family:monospace">
+            </div>
+            <div class="form-group">
+              <label style="font-weight:600;font-size:0.85rem">🎭 قناع الشبكة الفرعية (Subnet Mask):</label>
+              <input name="sta_mask" id="cfg_sta_mask" placeholder="255.255.255.0" value="255.255.255.0" style="direction:ltr;text-align:left;font-family:monospace">
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-top:10px">
+            <div class="form-group">
+              <label style="font-weight:600;font-size:0.85rem">🚪 عنوان البوابة الافتراضية (Default Gateway):</label>
+              <input name="sta_gateway" id="cfg_sta_gw" placeholder="192.168.1.1" style="direction:ltr;text-align:left;font-family:monospace">
+            </div>
+            <div class="form-group">
+              <label style="font-weight:600;font-size:0.85rem">🌍 خادم DNS الأساسي (DNS Server):</label>
+              <input name="sta_dns" id="cfg_sta_dns" placeholder="192.168.1.1 أو 8.8.8.8" style="direction:ltr;text-align:left;font-family:monospace">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button type="button" class="btn btn-secondary" style="font-size:0.78rem;padding:5px 12px;background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border)" onclick="document.getElementById('cfg_sta_ip').value='192.168.1.50';document.getElementById('cfg_sta_mask').value='255.255.255.0';document.getElementById('cfg_sta_gw').value='192.168.1.1';document.getElementById('cfg_sta_dns').value='8.8.8.8';">
+              ⚡ اقتراح إعدادات تلقائية (192.168.1.50)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ESP32 BROADCAST AP -->
+      <hr style="border:none;border-top:1px solid var(--glass-border);margin:18px 0">
+      <h3 style="font-size:1rem;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        <span>📡</span> بث شبكة الواي فاي للـ ESP32 (SoftAP)
+      </h3>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label style="font-weight:600">اسم شبكة الـ ESP32 (SSID):</label>
+          <input name="ap_ssid" id="cfg_ap_ssid" maxlength="32" required placeholder="ESP32-Router">
+        </div>
+        <div class="form-group">
+          <label style="font-weight:600">كلمة مرور شبكة الـ ESP32:</label>
+          <div class="pw-wrap" style="position:relative;display:flex;align-items:center">
+            <input name="ap_password" id="cfg_ap_pass" type="password" maxlength="63" placeholder="على الأقل 8 أحرف" style="flex:1;padding-left:42px">
+            <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_ap_pass',this)" style="position:absolute;left:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem">👁️</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label style="font-weight:600;display:flex;align-items:center;gap:6px">
+          📡 تردد ونطاق الواي فاي (Wi-Fi Band Control - ESP32-C5):
+          <span class="badge" style="background:var(--purple-subtle);color:var(--purple-color);border:1px solid var(--purple-border);font-size:0.75rem;padding:2px 8px">Dual-Band 2.4 / 5 GHz</span>
+        </label>
+        <select name="wifi_band" id="cfg_wifi_band" style="font-weight:600">
+          <option value="3">⚡ كلاهما / تلقائي Dual-Band (2.4GHz + 5GHz) — موصى به مع تسريع Wi-Fi 6</option>
+          <option value="2">🚀 5 GHz فقط — سرعة فائقة مع Wi-Fi 6 (802.11ax) وتداخل منعدم</option>
+          <option value="1">📶 2.4 GHz فقط — مدى تغطية واسع وتوافق شامل مع جميع الأجهزة</option>
+        </select>
+        <small style="color:var(--muted);display:block;margin-top:4px">
+          💡 يمكنك اختيار العمل على تردد 5GHz الحديث لأعلى سرعة، أو 2.4GHz لأوسع تغطية، أو كلاهما تلقائياً (Dual-Band).
+        </small>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label style="font-weight:600">معيار وسرعة بث واستقبال الواي فاي (Wi-Fi Protocol / Bandwidth):</label>
+        <select name="wifi_protocol" id="cfg_wifi_protocol">
+          <option value="1">🚀 أقصى سرعة وأداء: نطاق عريض 40MHz فائق السرعة (HT40 Turbo - ربط حتى 150 Mbps لكسر حاجز 22M)</option>
+          <option value="0">🛡️ استقرار وتوافق Wi-Fi 6: نطاق 20MHz القياسي (HE20/HT20 للأجهزة والمقويات)</option>
+          <option value="2">⚡ وضع السرعة الفائقة 40MHz (HT40 Turbo - سرعة قصوى بدون قيود)</option>
+          <option value="3">🔒 وضع Wi-Fi 6 القياسي 20MHz (HE20 أقصى استقرار وتوافق)</option>
+        </select>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button class="primary-btn" type="submit" style="padding:10px 24px;font-size:0.92rem;font-weight:700">
+          💾 حفظ إعدادات الواي فاي والاتصال وإعادة التشغيل
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- TELEGRAM BOT & ALERTS CARD IN TAB-SETTINGS -->
+  <div class="card-section glass" style="border:1px solid var(--accent);background:var(--surface-alt);margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin:0;color:var(--text)">🤖 إعدادات بوت وتنبيهات التيليجرام (Telegram Bot & Alerts)</h2>
+      <span class="badge" style="background:var(--accent-subtle);color:var(--accent);border:1px solid var(--accent-border)">تنبيهات تلقائية + أوامر تفاعلية</span>
+    </div>
+    <p class="note" style="margin-bottom:14px">إرسال تنبيهات استهلاك تلقائية عند تجاوز النسب المقررة للباقة وللأجهزة، واستقبال الأوامر والاستعلامات التفاعلية على النواة 1.</p>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="cfg_tg_enable_st"> تفعيل إشعارات وتنبيهات التيليجرام التلقائية (Push Alerts)
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>توكن البوت (Telegram Bot Token من BotFather):</label>
+        <div class="pw-wrap">
+          <input id="cfg_tg_token_st" type="password" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" style="direction:ltr;text-align:left">
+          <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_tg_token_st',this)">👁️</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>معرّف مدير الشبكة (Admin Chat ID - مفصول بفاصلة لأكثر من مشرف):</label>
+        <input id="cfg_tg_chat_id_st" type="text" placeholder="مثال: 12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" style="direction:ltr;text-align:left">
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="cfg_tg_interactive_st"> تفعيل استقبال الأوامر والاستعلامات المباشرة (Interactive Bot getUpdates)
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>نسب التنبيه المتعددة عند الاستهلاك (Alert Thresholds %):</label>
+        <input id="cfg_tg_thresholds_st" type="text" value="50,75,90,95" placeholder="50,75,90,95" style="direction:ltr;text-align:center">
+        <small style="font-size:0.75rem;color:var(--muted)">افصل بين النسب بفاصلة (مثال: 50,75,90,95) للتنبيه عند كل حد لمرة واحدة خلال الدورة.</small>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="button" class="primary-btn" onclick="submitTelegramSettings(null, true)">💾 حفظ إعدادات التيليجرام</button>
+        <button type="button" class="action-btn btn-gaming" style="padding:11px 18px;font-size:0.92rem" onclick="testTelegramAlert(this)">🧪 إرسال رسالة تجريبية الآن</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-section glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;border:1px solid var(--amber-border)">
+    <div>
+      <h2 style="margin:0 0 6px 0;display:flex;align-items:center;gap:8px"><span>🔄</span> مؤقت إعادة التشغيل اليومي (Daily Auto-Reboot)</h2>
+      <p class="note" style="margin:0">تم تخصيص تبويب مستقل وكامل في القائمة العلوية لإدارة مؤقت الريستارت، العد التنازلي، والتشغيل الفوري.</p>
+    </div>
+    <button type="button" class="action-btn btn-gaming" onclick="document.querySelector('.tab-btn[onclick*=\'tab-reboot\']').click()" style="padding:10px 20px;font-weight:700">الانتقال لتبويب الريستارت 👈</button>
+  </div>
+
+  <div class="card-section glass">
+    <h2>🔐 أمان تسجيل دخول المشرف</h2>
+    <p class="note">تغيير اسم المستخدم وكلمة المرور للتحكم بإعدادات الراوتر والصلاحيات الإدارية.</p>
+    <form onsubmit="changeAdminPassword(event)" style="display:flex;flex-direction:column;gap:10px">
+      <div class="form-group"><label>كلمة المرور الحالية:</label>
+        <div class="pw-wrap"><input id="pw_old" type="password" required autocomplete="current-password" style="direction:ltr;text-align:left">
+          <button type="button" class="pw-toggle" onclick="togglePwVis('pw_old',this)">👁️</button>
+        </div>
+      </div>
+      <div class="form-group"><label>اسم المستخدم الجديد:</label><input id="pw_new_user" type="text" required maxlength="32" value="admin" style="direction:ltr;text-align:left"></div>
+      <div class="form-group"><label>كلمة المرور الجديدة:</label>
+        <div class="pw-wrap"><input id="pw_new_pass" type="password" required minlength="4" maxlength="64" autocomplete="new-password" placeholder="أدخل كلمة مرور قوية" style="direction:ltr;text-align:left;flex:1;padding-left:42px">
+          <button type="button" class="pw-toggle" onclick="togglePwVis('pw_new_pass',this)">👁️</button>
+        </div>
+      </div>
+      <button id="pw_save_btn" type="submit" class="danger-btn" style="padding:10px 24px;font-size:0.92rem;font-weight:700;border-radius:10px;">تحديث بيانات المشرف</button>
+    </form>
+    <p class="note" style="margin-top:12px">في حال نسيان كلمة المرور، اضغط باستمرار على زر BOOT في البوردة لمدة 10 ثوانٍ للاستعادة الافتراضية (admin/admin).</p>
+    <hr style="border:none;border-top:1px solid var(--glass-border);margin:16px 0">
+    <button type="button" class="danger-btn" onclick="rebootRouter()">🔄 إعادة تشغيل الراوتر الآن (Reboot)</button>
+  </div>
+</section>
+
+<!-- TAB 6: OTA FIRMWARE UPDATES -->

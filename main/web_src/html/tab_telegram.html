@@ -1,0 +1,122 @@
+<section id="tab-telegram" class="tab-content">
+  <div class="tg-dashboard-grid">
+    <!-- LEFT COLUMN: LIVE INTERACTIVE TELEGRAM CHAT SIMULATOR -->
+    <div class="tg-chat-col glass">
+      <div class="tg-chat-header">
+        <div class="tg-chat-status">
+          <span class="tg-chat-status-dot"></span>
+          <span>Online</span>
+        </div>
+        <div style="font-weight:700;font-size:0.95rem;color:var(--text);display:flex;align-items:center;gap:6px">
+          <span>ESP32 Router Bot (محادثة تفاعلية حية)</span>
+          <span>🤖</span>
+        </div>
+      </div>
+
+      <div class="tg-chat-messages" id="tg_chat_history">
+        <!-- Sample Alert 1: Internet Quota Warning -->
+        <div class="tg-bubble tg-bubble-bot">
+          <div style="color:var(--amber);font-weight:800;margin-bottom:6px">🚨 تنبيه استهلاك باقة الإنترنت (%75) 🚨</div>
+          <div>📊 <b>النسبة المستهلكة:</b> 75%</div>
+          <div>📥 <b>المستهلك:</b> 105.00 GB من أصل 140.00 GB</div>
+          <div>⏳ <b>الرصيد المتبقي:</b> 35.00 GB</div>
+          <div>📅 <b>تاريخ التجديد:</b> 30-11-2026 (متبقي 28 يوم و 18 ساعة)</div>
+          <div>⚡ <b>الأجهزة النشطة:</b> 5 / 12 متصل</div>
+          <span class="tg-bubble-time">10:45 ص</span>
+        </div>
+
+        <!-- Sample Alert 2: Device Quota Alert -->
+        <div class="tg-bubble tg-bubble-bot">
+          <div style="color:var(--red);font-weight:800;margin-bottom:6px">🚨 تنبيه استهلاك باقة الجهاز (%90) 🚨</div>
+          <div>📱 <b>الجهاز:</b> Galaxy S24 Ultra</div>
+          <div>🌐 <b>عنوان IP:</b> <code>192.168.4.2</code></div>
+          <div>📊 <b>النسبة المستهلكة:</b> 90%</div>
+          <div>📥 <b>المستهلك:</b> 18.00 GB من أصل 20.00 GB</div>
+          <div>⏳ <b>الرصيد المتبقي:</b> 2.00 GB</div>
+          <div>⚠️ <b>الحالة:</b> متصل وتحت المراقبة</div>
+          <span class="tg-bubble-time">11:15 ص</span>
+        </div>
+      </div>
+
+      <!-- Quick Command Chips -->
+      <div class="tg-chips-row">
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/quota')">/quota</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/devices')">/devices</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/speed')">/speed</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/block 192.168.4.2')">/block 192.168.4.2</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/unblock 192.168.4.2')">/unblock 192.168.4.2</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/status')">/status</button>
+        <button type="button" class="tg-chip" onclick="sendInteractiveBotCmd('/ota')">/ota</button>
+      </div>
+
+      <!-- Chat Input Row -->
+      <form class="tg-chat-input-bar" onsubmit="event.preventDefault(); sendInteractiveBotCmd();">
+        <input type="text" id="tg_sim_input" placeholder="اكتب أمراً هنا (مثال: /quota أو استهلاك أو /devices)..." autocomplete="off">
+        <button type="submit" class="primary-btn" style="padding:8px 18px">إرسال</button>
+      </form>
+    </div>
+
+    <!-- RIGHT COLUMN: CONFIGURATION FORM & ADVANCED FEATURES -->
+    <div class="tg-config-col glass" style="padding:22px;border-radius:16px;display:flex;flex-direction:column;gap:14px">
+      <h2 style="font-size:1.15rem;margin:0 0 6px 0;display:flex;align-items:center;gap:8px">
+        <span>🤖</span> إعدادات بوت التيليجرام والتنبيهات التلقائية المتعددة
+      </h2>
+
+      <form id="tg_config_form" onsubmit="submitTelegramSettings(event)" style="display:flex;flex-direction:column;gap:12px">
+        <input type="hidden" id="cfg_tg_enable" value="1">
+        <input type="hidden" id="cfg_tg_interactive" value="1">
+
+        <div class="form-group">
+          <label style="font-weight:700;font-size:0.88rem;color:var(--text);margin-bottom:4px;display:block">توكن البوت (Bot API Token):</label>
+          <div class="pw-wrap">
+            <input id="cfg_tg_token" type="password" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" style="direction:ltr;text-align:left">
+            <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_tg_token',this)">👁️</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label style="font-weight:700;font-size:0.88rem;color:var(--text);margin-bottom:4px;display:block">معرف المشرفين (Admin Chat IDs):</label>
+          <input id="cfg_tg_chat_id" type="text" placeholder="12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" style="direction:ltr;text-align:left">
+          <small style="font-size:0.75rem;color:var(--muted);display:block;margin-top:2px">يمكنك إضافة أكثر من مشرف مفصولاً بفاصلة (مثال: <code>12345678, 98765432</code>) لاستقبال التنبيهات والتحكم بالكامل.</small>
+        </div>
+
+        <div class="form-group">
+          <label style="font-weight:700;font-size:0.88rem;color:var(--text);margin-bottom:4px;display:block">نسب التنبيه المتعددة عند الاستهلاك (Multi-Thresholds):</label>
+          <input id="cfg_tg_thresholds" type="text" value="50, 75, 90, 95" placeholder="50, 75, 90, 95" style="direction:ltr;text-align:center">
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="action-btn btn-gaming" style="padding:10px 18px;font-size:0.88rem" onclick="testTelegramAlert(this)">🧪 اختبار الإشعارات</button>
+          <button id="tg_save_btn" type="submit" class="primary-btn" style="padding:10px 24px;font-size:0.88rem">💾 حفظ الإعدادات</button>
+        </div>
+      </form>
+
+      <!-- Discovered Telegram Users Card -->
+      <div class="glass" style="margin-top:12px;padding:14px;border-radius:12px;background:var(--surface-overlay);border:1px solid var(--accent-border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+          <b style="color:var(--blue);font-size:0.88rem">👥 المستخدمين المكتشفين في التيليجرام:</b>
+          <span style="font-size:0.75rem;color:var(--muted)">يتم التقاط المعرفات تلقائياً فور مراسلة البوت</span>
+        </div>
+        <div id="tg_discovered_users_list">
+          <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:8px">لم يدخل أي مستخدم على البوت بعد. عندما يرسل أي شخص رسالة للبوت ستظهر هويته هنا لتعيينه كمشرف أو لربط جهازه بسهولة.</div>
+        </div>
+      </div>
+
+      <div class="glass" style="margin-top:10px;padding:14px;border-radius:12px;background:var(--surface-overlay);border:1px solid var(--red-border)">
+        <b style="color:var(--accent);display:block;margin-bottom:8px;font-size:0.88rem">📌 ميزات التيليجرام المتقدمة المدمجة:</b>
+        <ol style="margin:0;padding-right:20px;font-size:0.82rem;color:var(--muted);line-height:1.7">
+          <li>تنبيهات تلقائية (Push Alerts) للباقة العامة وباقات الأجهزة فور تجاوز الحدود المقررة بدون تكرار إلى المشرفين ومالك الجهاز.</li>
+          <li>لوحة مفاتيح تفاعلية فورية مدمجة بأزرار سريعة للاستعلام والتحكم المباشر.</li>
+          <li>اكتشاف تلقائي لجميع المستخدمين الذين يراسلون البوت وإمكانية تعيينهم كمشرفين بضغطة زر.</li>
+          <li>ربط الأجهزة الذكي: يمكن للمستخدم إرسال الـ IP في التيليجرام للربط التلقائي، أو اختياره مباشرة من القائمة المنسدلة في لوحة التحكم.</li>
+          <li>حظر وفك حظر الأجهزة عن بُعد عبر أمر <code>/block [IP]</code> و <code>/unblock [IP]</code>.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 4: SETTINGS & HARDWARE -->
+  <!-- ============================================================== -->
+  <!-- TAB: RESTART & AUTO-REBOOT (إعادة التشغيل والريستارت)           -->
+  <!-- ============================================================== -->

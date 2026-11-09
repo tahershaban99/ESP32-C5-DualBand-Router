@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="sunset">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>راوتر ESP32 المتقدم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+{{INCLUDE:css/01_themes_and_base.css}}
+{{INCLUDE:css/02_layout_and_nav.css}}
+{{INCLUDE:css/03_devices_and_table.css}}
+{{INCLUDE:css/04_components_modals.css}}
+{{INCLUDE:css/05_overview_tab.css}}
+</style>
+</head>
+<body>
+<main>
+{{INCLUDE:html/header_and_metrics.html}}
+
+<div class="app-layout">
+  {{INCLUDE:html/sidebar.html}}
+  <div class="content-area">
+    {{INCLUDE:html/tab_overview.html}}
+    {{INCLUDE:html/tab_devices.html}}
+    {{INCLUDE:html/tab_period.html}}
+    {{INCLUDE:html/tab_telegram.html}}
+    {{INCLUDE:html/tab_reboot.html}}
+    {{INCLUDE:html/tab_settings.html}}
+    {{INCLUDE:html/tab_ota.html}}
+  </div><!-- /.content-area -->
+</div><!-- /.app-layout -->
+
+{{INCLUDE:html/modals_and_toast.html}}
+</main>
+
+<script>
+{{INCLUDE:js/01_core_ui_and_auth.js}}
+{{INCLUDE:js/02_charts_and_overview.js}}
+{{INCLUDE:js/03_devices_crud.js}}
+{{INCLUDE:js/04_ota_and_quota.js}}
+{{INCLUDE:js/05_telegram_bot.js}}
+{{INCLUDE:js/06_system_and_wifi.js}}
+</script>
+</body>
+</html>
+

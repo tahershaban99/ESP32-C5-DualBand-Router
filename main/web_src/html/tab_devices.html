@@ -1,0 +1,85 @@
+<section id="tab-devices" class="tab-content">
+  <div class="view-bar">
+    <div style="font-weight:700;font-size:1.05rem;color:var(--text)">الأجهزة والتحكم في الكوتة والسرعات (<span id="dev-count-txt">0</span>)</div>
+    <div class="view-btns theme-switcher">
+      <button class="theme-btn active" id="btn-view-cards" onclick="setViewMode('cards')">بطاقات (Cards)</button>
+      <button class="theme-btn" id="btn-view-table" onclick="setViewMode('table')">جدول (Table)</button>
+    </div>
+  </div>
+
+  <!-- SECTION 1: CONNECTED DEVICES -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="font-size:1.05rem;color:var(--text);display:flex;align-items:center;gap:8px">
+      <span>🟢</span> الأجهزة المتصلة حالياً
+      <span class="badge badge-online" id="connected-count-badge">0 متصل</span>
+    </h3>
+    <span style="font-size:0.78rem;color:var(--muted)">تحديث لحظي للسرعة ومعدل النقل</span>
+  </div>
+
+  <datalist id="tg_users_datalist"></datalist>
+
+  <div class="cards-view" id="cards-container"></div>
+  <div class="table-view glass" id="table-container" style="display:none">
+    <div class="table-responsive-wrapper">
+      <table class="devices-table">
+        <thead>
+          <tr>
+            <th>الحالة</th>
+            <th>اسم الجهاز</th>
+            <th>مدة الاتصال / آخر ظهور</th>
+            <th>IP / MAC</th>
+            <th>السرعة اللحظية</th>
+            <th>الباقة والاستهلاك</th>
+            <th>تحديد السرعة</th>
+            <th>معرف التيليجرام</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="devices-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ELEGANT DIVIDER BETWEEN CONNECTED & OFFLINE -->
+  <div style="margin:38px 0 26px 0;border-top:1px dashed var(--green-border);position:relative;text-align:center">
+    <button type="button" onclick="toggleOfflineSection()" id="btn-toggle-offline" style="position:relative;top:-19px;background:var(--surface-alt);border:1.5px solid var(--green);border-radius:24px;color:var(--text);padding:8px 24px;font-size:0.86rem;font-weight:700;cursor:pointer;box-shadow:var(--card-shadow);transition:all .25s ease;display:inline-flex;align-items:center;gap:8px">
+      <span id="offline-toggle-icon" style="color:var(--green);font-size:0.82rem">▼</span>
+      <span id="offline-toggle-text">إخفاء الأجهزة غير المتصلة (0 أجهزة)</span>
+    </button>
+  </div>
+
+  <!-- SECTION 2: OFFLINE / PREVIOUSLY CONNECTED DEVICES -->
+  <div id="offline-devices-section" style="transition:all .3s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <h3 style="font-size:1rem;color:var(--muted);display:flex;align-items:center;gap:8px">
+        <span>⚪</span> الأجهزة غير المتصلة حالياً (المسجلة مسبقاً)
+        <span class="badge" style="background:var(--bg-subtle);color:var(--muted)" id="offline-count-badge">0 أجهزة</span>
+      </h3>
+      <span style="font-size:0.75rem;color:var(--muted);align-self:center">💡 يمكنك ضبط الكوتة وسقف السرعة أو الحظر مسبقاً قبل اتصال الجهاز</span>
+    </div>
+
+    <div class="cards-view" id="offline-cards-container"></div>
+    <div class="table-view glass" id="offline-table-container" style="display:none">
+      <div class="table-responsive-wrapper">
+        <table class="devices-table">
+          <thead>
+            <tr>
+              <th>الحالة</th>
+              <th>اسم الجهاز</th>
+              <th>مدة الاتصال / آخر ظهور</th>
+              <th>آخر IP و MAC</th>
+              <th>الاستهلاك السابق</th>
+              <th>الكوتة المسبقة</th>
+              <th>تحديد السرعة</th>
+              <th>معرف التيليجرام</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="offline-devices-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 2: MAIN ISP QUOTA -->

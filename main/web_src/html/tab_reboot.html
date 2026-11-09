@@ -1,0 +1,161 @@
+<section id="tab-reboot" class="tab-content">
+<div class="graph-card glass">
+  <div class="graph-head">
+    <div class="graph-title">📈 معدل تدفق البيانات المباشر (Live Bandwidth)</div>
+    <div class="graph-legend">
+      <span><span class="legend-dot" style="background:var(--green)"></span> تحميل (Download)</span>
+      <span><span class="legend-dot" style="background:var(--accent)"></span> رفع (Upload)</span>
+    </div>
+  </div>
+  <canvas id="speedChart"></canvas>
+</div>
+
+
+    
+<!-- DEDICATED PARENT NETWORK INFO BOX -->
+<div class="card-section glass" style="margin-bottom:20px;padding:16px 20px;border:1px solid var(--green-border);background:var(--green-subtle)">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+    <h3 style="font-size:1.05rem;color:var(--text);display:flex;align-items:center;gap:8px;margin:0">
+      <span>📡</span> بيانات شبكة الإنترنت التي يستقبل منها الـ ESP النت (Parent Wi-Fi Network)
+      <span class="badge badge-online" id="parent-net-badge">متصل بالإنترنت 🟢</span>
+    </h3>
+    <span style="font-size:0.78rem;color:var(--muted)">تغذية الإنترنت عبر واجهة STA مع تسريع الـ NAPT العتادي</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;font-size:0.85rem">
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+      <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">اسم شبكة المصدر (SSID):</span>
+      <b style="color:var(--text);font-size:1rem;display:flex;align-items:center;gap:6px"><span>📶</span> <span id="parent-ssid-txt">--</span></b>
+    </div>
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+      <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">قوة الإشارة وجودة الاتصال:</span>
+      <b style="color:var(--green);font-size:1rem" id="parent-rssi-txt">-- dBm</b>
+    </div>
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+      <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">عنوان الـ IP المخصص للـ ESP:</span>
+      <code style="color:var(--cyan);font-weight:700;font-size:0.95rem" id="parent-ip-txt">--</code>
+    </div>
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+      <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">بوابة الراوتر وقناة البث (Gateway):</span>
+      <b style="color:var(--text);font-size:0.95rem" id="parent-gw-txt">--</b>
+    </div>
+  </div>
+</div>
+
+
+<!-- DAILY AUTO-REBOOT CARD -->
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--amber-border);background:var(--amber-subtle)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
+          <span>🔄</span> إعادة التشغيل اليومي التلقائي (Daily Scheduled Auto-Reboot)
+        </h2>
+        <span class="badge" style="background:var(--amber-subtle);color:var(--amber);border:1px solid var(--amber)">
+          تفريغ الذاكرة المؤقتة دورياً
+        </span>
+      </div>
+      <p class="note" style="margin-bottom:14px">
+        إعادة تشغيل مجدولة يومياً في وقت محدد (افتراضياً 03:00 فجراً) لإنعاش الذاكرة ومسح كاش الاتصالات وحفظ كامل لعدادات الاستهلاك دون تصفيرها.
+      </p>
+
+      <form onsubmit="submitAutoReboot(event)" style="display:flex;flex-direction:column;gap:12px">
+        <div class="form-group">
+          <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:700">
+            <input type="checkbox" id="cfg_rb_enable" style="width:18px;height:18px;accent-color:var(--amber);cursor:pointer">
+            <span>تفعيل إعادة التشغيل اليومي التلقائي (Daily Auto-Reboot)</span>
+          </label>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label style="font-weight:700;margin-bottom:6px;display:block">وقت إعادة التشغيل اليومي (HH:MM):</label>
+            <input id="cfg_rb_time" type="time" value="03:00" required style="font-size:1rem;font-weight:700">
+          </div>
+          <div class="form-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <label style="margin:0;font-weight:700">فرق التوقيت (Timezone):</label>
+              <button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:0.75rem;background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border)" onclick="autoDetectLocalTimezone()">⚡ مزامنة من جهازك</button>
+            </div>
+            <select id="cfg_rb_tz">
+              <option value="2">UTC+2 (مصر بالتوقيت الشتوي / القدس / طرابلس)</option>
+              <option value="3">UTC+3 (مصر صيفي / السعودية / العراق / الكويت / قطر)</option>
+              <option value="4">UTC+4 (الإمارات / عمان)</option>
+              <option value="1">UTC+1 (المغرب / الجزائر / تونس)</option>
+              <option value="0">UTC+0 (غرينتش)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 16px;background:var(--surface-overlay);border-radius:12px">
+          <div style="font-size:0.88rem">
+            🕒 ساعة الراوتر الآن: <b id="rb_router_clock" style="color:var(--cyan);font-family:monospace;font-size:1rem">جاري المزامنة...</b>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="rb_sync_badge" class="badge badge-offline">غير متزامن</span>
+            <button type="button" class="action-btn" style="padding:4px 10px;font-size:0.75rem" onclick="syncNtpNow()">🔄 مزامنة فورية</button>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--tg-subtle);border:1px solid var(--tg-border);border-radius:10px">
+          <span style="font-size:1.1rem">🤖</span>
+          <span style="font-size:0.82rem;color:var(--tg-blue)">إرسال إشعار تيليجرام تلقائي للمدير فور اكتمال إعادة التشغيل اليومية موضحاً الذاكرة الحرة (Free RAM) وساعة الإقلاع.</span>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+          <button id="rb_save_btn" type="submit" class="primary-btn" style="padding:10px 24px;font-size:0.9rem;font-weight:700">💾 حفظ مؤقت الريستارت اليومي</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- HARDWARE BOOT & POWER DIAGNOSTICS CARD -->
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--accent);background:var(--surface-alt)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
+          <span>🩺</span> تشخيص الهاردوير وسبب آخر إقلاع
+        </h2>
+        <span id="rst_reason_badge" class="badge badge-online">تشغيل سليم 🟢</span>
+      </div>
+      <p style="font-size:0.84rem;color:var(--muted);margin-bottom:10px">
+        يوضح سبب إعادة تشغيل الراوتر الأخيرة (هل هو إقلاع طبيعي، ريستارت برمجي، أم انخفاض في جهد مزود الطاقة Brownout):
+      </p>
+      <div style="padding:10px 14px;background:var(--surface-alt);border-radius:10px;border:1px solid var(--glass-border);display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:0.86rem;color:var(--text)">
+          📌 <b>سبب آخر إقلاع:</b> <span id="rst_reason_txt" style="color:var(--cyan);font-weight:700">جاري القراءة...</span>
+        </div>
+        <div id="rst_brownout_alert" style="display:none;padding:8px 12px;background:var(--red-subtle);border:1px solid var(--red-border);border-radius:8px;color:var(--red);font-size:0.8rem">
+          ⚠️ <b>تنبيه هام حول الطاقة:</b> تم رصد انخفاض في الجهد الكهربي (Brownout). يحدث هذا عند توصيل الراوتر بمنفذ USB في كمبيوتر محمول أو كابل طويل رقيق عند سحب سرعات عالية. لحل المشكلة نهائياً، يرجى توصيل الراوتر بشاحن هاتف أصلي (5V 2A) أو منفذ USB 3.0 عالي الطاقة.
+        </div>
+      </div>
+    </div>
+
+    <!-- QUICK MANUAL REBOOT CARD -->
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--red-border);background:var(--red-subtle)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
+          <span>⚡</span> إعادة التشغيل اليدوية والعد التنازلي
+        </h2>
+        <span class="badge" style="background:var(--red-subtle);color:var(--red);border:1px solid var(--red)">حفظ فوري في NVS</span>
+      </div>
+      <p class="note" style="margin-bottom:14px">
+        يمكنك إعادة تشغيل الراوتر فوراً في أي وقت، أو ضبط عد تنازلي بالدقائق قبل إعادة التشغيل.
+      </p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:center">
+        <!-- Immediate Reboot Button -->
+        <div class="glass" style="padding:16px;border-radius:12px;text-align:center">
+          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">إعادة تشغيل فورية:</div>
+          <button type="button" class="danger-btn" style="width:100%;padding:12px;font-size:0.92rem;font-weight:700" onclick="triggerImmediateReboot()">
+            ⚡ إعادة تشغيل الراوتر الآن (Reboot Now)
+          </button>
+        </div>
+
+        <!-- Countdown Reboot Form -->
+        <div class="glass" style="padding:16px;border-radius:12px">
+          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">العد التنازلي للريستارت:</div>
+          <form onsubmit="submitCountdownReboot(event)" style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="cfg_cd_min" min="1" max="1440" value="5" style="width:80px;padding:8px;text-align:center;font-weight:700">
+            <span style="font-size:0.85rem;color:var(--muted)">دقيقة</span>
+            <button type="submit" class="primary-btn" style="flex:1;padding:8px;font-size:0.85rem">⏱️ بدء العد التنازلي</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>

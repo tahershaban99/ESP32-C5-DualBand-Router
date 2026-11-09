@@ -1,0 +1,62 @@
+<div class="sticky-top-section" id="sticky-top-section">
+<header class="header glass">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h1>🌐 <span>راوتر ESP32 المتقدم</span></h1>
+    <!-- FULL-PAGE ZOOM / SCALE CONTROLLER -->
+    <div class="zoom-capsule" title="التحكم في نسبة تكبير وتصغير صفحة التحكم بالكامل">
+      <button type="button" class="zoom-btn" onclick="adjustZoom(-5)" title="تصغير الصفحة [-5%]">➖</button>
+      <span class="zoom-value" id="zoom-display" onclick="resetZoom()" title="انقر للتبديل بين 85% و 100%">85%</span>
+      <button type="button" class="zoom-btn" onclick="adjustZoom(5)" title="تكبير الصفحة [+5%]">➕</button>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="theme-switcher">
+      <button class="theme-btn active" id="btn-theme-sunset" onclick="setTheme('dark')" title="الوضع الداكن المريح للعين">🌙 الداكن</button>
+      <button class="theme-btn" id="btn-theme-matrix" onclick="setTheme('light')" title="الوضع الفاتح النقي">☀️ الفاتح</button>
+    </div>
+    <div class="wan-badge" id="wan-status">
+      <span class="pulse offline" id="wan-pulse"></span>
+      <span id="wan-text">جاري الفحص...</span>
+    </div>
+    <button class="auth-btn" id="auth-btn" onclick="handleAuthClick()" title="تسجيل الدخول كمشرف لتعديل الإعدادات"><span>👁️</span> <span>وضع المراقبة (دخول المشرف)</span></button>
+  </div>
+</header>
+
+<div class="metrics-grid collapsed-on-overview">
+  <div class="metric-card glass">
+    <span class="metric-label">🚀 سرعة التحميل اللحظية</span>
+    <span class="metric-value" id="cur-down-mbps" style="color:var(--green)">0.00 Mbps</span>
+    <span class="metric-sub" id="cur-down-raw">0 KB/s</span>
+  </div>
+  <div class="metric-card glass">
+    <span class="metric-label">📤 سرعة الرفع اللحظية</span>
+    <span class="metric-value" id="cur-up-mbps" style="color:var(--accent)">0.00 Mbps</span>
+    <span class="metric-sub" id="cur-up-raw">0 KB/s</span>
+  </div>
+  <div class="metric-card glass">
+    <span class="metric-label">👥 الأجهزة المتصلة حالياً</span>
+    <span class="metric-value" id="active-clients-str">0 / 12 متصل</span>
+    <span class="metric-sub">السعة القصوى: 12 واي فاي / 32 L3</span>
+  </div>
+  <div class="metric-card glass">
+    <span class="metric-label">📊 استهلاك باقة النت</span>
+    <span class="metric-value" id="quota-summary-val">-- / -- GB</span>
+    <div class="progress-bg"><div class="progress-fill" id="quota-summary-bar" style="width:0%"></div></div>
+  </div>
+  <div class="metric-card glass">
+    <span class="metric-label">🧠 الذاكرة المتاحة (RAM)</span>
+    <span class="metric-value" id="free-heap-kb" style="color:var(--cyan)">-- KB</span>
+    <span class="metric-sub" id="min-heap-kb">أدنى ذاكرة: -- KB</span>
+  </div>
+  <div class="metric-card glass">
+    <span class="metric-label">⏱️ مدة التشغيل (Uptime)</span>
+    <span class="metric-value" id="uptime-str">--</span>
+    <span class="metric-sub" id="cpu-clock-str">240 MHz</span>
+  </div>
+  <div class="metric-card glass" style="border:1px solid var(--green-border);background:var(--green-subtle)">
+    <span class="metric-label">📡 شبكة الإنترنت المزودة (WAN)</span>
+    <span class="metric-value" id="wan-ssid-val" style="color:var(--green);font-size:1.18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">--</span>
+    <span class="metric-sub" id="wan-info-sub">جاري الفحص...</span>
+  </div>
+</div>
+</div>

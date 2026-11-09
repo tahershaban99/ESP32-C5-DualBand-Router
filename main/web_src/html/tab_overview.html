@@ -1,0 +1,221 @@
+<section id="tab-overview" class="tab-content active">
+  <!-- LIVE NETWORK TOPOLOGY -->
+  <div class="ov-topology-card glass">
+    <div class="ov-topology-header">
+      <div class="ov-topology-title">
+        <span>🌐</span> خريطة مسار الشبكة الحية (LIVE NETWORK TOPOLOGY)
+      </div>
+      <div class="ov-badge-pill" id="ov-napt-badge">
+        ⚡ NAPT Hardware Routing: Active
+      </div>
+    </div>
+    <div class="ov-topology-grid">
+      <!-- WAN Node (Right in RTL) -->
+      <div class="ov-node-box glass">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">المصدر الرئيسي (WAN Upstream)</span>
+          <span class="ov-node-badge" id="ov-wan-band">5GHz</span>
+        </div>
+        <div class="ov-node-main">
+          <span class="ov-node-icon">📡</span>
+          <div class="ov-node-info">
+            <div class="ov-node-name" id="ov-wan-ssid">جاري الفحص...</div>
+            <div class="ov-node-details" id="ov-wan-details">GW: -- • إشارة: --</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipe Link 1 -->
+      <div class="ov-pipe-link">
+        <div class="ov-link-speed" id="ov-link-speed-wan">Mbps 0.00</div>
+        <div class="ov-link-sub">معدل النقل</div>
+        <div class="ov-link-arrow">➔</div>
+      </div>
+
+      <!-- ESP32 Core (Center) -->
+      <div class="ov-node-box glass ov-node-center">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">نواة التوجيه والكوتة (ESP32-C5)</span>
+          <span class="ov-node-icon">🧠</span>
+        </div>
+        <div class="ov-node-main" style="flex-direction:column;align-items:center;text-align:center">
+          <div class="ov-node-ip" id="ov-ip-transition">IP: -- ➔ 192.168.4.1</div>
+          <div class="ov-node-chips" id="ov-core-specs">240MHz • RAM: -- KB • HT40</div>
+        </div>
+      </div>
+
+      <!-- Pipe Link 2 -->
+      <div class="ov-pipe-link">
+        <div class="ov-link-speed" id="ov-link-speed-lan">Mbps 0.00</div>
+        <div class="ov-link-sub">معدل النقل</div>
+        <div class="ov-link-arrow">➔</div>
+      </div>
+
+      <!-- LAN Clients Node (Left in RTL) -->
+      <div class="ov-node-box glass">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">الأجهزة المتصلة (LAN Clients)</span>
+          <button type="button" class="ov-manage-btn" onclick="switchTab('tab-devices', this)">إدارة ➔</button>
+        </div>
+        <div class="ov-node-main">
+          <span class="ov-node-icon">💻</span>
+          <div class="ov-node-info">
+            <div class="ov-node-name" id="ov-lan-count">0 أجهزة متصلة حالياً</div>
+            <div class="ov-node-details" id="ov-lan-details">0 جهاز VIP ألعاب 👑 • 0 غير متصل</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-COLUMN MAIN GRID -->
+  <div class="ov-main-grid">
+    <!-- Card 1: Hardware Resources -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">موارد النظام (Hardware)</div>
+          <div class="ov-card-subtitle">أداء شريحة ESP32-C5 RISC-V</div>
+        </div>
+        <span class="ov-chip">MHz 240</span>
+      </div>
+
+      <div class="ov-meter-list">
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>الذاكرة الحرة (Free Heap RAM)</span>
+            <span id="ov-ram-val" style="color:var(--cyan)">-- KB (مستقر)</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-ram-bar" style="width:0%;background:var(--cyan)"></div></div>
+        </div>
+
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>حمل مسرع الشبكة (NAPT Load)</span>
+            <span id="ov-napt-val" style="color:var(--green)">--%</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-napt-bar" style="width:0%;background:var(--green)"></div></div>
+        </div>
+
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>جودة إشارة المصدر (WAN Signal)</span>
+            <span id="ov-rssi-val" style="color:var(--lime)">-- dBm (--%)</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-rssi-bar" style="width:0%;background:var(--lime)"></div></div>
+        </div>
+      </div>
+
+      <div class="ov-quick-actions">
+        <button type="button" class="ov-action-btn" onclick="switchTab('tab-telegram', this)">🤖 بوت التليجرام</button>
+        <button type="button" class="ov-action-btn" onclick="switchTab('tab-ota', this)">🚀 التحديث الهوائي OTA</button>
+      </div>
+    </div>
+
+    <!-- Card 2: Quota & Balance Analysis -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">تحليل الكوتة الكلية والرصيد</div>
+          <div class="ov-card-subtitle">معدل الاستهلاك اليومي وتوقعات نهاية الباقة</div>
+        </div>
+        <button type="button" class="ov-manage-btn" onclick="switchTab('tab-period', this)">ضبط الباقة</button>
+      </div>
+
+      <div class="ov-gauge-wrapper">
+        <div class="ov-circle-gauge">
+          <svg viewBox="0 0 120 120" class="ov-svg-ring">
+            <circle cx="60" cy="60" r="50" class="ov-ring-bg"></circle>
+            <circle cx="60" cy="60" r="50" class="ov-ring-fill" id="ov-quota-ring" stroke-dasharray="314" stroke-dashoffset="314"></circle>
+          </svg>
+          <div class="ov-ring-content">
+            <span class="ov-ring-pct" id="ov-quota-pct">0.0%</span>
+            <span class="ov-ring-sub">مستهلك</span>
+          </div>
+        </div>
+        <div class="ov-gauge-details">
+          <div class="ov-quota-stat">
+            <span class="ov-stat-label">إجمالي المستهلك الكلي</span>
+            <div class="ov-stat-num" id="ov-quota-consumed">0.00 GB <span class="ov-stat-denom" id="ov-quota-total">/ 0 GB</span></div>
+          </div>
+          <div class="ov-quota-stat">
+            <span class="ov-stat-label">الرصيد المتبقي الصافي</span>
+            <div class="ov-stat-num" id="ov-quota-rem" style="color:var(--green)">0.00 GB</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-quota-mini-grid">
+        <div class="ov-mini-box">
+          <div class="ov-mini-label">⏳ المتبقي للتجديد</div>
+          <div class="ov-mini-val" id="ov-renew-countdown">-- يوم و -- س</div>
+          <div class="ov-mini-sub" id="ov-renew-date">التجديد: --</div>
+        </div>
+        <div class="ov-mini-box">
+          <div class="ov-mini-label">🛡️ المعدل اليومي الآمن</div>
+          <div class="ov-mini-val" id="ov-safe-rate">-- GB / يوم</div>
+          <div class="ov-mini-sub" id="ov-safe-badge" style="color:var(--green)">استهلاكك ضمن الآمن ✅</div>
+        </div>
+      </div>
+
+      <div class="ov-bottom-badges">
+        <span class="ov-predict-pill" id="ov-predict-pill">✅ توقع: تكفي لنهاية الشهر</span>
+        <span class="ov-sub-pill" id="ov-meter-acc">⚠️ دقة العداد: 100%</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Live Bandwidth Meter & Waveform -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">عداد السرعة والتدفق اللحظي</div>
+          <div class="ov-card-subtitle">(Live Bandwidth) مراقبة حية لسرعة السحب والرفع</div>
+        </div>
+        <span class="ov-chip" id="ov-peak-speed">الذروة: Mbps 0.00</span>
+      </div>
+
+      <div class="ov-dual-gauges">
+        <!-- Download Gauge -->
+        <div class="ov-speed-gauge">
+          <div class="ov-speed-circle">
+            <svg viewBox="0 0 100 100" class="ov-speed-svg">
+              <circle cx="50" cy="50" r="40" class="ov-ring-bg"></circle>
+              <circle cx="50" cy="50" r="40" class="ov-speed-fill-down" id="ov-speed-ring-down" stroke-dasharray="251" stroke-dashoffset="251"></circle>
+            </svg>
+            <div class="ov-speed-center">
+              <span class="ov-speed-label" style="color:var(--green)">📥 تنزيل</span>
+              <span class="ov-speed-val" id="ov-live-down-mbps">0.00</span>
+              <span class="ov-speed-unit">Mbps</span>
+            </div>
+          </div>
+          <span class="ov-speed-sub" id="ov-live-down-raw">0 KB/s</span>
+        </div>
+
+        <!-- Upload Gauge -->
+        <div class="ov-speed-gauge">
+          <div class="ov-speed-circle">
+            <svg viewBox="0 0 100 100" class="ov-speed-svg">
+              <circle cx="50" cy="50" r="40" class="ov-ring-bg"></circle>
+              <circle cx="50" cy="50" r="40" class="ov-speed-fill-up" id="ov-speed-ring-up" stroke-dasharray="251" stroke-dashoffset="251"></circle>
+            </svg>
+            <div class="ov-speed-center">
+              <span class="ov-speed-label" style="color:var(--accent)">📤 رفع</span>
+              <span class="ov-speed-val" id="ov-live-up-mbps">0.00</span>
+              <span class="ov-speed-unit">Mbps</span>
+            </div>
+          </div>
+          <span class="ov-speed-sub" id="ov-live-up-raw">0 KB/s</span>
+        </div>
+      </div>
+
+      <!-- Live Canvas Sparkline Waveform -->
+      <div class="ov-sparkline-box">
+        <div class="ov-sparkline-head">
+          <span>المنحنى اللحظي (آخر 60 ثانية)</span>
+          <span style="color:var(--muted)">تحديث كل 2 ثانية</span>
+        </div>
+        <canvas id="ovLiveCanvas" width="450" height="90" class="ov-live-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</section>

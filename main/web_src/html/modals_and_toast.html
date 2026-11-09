@@ -1,0 +1,36 @@
+<div class="floating-toast" id="live-floating-toast">
+  <span class="pulse-dot"></span>
+  <span id="toast-text">يتم تحديث السرعة اللحظية والاستهلاك مباشرة كل ثانيتين</span>
+</div>
+
+<!-- LOGIN MODAL -->
+<div id="login-modal" class="modal-backdrop">
+  <div class="modal-card">
+    <button type="button" class="modal-close" onclick="closeLoginModal()">&times;</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:44px;height:44px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;font-size:1.5rem">🔐</div>
+      <div>
+        <h2 style="font-size:1.2rem;color:var(--text);margin:0;font-weight:800">تسجيل دخول المشرف</h2>
+        <span style="font-size:0.78rem;color:var(--muted)">مطلوب لتأكيد التعديلات والتحكم الكامل بالراوتر</span>
+      </div>
+    </div>
+    <div id="login-reason-banner" style="background:var(--amber-subtle);border:1px solid var(--amber-border);color:var(--amber-color);padding:10px 14px;border-radius:10px;font-size:0.82rem;margin-bottom:14px;line-height:1.5;display:none">
+      🔒 يتطلب هذا الإجراء صلاحيات المشرف لتطبيقه وحفظه.
+    </div>
+    <div id="login-lockout" class="lockout-banner"></div>
+    <div id="login-error" style="display:none;color:var(--red);font-size:0.86rem;margin-bottom:10px;font-weight:700"></div>
+    <form onsubmit="submitLogin(event)" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group"><label>اسم المستخدم:</label><input id="login_user" type="text" value="admin" required autocomplete="username" style="direction:ltr;text-align:left"></div>
+      <div class="form-group"><label>كلمة المرور:</label>
+        <div class="pw-wrap">
+          <input id="login_pass" type="password" value="admin" required autocomplete="current-password" style="direction:ltr;text-align:left">
+          <button type="button" class="pw-toggle" onclick="togglePwVis('login_pass',this)">👁️</button>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);text-align:center;margin-top:-4px">
+        💡 بيانات الدخول الافتراضية: <code style="color:var(--cyan)">admin</code> / <code style="color:var(--cyan)">admin</code>
+      </div>
+      <button id="login_submit_btn" type="submit" class="primary-btn">دخول المشرف (تفعيل التحكم الكامل)</button>
+    </form>
+  </div>
+</div>

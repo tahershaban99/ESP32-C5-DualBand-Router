@@ -19,10 +19,24 @@ if (!(Test-Path "build\build.ninja")) {
     }
 }
 
+Write-Host "Building web UI components from web_src/..."
+python build_web.py
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "`n[ERROR] Web UI assembly failed."
+    exit $LASTEXITCODE
+}
+
 Write-Host "Compiling project with Ninja..."
 ninja -C build
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[SUCCESS] ESP32-C5 Build completed successfully!"
+    if (Test-Path "build\esp32_napt_router.bin") {
+        if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" | Out-Null }
+        Copy-Item "build\esp32_napt_router.bin" "bin\esp32_napt_router.bin" -Force
+        if (Test-Path "build\bootloader\bootloader.bin") { Copy-Item "build\bootloader\bootloader.bin" "bin\bootloader.bin" -Force }
+        if (Test-Path "build\partition_table\partition-table.bin") { Copy-Item "build\partition_table\partition-table.bin" "bin\partition-table.bin" -Force }
+        Write-Host "Updated firmware binaries copied to bin/ directory."
+    }
     exit 0
 } else {
     Write-Host "`n[ERROR] Build failed."
