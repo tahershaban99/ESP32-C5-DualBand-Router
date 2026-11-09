@@ -2719,10 +2719,11 @@ function toggleOfflineSection() {
 
 
 
-function switchTab(tabId, btn) {
-  document.querySelectorAll('.sidebar-tabs .tab-btn').forEach(b => {
+function switchTab(tabId, btn, shouldScrollTop = false) {
+  document.querySelectorAll('.tab-btn, .sidebar-tabs .tab-btn, .floating-tab-btn').forEach(b => {
     let onclickAttr = b.getAttribute('onclick') || '';
-    if (onclickAttr.includes(`'${tabId}'`)) {
+    let dataTab = b.getAttribute('data-tab') || '';
+    if (onclickAttr.includes(`'${tabId}'`) || dataTab === tabId) {
       b.classList.add('active');
     } else {
       b.classList.remove('active');
@@ -2732,32 +2733,12 @@ function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   let target = document.getElementById(tabId);
   if (target) target.classList.add('active');
-  if (tabId === 'tab-reboot') setTimeout(drawSpeedChart, 60);
-(tabId, btn, shouldScrollTop = false) {
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    let onclickAttr = b.getAttribute('onclick') || '';
-    if (onclickAttr.includes(`'${tabId}'`)) {
-      b.classList.add('active');
-    } else {
-      b.classList.remove('active');
-    }
-  });
-
-  document.querySelectorAll('.floating-tab-btn').forEach(fb => {
-    if (fb.getAttribute('data-tab') === tabId) {
-      fb.classList.add('active');
-    } else {
-      fb.classList.remove('active');
-    }
-  });
-
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  let target = document.getElementById(tabId);
-  if (target) target.classList.add('active');
-  if (tabId === 'tab-reboot') setTimeout(drawSpeedChart, 60);
+  if (tabId === 'tab-reboot' && typeof drawSpeedChart === 'function') setTimeout(drawSpeedChart, 60);
 
   if (shouldScrollTop) {
-    scrollToTop();
+    let sc = document.querySelector('.main-content-scroll') || window;
+    if (sc.scrollTo) sc.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 
