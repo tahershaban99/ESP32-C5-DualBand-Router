@@ -1,6 +1,6 @@
 {
-  "version": "v3.7.3",
+  "version": "v3.7.4",
   "release_date": "2026-11-09",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "نظام ألوان موحد بدون تدرجات (Anti-AI-Slop)، واعتماد كامل وحصري على design_tokens.css، وتناسق لوني مريح للعين في الوضعين الليلي والنهاري."
+  "changelog": "لوحة ألوان جديدة للوضع الداكن معتمدة بالكامل على الأسود الحالك والأحمر القرمزي الصلب (Pitch Black & Precision Crimson) بدون تدرجات لونية (Anti-AI-Slop)."
 }
