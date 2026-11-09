@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "ESP32-C5 Router Design Tokens",
+  "version": "2.1.0",
+  "description": "Solid, anti-AI-slop design system colors for Dark and Light themes",
+  "themes": {
+    "dark": {
+      "surfaces": {
+        "background": "#0f172a",
+        "card": "#1e293b",
+        "header": "#1e293b",
+        "headerScrolled": "#0f172a",
+        "border": "#334155",
+        "borderHover": "#475569",
+        "surfaceAlt": "#0b1120",
+        "surfaceOverlay": "rgba(0, 0, 0, 0.35)",
+        "overlayBg": "rgba(15, 23, 42, 0.75)"
+      },
+      "typography": {
+        "textPrimary": "#f8fafc",
+        "textSecondary": "#94a3b8",
+        "muted": "#94a3b8",
+        "btnText": "#ffffff"
+      },
+      "brand": {
+        "accent": "#2563eb",
+        "accentHover": "#1d4ed8",
+        "accentSubtle": "rgba(37, 99, 235, 0.15)",
+        "accentBorder": "rgba(37, 99, 235, 0.35)"
+      },
+      "status": {
+        "online": "#10b981",
+        "offline": "#ef4444",
+        "warning": "#f59e0b",
+        "info": "#0ea5e9",
+        "purple": "#a855f7",
+        "lime": "#84cc16",
+        "telegram": "#3b82f6"
+      },
+      "traffic": {
+        "download": "#38bdf8",
+        "downloadBg": "rgba(56, 189, 248, 0.12)",
+        "upload": "#c084fc",
+        "uploadBg": "rgba(192, 132, 252, 0.12)"
+      }
+    },
+    "light": {
+      "surfaces": {
+        "background": "#f1f5f9",
+        "card": "#ffffff",
+        "header": "#ffffff",
+        "headerScrolled": "#f8fafc",
+        "border": "#e2e8f0",
+        "borderHover": "#cbd5e1",
+        "surfaceAlt": "#f8fafc",
+        "surfaceOverlay": "rgba(15, 23, 42, 0.04)",
+        "overlayBg": "rgba(15, 23, 42, 0.55)"
+      },
+      "typography": {
+        "textPrimary": "#0f172a",
+        "textSecondary": "#475569",
+        "muted": "#64748b",
+        "btnText": "#ffffff"
+      },
+      "brand": {
+        "accent": "#2563eb",
+        "accentHover": "#1d4ed8",
+        "accentSubtle": "#dbeafe",
+        "accentBorder": "#bfdbfe"
+      },
+      "status": {
+        "online": "#059669",
+        "offline": "#dc2626",
+        "warning": "#d97706",
+        "info": "#0284c7",
+        "purple": "#7e22ce",
+        "lime": "#65a30d",
+        "telegram": "#2563eb"
+      },
+      "traffic": {
+        "download": "#0369a1",
+        "downloadBg": "#e0f2fe",
+        "upload": "#7e22ce",
+        "uploadBg": "#f3e8ff"
+      }
+    }
+  }
+}

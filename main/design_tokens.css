@@ -1,0 +1,278 @@
+/**
+ * ESP32-C5 Advanced Router - Design Tokens
+ * 
+ * Clean, solid, anti-AI-slop design system.
+ * Zero multi-stop neon gradients, zero halo glows.
+ * High contrast, eye-friendly, solid surfaces for Light and Dark themes.
+ */
+
+:root {
+  /* Common System Radius & Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  --transition-fast: 0.18s ease;
+  --transition-normal: 0.25s ease;
+}
+
+/* ==========================================================================
+   1. DARK THEME (Default) - Calm Slate & Charcoal
+   Aliases: :root, [data-theme='dark'], [data-theme='sunset']
+   ========================================================================== */
+:root,
+:root[data-theme='dark'],
+:root[data-theme='sunset'] {
+  /* Surfaces & Backgrounds */
+  --bg-main: #0f172a;               /* Deep Slate-900: comfortable, zero glare */
+  --glass-bg: #1e293b;              /* Solid Slate-800: clean elevated card surface */
+  --glass-header: #1e293b;          /* Solid Slate-800: sticky header */
+  --glass-header-scrolled: #0f172a; /* Scrolled header surface */
+  --glass-border: #334155;          /* Solid Slate-700: clear boundary */
+  --glass-border-hover: #475569;    /* Solid Slate-600 */
+  --surface-alt: #0b1120;           /* Deep inset background for meters/code/inputs */
+  --surface-overlay: rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(15, 23, 42, 0.75);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --bg-subtle: rgba(255, 255, 255, 0.04);
+  
+  /* Typography */
+  --text: #f8fafc;                  /* Slate-50: crisp readable text */
+  --text-secondary: #94a3b8;        /* Slate-400: clear secondary metadata */
+  --muted: #94a3b8;                 /* Slate-400: labels, units, hints */
+  --btn-text: #ffffff;
+  --btn-text-dark: #0f172a;
+  
+  /* Primary Accent (Solid Engineered Blue) */
+  --accent: #2563eb;                /* Blue-600: purposeful, professional */
+  --accent-hover: #1d4ed8;          /* Blue-700 */
+  --accent-subtle: rgba(37, 99, 235, 0.15);
+  --accent-border: rgba(37, 99, 235, 0.35);
+  --accent-grad: #2563eb;           /* Maintained for variable compatibility (solid) */
+  --accent-shadow: rgba(37, 99, 235, 0.25);
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+  /* Status Colors */
+  --green: #10b981;                 /* Emerald-500: online, active, download */
+  --green-hover: #059669;
+  --green-subtle: rgba(16, 185, 129, 0.14);
+  --green-border: rgba(16, 185, 129, 0.35);
+
+  --red: #ef4444;                   /* Red-500: offline, blocked, danger */
+  --red-hover: #dc2626;
+  --red-subtle: rgba(239, 68, 68, 0.14);
+  --red-border: rgba(239, 68, 68, 0.35);
+
+  --amber: #f59e0b;                 /* Amber-500: warning, quota alert */
+  --amber-hover: #d97706;
+  --amber-subtle: rgba(245, 158, 11, 0.14);
+  --amber-border: rgba(245, 158, 11, 0.35);
+  --amber-color: #fbbf24;
+
+  --cyan: #0ea5e9;                  /* Sky-500: IP address, informational */
+  --cyan-subtle: rgba(14, 165, 233, 0.14);
+  --cyan-color: #38bdf8;
+  --cyan-border: rgba(14, 165, 233, 0.35);
+
+  --purple: #a855f7;                /* Purple-500 */
+  --purple-subtle: rgba(168, 85, 247, 0.16);
+  --purple-color: #d8b4fe;
+  --purple-border: rgba(168, 85, 247, 0.38);
+
+  --lime: #84cc16;                  /* Lime-500: RSSI strong signal */
+  --lime-subtle: rgba(132, 204, 22, 0.14);
+  --lime-border: rgba(132, 204, 22, 0.35);
+
+  --blue: #3b82f6;                  /* Blue-500: Telegram user badges */
+  --tg-blue: #38bdf8;
+  --tg-subtle: rgba(56, 189, 248, 0.12);
+  --tg-border: rgba(56, 189, 248, 0.35);
+
+  /* Semantic UI Badges & Chips */
+  --badge-gaming-bg: rgba(245, 158, 11, 0.16);
+  --badge-gaming-border: #f59e0b;
+  --badge-gaming-color: #fbbf24;
+
+  --flow-down-color: #38bdf8;       /* Sky-400 */
+  --flow-down-bg: rgba(56, 189, 248, 0.12);
+  --flow-down-border: rgba(56, 189, 248, 0.30);
+
+  --flow-up-color: #c084fc;         /* Purple-400 */
+  --flow-up-bg: rgba(192, 132, 252, 0.12);
+  --flow-up-border: rgba(192, 132, 252, 0.30);
+
+  /* Charts */
+  --chart-fill-down: rgba(16, 185, 129, 0.12);
+
+  /* Toasts */
+  --toast-success-bg: rgba(6, 78, 59, 0.94);
+  --toast-success-border: rgba(34, 197, 94, 0.6);
+  --toast-success-text: #dcfce7;
+
+  --toast-error-bg: rgba(153, 27, 27, 0.94);
+  --toast-error-border: rgba(239, 68, 68, 0.6);
+  --toast-error-text: #fee2e2;
+
+  --toast-warning-bg: rgba(146, 64, 14, 0.94);
+  --toast-warning-border: rgba(245, 158, 11, 0.6);
+  --toast-warning-text: #fef3c7;
+
+  --toast-info-bg: rgba(12, 74, 110, 0.94);
+  --toast-info-border: rgba(56, 189, 248, 0.6);
+  --toast-info-text: #e0f2fe;
+
+  /* Table Specific Tokens */
+  --tbl-card-bg: #1e293b;
+  --tbl-header-bg: #182234;
+  --tbl-header-color: #cbd5e1;
+  --tbl-header-border: #334155;
+  --tbl-row-border: #263349;
+  --tbl-row-hover: #243044;
+  --tbl-ip-color: #38bdf8;
+  --tbl-dl-color: #38bdf8;
+  --tbl-dl-bg: rgba(56, 189, 248, 0.12);
+  --tbl-dl-border: rgba(56, 189, 248, 0.30);
+  --tbl-ul-color: #c084fc;
+  --tbl-ul-bg: rgba(192, 132, 252, 0.12);
+  --tbl-ul-border: rgba(192, 132, 252, 0.30);
+  --tbl-tg-color: #93c5fd;
+  --tbl-tg-border: rgba(96, 165, 250, 0.35);
+  --tbl-track-bg: #334155;
+
+  /* Form Inputs & Controls */
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --input-focus-border: #2563eb;
+  --input-text: #f8fafc;
+}
+
+/* ==========================================================================
+   2. LIGHT THEME - Crisp Solid Slate & Off-White Paper
+   Aliases: [data-theme='light'], [data-theme='matrix']
+   ========================================================================== */
+:root[data-theme='light'],
+:root[data-theme='matrix'] {
+  /* Surfaces & Backgrounds */
+  --bg-main: #f1f5f9;               /* Slate-100: gentle, non-glaring off-white */
+  --glass-bg: #ffffff;              /* Solid Pure White: clear card surface */
+  --glass-header: #ffffff;          /* Solid Pure White: sticky header */
+  --glass-header-scrolled: #f8fafc; /* Scrolled header surface */
+  --glass-border: #e2e8f0;          /* Solid Slate-200: subtle border */
+  --glass-border-hover: #cbd5e1;    /* Solid Slate-300 */
+  --surface-alt: #f8fafc;           /* Slate-50: inset container */
+  --surface-overlay: rgba(15, 23, 42, 0.04);
+  --overlay-bg: rgba(15, 23, 42, 0.55);
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --bg-subtle: rgba(15, 23, 42, 0.04);
+
+  /* Typography */
+  --text: #0f172a;                  /* Slate-900: sharp maximum contrast */
+  --text-secondary: #475569;        /* Slate-600: high legibility metadata */
+  --muted: #64748b;                 /* Slate-500: readable labels */
+  --btn-text: #ffffff;
+  --btn-text-dark: #0f172a;
+
+  /* Primary Accent (Solid Engineered Blue) */
+  --accent: #2563eb;                /* Blue-600 */
+  --accent-hover: #1d4ed8;          /* Blue-700 */
+  --accent-subtle: #dbeafe;
+  --accent-border: #bfdbfe;
+  --accent-grad: #2563eb;           /* Solid blue */
+  --accent-shadow: rgba(37, 99, 235, 0.18);
+  --card-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 8px 32px rgba(15, 23, 42, 0.15);
+
+  /* Status Colors */
+  --green: #059669;                 /* Emerald-600: crisp contrast on white */
+  --green-hover: #047857;
+  --green-subtle: #d1fae5;
+  --green-border: #a7f3d0;
+
+  --red: #dc2626;                   /* Red-600 */
+  --red-hover: #b91c1c;
+  --red-subtle: #fee2e2;
+  --red-border: #fecaca;
+
+  --amber: #d97706;                 /* Amber-600 */
+  --amber-hover: #b45309;
+  --amber-subtle: #fef3c7;
+  --amber-border: #fde68a;
+  --amber-color: #b45309;
+
+  --cyan: #0284c7;                  /* Sky-600 */
+  --cyan-subtle: #e0f2fe;
+  --cyan-color: #0284c7;
+  --cyan-border: #bae6fd;
+
+  --purple: #7e22ce;                /* Purple-700 */
+  --purple-subtle: #f3e8ff;
+  --purple-color: #6b21a8;
+  --purple-border: #e9d5ff;
+
+  --lime: #65a30d;                  /* Lime-600 */
+  --lime-subtle: #ecfccb;
+  --lime-border: #d9f99d;
+
+  --blue: #2563eb;                  /* Blue-600 */
+  --tg-blue: #0284c7;
+  --tg-subtle: #e0f2fe;
+  --tg-border: #bae6fd;
+
+  /* Semantic UI Badges & Chips */
+  --badge-gaming-bg: #fef3c7;
+  --badge-gaming-border: #d97706;
+  --badge-gaming-color: #b45309;
+
+  --flow-down-color: #0369a1;       /* Sky-700 */
+  --flow-down-bg: #e0f2fe;
+  --flow-down-border: #bae6fd;
+
+  --flow-up-color: #7e22ce;         /* Purple-700 */
+  --flow-up-bg: #f3e8ff;
+  --flow-up-border: #e9d5ff;
+
+  /* Charts */
+  --chart-fill-down: rgba(5, 150, 105, 0.08);
+
+  /* Toasts */
+  --toast-success-bg: #d1fae5;
+  --toast-success-border: #86efac;
+  --toast-success-text: #065f46;
+
+  --toast-error-bg: #fee2e2;
+  --toast-error-border: #fca5a5;
+  --toast-error-text: #991b1b;
+
+  --toast-warning-bg: #fef3c7;
+  --toast-warning-border: #fcd34d;
+  --toast-warning-text: #92400e;
+
+  --toast-info-bg: #e0f2fe;
+  --toast-info-border: #7dd3fc;
+  --toast-info-text: #075985;
+
+  /* Table Specific Tokens */
+  --tbl-card-bg: #ffffff;
+  --tbl-header-bg: #f8fafc;
+  --tbl-header-color: #334155;
+  --tbl-header-border: #e2e8f0;
+  --tbl-row-border: #f1f5f9;
+  --tbl-row-hover: #f8fafc;
+  --tbl-ip-color: #0284c7;
+  --tbl-dl-color: #0369a1;
+  --tbl-dl-bg: #e0f2fe;
+  --tbl-dl-border: #bae6fd;
+  --tbl-ul-color: #7e22ce;
+  --tbl-ul-bg: #f3e8ff;
+  --tbl-ul-border: #e9d5ff;
+  --tbl-tg-color: #1d4ed8;
+  --tbl-tg-border: #bfdbfe;
+  --tbl-track-bg: #e2e8f0;
+
+  /* Form Inputs & Controls */
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-focus-border: #2563eb;
+  --input-text: #0f172a;
+}

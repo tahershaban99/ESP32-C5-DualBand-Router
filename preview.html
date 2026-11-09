@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-theme="sunset">
+<html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8,93 +8,293 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-:root[data-theme='sunset']{
-  --bg-gradient: radial-gradient(circle at 20% 20%, #1f1435 0%, #120f24 50%, #0a0b16 100%);
-  --glass-bg: rgba(28, 25, 48, 0.65);
-  --glass-header: rgba(35, 30, 60, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-hover: rgba(244, 63, 94, 0.4);
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --accent: #f43f5e;
-  --accent-hover: #fb7185;
-  --accent-grad: linear-gradient(135deg, #e11d48, #f97316);
-  --accent-shadow: rgba(225, 29, 72, 0.35);
-  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-  --green: #10b981;
-  --red: #ef4444;
-  --amber: #f59e0b;
-  --cyan: #06b6d4;
-  --badge-gaming-bg: rgba(6, 182, 212, 0.15);
-  --badge-gaming-border: rgba(6, 182, 212, 0.4);
-  --badge-gaming-color: #22d3ee;
-  --flow-down-color: #c084fc;
-  --flow-down-bg: rgba(192, 132, 252, 0.12);
-  --flow-down-border: rgba(192, 132, 252, 0.25);
-  --flow-up-color: #fb923c;
-  --flow-up-bg: rgba(251, 146, 60, 0.12);
-  --flow-up-border: rgba(251, 146, 60, 0.25);
+/* Bundled from main/design_tokens.css for ESP32 standalone flash storage */
+/**
+ * ESP32-C5 Advanced Router - Design Tokens
+ * 
+ * Clean, solid, anti-AI-slop design system.
+ * Zero multi-stop neon gradients, zero halo glows.
+ * High contrast, eye-friendly, solid surfaces for Light and Dark themes.
+ */
+
+:root {
+  /* Common System Radius & Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  --transition-fast: 0.18s ease;
+  --transition-normal: 0.25s ease;
+}
+
+/* ==========================================================================
+   1. DARK THEME (Default) - Calm Slate & Charcoal
+   Aliases: :root, [data-theme='dark'], [data-theme='sunset']
+   ========================================================================== */
+:root,
+:root[data-theme='dark'],
+:root[data-theme='sunset'] {
+  /* Surfaces & Backgrounds */
+  --bg-main: #0f172a;               /* Deep Slate-900: comfortable, zero glare */
+  --glass-bg: #1e293b;              /* Solid Slate-800: clean elevated card surface */
+  --glass-header: #1e293b;          /* Solid Slate-800: sticky header */
+  --glass-header-scrolled: #0f172a; /* Scrolled header surface */
+  --glass-border: #334155;          /* Solid Slate-700: clear boundary */
+  --glass-border-hover: #475569;    /* Solid Slate-600 */
+  --surface-alt: #0b1120;           /* Deep inset background for meters/code/inputs */
+  --surface-overlay: rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(15, 23, 42, 0.75);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --bg-subtle: rgba(255, 255, 255, 0.04);
+  
+  /* Typography */
+  --text: #f8fafc;                  /* Slate-50: crisp readable text */
+  --text-secondary: #94a3b8;        /* Slate-400: clear secondary metadata */
+  --muted: #94a3b8;                 /* Slate-400: labels, units, hints */
+  --btn-text: #ffffff;
+  --btn-text-dark: #0f172a;
+  
+  /* Primary Accent (Solid Engineered Blue) */
+  --accent: #2563eb;                /* Blue-600: purposeful, professional */
+  --accent-hover: #1d4ed8;          /* Blue-700 */
+  --accent-subtle: rgba(37, 99, 235, 0.15);
+  --accent-border: rgba(37, 99, 235, 0.35);
+  --accent-grad: #2563eb;           /* Maintained for variable compatibility (solid) */
+  --accent-shadow: rgba(37, 99, 235, 0.25);
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+  /* Status Colors */
+  --green: #10b981;                 /* Emerald-500: online, active, download */
+  --green-hover: #059669;
+  --green-subtle: rgba(16, 185, 129, 0.14);
+  --green-border: rgba(16, 185, 129, 0.35);
+
+  --red: #ef4444;                   /* Red-500: offline, blocked, danger */
+  --red-hover: #dc2626;
+  --red-subtle: rgba(239, 68, 68, 0.14);
+  --red-border: rgba(239, 68, 68, 0.35);
+
+  --amber: #f59e0b;                 /* Amber-500: warning, quota alert */
+  --amber-hover: #d97706;
+  --amber-subtle: rgba(245, 158, 11, 0.14);
+  --amber-border: rgba(245, 158, 11, 0.35);
+  --amber-color: #fbbf24;
+
+  --cyan: #0ea5e9;                  /* Sky-500: IP address, informational */
+  --cyan-subtle: rgba(14, 165, 233, 0.14);
+  --cyan-color: #38bdf8;
+  --cyan-border: rgba(14, 165, 233, 0.35);
+
+  --purple: #a855f7;                /* Purple-500 */
+  --purple-subtle: rgba(168, 85, 247, 0.16);
+  --purple-color: #d8b4fe;
+  --purple-border: rgba(168, 85, 247, 0.38);
+
+  --lime: #84cc16;                  /* Lime-500: RSSI strong signal */
+  --lime-subtle: rgba(132, 204, 22, 0.14);
+  --lime-border: rgba(132, 204, 22, 0.35);
+
+  --blue: #3b82f6;                  /* Blue-500: Telegram user badges */
+  --tg-blue: #38bdf8;
+  --tg-subtle: rgba(56, 189, 248, 0.12);
+  --tg-border: rgba(56, 189, 248, 0.35);
+
+  /* Semantic UI Badges & Chips */
+  --badge-gaming-bg: rgba(245, 158, 11, 0.16);
+  --badge-gaming-border: #f59e0b;
+  --badge-gaming-color: #fbbf24;
+
+  --flow-down-color: #38bdf8;       /* Sky-400 */
+  --flow-down-bg: rgba(56, 189, 248, 0.12);
+  --flow-down-border: rgba(56, 189, 248, 0.30);
+
+  --flow-up-color: #c084fc;         /* Purple-400 */
+  --flow-up-bg: rgba(192, 132, 252, 0.12);
+  --flow-up-border: rgba(192, 132, 252, 0.30);
+
+  /* Charts */
+  --chart-fill-down: rgba(16, 185, 129, 0.12);
+
+  /* Toasts */
+  --toast-success-bg: rgba(6, 78, 59, 0.94);
+  --toast-success-border: rgba(34, 197, 94, 0.6);
+  --toast-success-text: #dcfce7;
+
+  --toast-error-bg: rgba(153, 27, 27, 0.94);
+  --toast-error-border: rgba(239, 68, 68, 0.6);
+  --toast-error-text: #fee2e2;
+
+  --toast-warning-bg: rgba(146, 64, 14, 0.94);
+  --toast-warning-border: rgba(245, 158, 11, 0.6);
+  --toast-warning-text: #fef3c7;
+
+  --toast-info-bg: rgba(12, 74, 110, 0.94);
+  --toast-info-border: rgba(56, 189, 248, 0.6);
+  --toast-info-text: #e0f2fe;
+
+  /* Table Specific Tokens */
+  --tbl-card-bg: #1e293b;
+  --tbl-header-bg: #182234;
+  --tbl-header-color: #cbd5e1;
+  --tbl-header-border: #334155;
+  --tbl-row-border: #263349;
+  --tbl-row-hover: #243044;
   --tbl-ip-color: #38bdf8;
   --tbl-dl-color: #38bdf8;
   --tbl-dl-bg: rgba(56, 189, 248, 0.12);
-  --tbl-dl-border: rgba(56, 189, 248, 0.25);
+  --tbl-dl-border: rgba(56, 189, 248, 0.30);
   --tbl-ul-color: #c084fc;
   --tbl-ul-bg: rgba(192, 132, 252, 0.12);
-  --tbl-ul-border: rgba(192, 132, 252, 0.25);
+  --tbl-ul-border: rgba(192, 132, 252, 0.30);
   --tbl-tg-color: #93c5fd;
   --tbl-tg-border: rgba(96, 165, 250, 0.35);
-  --tbl-header-bg: rgba(30, 24, 52, 0.88);
-  --tbl-header-color: #cbd5e1;
-  --tbl-header-border: rgba(255, 255, 255, 0.1);
-  --tbl-track-bg: rgba(255, 255, 255, 0.1);
-  --tbl-card-bg: rgba(24, 21, 42, 0.96);
+  --tbl-track-bg: #334155;
+
+  /* Form Inputs & Controls */
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --input-focus-border: #2563eb;
+  --input-text: #f8fafc;
 }
-:root[data-theme='matrix']{
-  --bg-gradient: radial-gradient(circle at 30% 20%, #0d2217 0%, #0a1811 50%, #050d09 100%);
-  --glass-bg: rgba(13, 29, 21, 0.65);
-  --glass-header: rgba(16, 38, 27, 0.75);
-  --glass-border: rgba(0, 255, 157, 0.18);
-  --glass-border-hover: rgba(0, 255, 157, 0.45);
-  --text: #ecfdf5;
-  --muted: #6ee7b7;
-  --accent: #00ff9d;
-  --accent-hover: #34d399;
-  --accent-grad: linear-gradient(135deg, #059669, #00ff9d);
-  --accent-shadow: rgba(0, 255, 157, 0.25);
-  --card-shadow: 0 8px 32px 0 rgba(0, 255, 157, 0.08);
-  --green: #00ff9d;
-  --red: #f43f5e;
-  --amber: #fbbf24;
-  --cyan: #6ee7b7;
-  --badge-gaming-bg: rgba(0, 255, 157, 0.15);
-  --badge-gaming-border: rgba(0, 255, 157, 0.4);
-  --badge-gaming-color: #a7f3d0;
-  --flow-down-color: #00ff9d;
-  --flow-down-bg: rgba(0, 255, 157, 0.1);
-  --flow-down-border: rgba(0, 255, 157, 0.25);
-  --flow-up-color: #a3e635;
-  --flow-up-bg: rgba(163, 230, 53, 0.1);
-  --flow-up-border: rgba(163, 230, 53, 0.25);
-  --tbl-ip-color: #6ee7b7;
-  --tbl-dl-color: #00ff9d;
-  --tbl-dl-bg: rgba(0, 255, 157, 0.12);
-  --tbl-dl-border: rgba(0, 255, 157, 0.3);
-  --tbl-ul-color: #a3e635;
-  --tbl-ul-bg: rgba(163, 230, 53, 0.12);
-  --tbl-ul-border: rgba(163, 230, 53, 0.3);
-  --tbl-tg-color: #a7f3d0;
-  --tbl-tg-border: rgba(0, 255, 157, 0.35);
-  --tbl-header-bg: rgba(10, 28, 19, 0.92);
-  --tbl-header-color: #a7f3d0;
-  --tbl-header-border: rgba(0, 255, 157, 0.22);
-  --tbl-track-bg: rgba(0, 255, 157, 0.1);
-  --tbl-card-bg: rgba(9, 23, 17, 0.96);
+
+/* ==========================================================================
+   2. LIGHT THEME - Crisp Solid Slate & Off-White Paper
+   Aliases: [data-theme='light'], [data-theme='matrix']
+   ========================================================================== */
+:root[data-theme='light'],
+:root[data-theme='matrix'] {
+  /* Surfaces & Backgrounds */
+  --bg-main: #f1f5f9;               /* Slate-100: gentle, non-glaring off-white */
+  --glass-bg: #ffffff;              /* Solid Pure White: clear card surface */
+  --glass-header: #ffffff;          /* Solid Pure White: sticky header */
+  --glass-header-scrolled: #f8fafc; /* Scrolled header surface */
+  --glass-border: #e2e8f0;          /* Solid Slate-200: subtle border */
+  --glass-border-hover: #cbd5e1;    /* Solid Slate-300 */
+  --surface-alt: #f8fafc;           /* Slate-50: inset container */
+  --surface-overlay: rgba(15, 23, 42, 0.04);
+  --overlay-bg: rgba(15, 23, 42, 0.55);
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --bg-subtle: rgba(15, 23, 42, 0.04);
+
+  /* Typography */
+  --text: #0f172a;                  /* Slate-900: sharp maximum contrast */
+  --text-secondary: #475569;        /* Slate-600: high legibility metadata */
+  --muted: #64748b;                 /* Slate-500: readable labels */
+  --btn-text: #ffffff;
+  --btn-text-dark: #0f172a;
+
+  /* Primary Accent (Solid Engineered Blue) */
+  --accent: #2563eb;                /* Blue-600 */
+  --accent-hover: #1d4ed8;          /* Blue-700 */
+  --accent-subtle: #dbeafe;
+  --accent-border: #bfdbfe;
+  --accent-grad: #2563eb;           /* Solid blue */
+  --accent-shadow: rgba(37, 99, 235, 0.18);
+  --card-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 8px 32px rgba(15, 23, 42, 0.15);
+
+  /* Status Colors */
+  --green: #059669;                 /* Emerald-600: crisp contrast on white */
+  --green-hover: #047857;
+  --green-subtle: #d1fae5;
+  --green-border: #a7f3d0;
+
+  --red: #dc2626;                   /* Red-600 */
+  --red-hover: #b91c1c;
+  --red-subtle: #fee2e2;
+  --red-border: #fecaca;
+
+  --amber: #d97706;                 /* Amber-600 */
+  --amber-hover: #b45309;
+  --amber-subtle: #fef3c7;
+  --amber-border: #fde68a;
+  --amber-color: #b45309;
+
+  --cyan: #0284c7;                  /* Sky-600 */
+  --cyan-subtle: #e0f2fe;
+  --cyan-color: #0284c7;
+  --cyan-border: #bae6fd;
+
+  --purple: #7e22ce;                /* Purple-700 */
+  --purple-subtle: #f3e8ff;
+  --purple-color: #6b21a8;
+  --purple-border: #e9d5ff;
+
+  --lime: #65a30d;                  /* Lime-600 */
+  --lime-subtle: #ecfccb;
+  --lime-border: #d9f99d;
+
+  --blue: #2563eb;                  /* Blue-600 */
+  --tg-blue: #0284c7;
+  --tg-subtle: #e0f2fe;
+  --tg-border: #bae6fd;
+
+  /* Semantic UI Badges & Chips */
+  --badge-gaming-bg: #fef3c7;
+  --badge-gaming-border: #d97706;
+  --badge-gaming-color: #b45309;
+
+  --flow-down-color: #0369a1;       /* Sky-700 */
+  --flow-down-bg: #e0f2fe;
+  --flow-down-border: #bae6fd;
+
+  --flow-up-color: #7e22ce;         /* Purple-700 */
+  --flow-up-bg: #f3e8ff;
+  --flow-up-border: #e9d5ff;
+
+  /* Charts */
+  --chart-fill-down: rgba(5, 150, 105, 0.08);
+
+  /* Toasts */
+  --toast-success-bg: #d1fae5;
+  --toast-success-border: #86efac;
+  --toast-success-text: #065f46;
+
+  --toast-error-bg: #fee2e2;
+  --toast-error-border: #fca5a5;
+  --toast-error-text: #991b1b;
+
+  --toast-warning-bg: #fef3c7;
+  --toast-warning-border: #fcd34d;
+  --toast-warning-text: #92400e;
+
+  --toast-info-bg: #e0f2fe;
+  --toast-info-border: #7dd3fc;
+  --toast-info-text: #075985;
+
+  /* Table Specific Tokens */
+  --tbl-card-bg: #ffffff;
+  --tbl-header-bg: #f8fafc;
+  --tbl-header-color: #334155;
+  --tbl-header-border: #e2e8f0;
+  --tbl-row-border: #f1f5f9;
+  --tbl-row-hover: #f8fafc;
+  --tbl-ip-color: #0284c7;
+  --tbl-dl-color: #0369a1;
+  --tbl-dl-bg: #e0f2fe;
+  --tbl-dl-border: #bae6fd;
+  --tbl-ul-color: #7e22ce;
+  --tbl-ul-bg: #f3e8ff;
+  --tbl-ul-border: #e9d5ff;
+  --tbl-tg-color: #1d4ed8;
+  --tbl-tg-border: #bfdbfe;
+  --tbl-track-bg: #e2e8f0;
+
+  /* Form Inputs & Controls */
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --input-focus-border: #2563eb;
+  --input-text: #0f172a;
 }
+
+</style>
+<style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   font-family:'Cairo','Tajawal',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  background:var(--bg-gradient);
+  background:var(--bg-main);
   background-attachment:fixed;
   color:var(--text);
   padding:14px;
@@ -122,7 +322,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--surface-overlay);
   border: 1px solid var(--glass-border);
   border-radius: 24px;
   padding: 3px 6px;
@@ -131,8 +331,8 @@ body {
   user-select: none;
 }
 .zoom-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
   color: var(--text);
   border-radius: 50%;
   width: 22px;
@@ -147,9 +347,9 @@ body {
   padding: 0;
 }
 .zoom-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--glass-border);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text);
   transform: scale(1.1);
 }
 .zoom-value {
@@ -164,7 +364,7 @@ body {
   letter-spacing: 0.5px;
 }
 .zoom-value:hover {
-  color: #fff;
+  color: var(--text);
   text-decoration: underline;
 }
 
@@ -174,13 +374,9 @@ body {
   z-index: 1000;
   padding-top: 6px;
   padding-bottom: 4px;
-  background: linear-gradient(180deg, rgba(15, 11, 26, 0.96) 0%, rgba(15, 11, 26, 0.90) 85%, rgba(15, 11, 26, 0) 100%);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: var(--bg-main);
+  border-bottom: 1px solid var(--glass-border);
   margin-bottom: 12px;
-}
-[data-theme='matrix'] .sticky-top-section {
-  background: linear-gradient(180deg, rgba(6, 17, 12, 0.96) 0%, rgba(6, 17, 12, 0.90) 85%, rgba(6, 17, 12, 0) 100%);
 }
 
 .header{
@@ -195,26 +391,21 @@ body {
   margin-bottom: 14px;
   gap: 12px;
   background: var(--glass-header);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--glass-border);
   border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--card-shadow);
   transition: padding 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .header.scrolled{
   padding: 8px 18px;
-  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.7);
-  background: rgba(22, 17, 40, 0.94);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-[data-theme='matrix'] .header.scrolled{
-  background: rgba(8, 22, 16, 0.94);
+  box-shadow: var(--card-shadow);
+  background: var(--glass-header-scrolled);
+  border-color: var(--glass-border);
 }
 .header h1{font-size:1.35rem;display:flex;align-items:center;gap:10px;font-weight:700}
 .header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .theme-switcher{
-  display:inline-flex;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);
+  display:inline-flex;background:var(--surface-alt);border:1px solid var(--glass-border);
   border-radius:30px;padding:3px;gap:3px;
 }
 .theme-btn{
@@ -223,34 +414,34 @@ body {
   transition:all .2s;
 }
 .theme-btn.active{
-  background:var(--accent-grad);color:#fff;box-shadow:0 2px 10px var(--accent-shadow);
+  background:var(--accent);color:var(--btn-text);box-shadow:0 2px 8px var(--accent-shadow);
 }
 .wan-badge{
   display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:30px;
-  font-size:0.85rem;font-weight:700;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);
+  font-size:0.85rem;font-weight:700;background:var(--surface-alt);border:1px solid var(--glass-border);color:var(--text);
 }
 .pulse{width:9px;height:9px;border-radius:50%;display:inline-block}
-.pulse.online{background:var(--green);box-shadow:0 0 10px var(--green)}
-.pulse.offline{background:var(--red);box-shadow:0 0 10px var(--red)}
+.pulse.online{background:var(--green)}
+.pulse.offline{background:var(--red)}
 
 .auth-btn{
   display:inline-flex;align-items:center;gap:7px;padding:6px 14px;
   border-radius:30px;font-size:0.82rem;font-weight:700;
-  background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);
-  color:#f1f5f9;cursor:pointer;transition:all .2s ease;
+  background:var(--surface-alt);border:1px solid var(--glass-border);
+  color:var(--text);cursor:pointer;transition:all .2s ease;
 }
 .auth-btn:hover{
-  background:rgba(255,255,255,0.12);border-color:var(--accent);
+  background:var(--glass-bg);border-color:var(--accent);
   transform:translateY(-1px);
 }
 .auth-btn.admin-active{
-  background:linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(6, 182, 212, 0.22));
-  border:1px solid rgba(16, 185, 129, 0.6);
-  color:#6ee7b7;box-shadow:0 2px 12px rgba(16, 185, 129, 0.25);
+  background:var(--green-subtle);
+  border:1px solid var(--green);
+  color:var(--green);box-shadow:0 2px 8px var(--green-subtle);
 }
 .auth-btn.admin-active:hover{
-  background:linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(6, 182, 212, 0.35));
-  border-color:#10b981;
+  background:var(--green);
+  color:var(--btn-text);
 }
 
 
@@ -306,7 +497,7 @@ body {
   width: 100%;
   padding: 10px 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-alt);
   border: 1px solid var(--glass-border);
   color: var(--muted);
   font-size: 0.86rem;
@@ -319,17 +510,17 @@ body {
 }
 
 .sidebar-tabs .tab-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-border);
   color: var(--text);
   border-color: var(--accent);
   transform: translateX(-4px);
 }
 
 .sidebar-tabs .tab-btn.active {
-  background: var(--accent-grad);
-  color: #fff;
+  background: var(--accent);
+  color: var(--btn-text);
   border-color: transparent;
-  box-shadow: 0 4px 16px var(--accent-shadow);
+  box-shadow: 0 2px 8px var(--accent-shadow);
   transform: translateX(-2px);
 }
 
@@ -405,14 +596,14 @@ body {
 }
 .tab-btn{
   flex:1 1 0;min-width:max-content;justify-content:center;text-align:center;
-  background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);color:var(--muted);
+  background:var(--surface-alt);border:1px solid var(--glass-border);color:var(--muted);
   padding:10px 16px;border-radius:12px;font-size:0.88rem;font-weight:700;cursor:pointer;
   transition:all .2s;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;
 }
-.tab-btn:hover{color:var(--text);border-color:var(--accent)}
+.tab-btn:hover{color:var(--text);background:var(--glass-border);border-color:var(--accent)}
 .tab-btn.active{
-  background:var(--accent-grad);color:#fff;border-color:transparent;
-  box-shadow:0 4px 16px var(--accent-shadow);
+  background:var(--accent);color:var(--btn-text);border-color:transparent;
+  box-shadow:0 2px 8px var(--accent-shadow);
 }
 .tab-content{display:none}
 .tab-content.active{display:block}
@@ -442,7 +633,7 @@ body {
 .metric-value{
   font-size: 1.15rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -474,15 +665,15 @@ body {
 .graph-title{font-size:0.95rem;font-weight:700;display:flex;align-items:center;gap:6px}
 .graph-legend{display:flex;gap:12px;font-size:0.8rem;font-weight:600}
 .legend-dot{width:10px;height:10px;border-radius:3px;display:inline-block;margin-left:4px}
-canvas{width:100%!important;height:130px!important;border-radius:8px;background:rgba(0,0,0,0.25)}
+canvas{width:100%!important;height:130px!important;border-radius:8px;background:var(--surface-alt)}
 .card-section{padding:18px 20px;margin-bottom:14px}
-.card-section h2{font-size:1.15rem;font-weight:700;color:#fff;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.card-section h2{font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px}
 .card-section p.note{font-size:0.82rem;color:var(--muted);margin-bottom:14px;line-height:1.5}
 .view-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px}
 .cards-view{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
 .table-view{display:none;overflow-x:auto}
 .table-view.glass{
-  background: var(--tbl-card-bg, rgba(9, 23, 17, 0.96)) !important;
+  background: var(--tbl-card-bg) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   contain: paint layout style;
@@ -491,27 +682,27 @@ canvas{width:100%!important;height:130px!important;border-radius:8px;background:
   .cards-view{grid-template-columns:1fr!important}
 }
 .dev-card{padding:16px;display:flex;flex-direction:column;gap:12px}
-.dev-card.blocked{border-color:rgba(239,68,68,0.5);background:rgba(40,15,20,0.6)}
-.dev-card.quota-exceeded{border-color:var(--red);box-shadow:0 0 16px rgba(239,68,68,0.3)}
-.dev-card.gaming{border-color:var(--badge-gaming-border);box-shadow:0 0 16px var(--badge-gaming-border)}
+.dev-card.blocked{border-color:var(--red-border);background:var(--red-subtle)}
+.dev-card.quota-exceeded{border-color:var(--red)}
+.dev-card.gaming{border-color:var(--badge-gaming-border)}
 .dev-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.dev-title{font-size:1.05rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
+.dev-title{font-size:1.05rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
 .dev-sub{font-size:0.78rem;color:var(--muted);font-family:monospace;direction:ltr;text-align:right}
 .badge{font-size:0.75rem;padding:3px 10px;border-radius:20px;font-weight:700}
-.badge-online{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.3)}
-.badge-offline{background:rgba(148,163,184,0.15);color:var(--muted);border:1px solid rgba(148,163,184,0.3)}
-.badge-blocked{background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4)}
+.badge-online{background:var(--green-subtle);color:var(--green);border:1px solid var(--green-border)}
+.badge-offline{background:var(--bg-subtle);color:var(--muted);border:1px solid var(--border-subtle)}
+.badge-blocked{background:var(--red-subtle);color:var(--red);border:1px solid var(--red-border)}
 .badge-gaming{background:var(--badge-gaming-bg);color:var(--badge-gaming-color);border:1px solid var(--badge-gaming-border)}
 .stats-box{
   display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;border-radius:10px;
-  background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);text-align:center;
+  background:var(--surface-alt);border:1px solid var(--glass-border);text-align:center;
 }
 .stats-box .lbl{font-size:0.72rem;color:var(--muted)}
-.stats-box .val{font-size:0.95rem;font-weight:700;color:#fff;margin-top:2px}
-.progress-bg{height:6px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;margin-top:4px}
-.progress-fill{height:100%;border-radius:4px;background:var(--accent-grad);transition:width .4s}
+.stats-box .val{font-size:0.95rem;font-weight:700;color:var(--text);margin-top:2px}
+.progress-bg{height:6px;background:var(--tbl-track-bg);border-radius:4px;overflow:hidden;margin-top:4px}
+.progress-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s}
 .quota-box{
-  font-size:0.8rem;color:var(--muted);background:rgba(0,0,0,0.2);padding:8px 12px;
+  font-size:0.8rem;color:var(--muted);background:var(--surface-alt);padding:8px 12px;
   border-radius:8px;border:1px solid var(--glass-border);
 }
 .btn-row{display:flex;gap:6px;flex-wrap:wrap}
@@ -521,29 +712,23 @@ button.action-btn{
   justify-content:center;gap:4px;
 }
 .btn-gaming{background:var(--badge-gaming-bg);color:var(--badge-gaming-color);border:1px solid var(--badge-gaming-border);transition:all .2s ease}
-.btn-gaming:hover{background:rgba(6,182,212,0.3);transform:translateY(-1px)}
+.btn-gaming:hover{background:var(--amber-subtle);transform:translateY(-1px)}
 .btn-gaming-active, .btn-gaming.active{
-  background:linear-gradient(135deg, #f59e0b, #d97706) !important;
-  color:#fff !important;
-  border:1px solid #fbbf24 !important;
-  box-shadow:0 0 12px rgba(245, 158, 11, 0.7), inset 0 0 4px rgba(255,255,255,0.4) !important;
+  background:var(--amber) !important;
+  color:var(--btn-text) !important;
+  border:1px solid var(--amber-hover) !important;
+  box-shadow:0 2px 8px var(--amber-subtle) !important;
   font-weight:800 !important;
-  animation:vipGlow 2s infinite ease-in-out;
 }
 .btn-gaming-active:hover, .btn-gaming.active:hover{
-  background:linear-gradient(135deg, #fbbf24, #b45309) !important;
-  box-shadow:0 0 16px rgba(245, 158, 11, 0.95) !important;
+  background:var(--amber-hover) !important;
 }
-@keyframes vipGlow{
-  0%, 100%{box-shadow:0 0 8px rgba(245, 158, 11, 0.5)}
-  50%{box-shadow:0 0 16px rgba(245, 158, 11, 0.9)}
-}
-.btn-block{background:rgba(239,68,68,0.2);color:var(--red);border:1px solid rgba(239,68,68,0.4);transition:all .2s ease}
-.btn-block:hover{background:rgba(239,68,68,0.35);color:#fff;transform:translateY(-1px)}
-.btn-unblock{background:rgba(16,185,129,0.25);color:var(--green);border:1px solid rgba(16,185,129,0.5);font-weight:800;transition:all .2s ease}
-.btn-unblock:hover{background:rgba(16,185,129,0.4);color:#fff;box-shadow:0 0 10px rgba(16,185,129,0.5);transform:translateY(-1px)}
-.btn-reset{background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid rgba(245,158,11,0.3)}
-.btn-delete{background:rgba(239,68,68,0.15);color:#fca5a5;border:1px solid rgba(239,68,68,0.25)}
+.btn-block{background:var(--red-subtle);color:var(--red);border:1px solid var(--red-border);transition:all .2s ease}
+.btn-block:hover{background:var(--red);color:var(--btn-text);transform:translateY(-1px)}
+.btn-unblock{background:var(--green-subtle);color:var(--green);border:1px solid var(--green-border);font-weight:800;transition:all .2s ease}
+.btn-unblock:hover{background:var(--green);color:var(--btn-text);transform:translateY(-1px)}
+.btn-reset{background:var(--amber-subtle);color:var(--amber);border:1px solid var(--amber-border)}
+.btn-delete{background:var(--red-subtle);color:var(--red);border:1px solid var(--red-border)}
 
 /* Telegram Two-Column Dashboard & Live Chat Simulator */
 .tg-dashboard-grid{
@@ -562,16 +747,16 @@ button.action-btn{
   height: 560px;
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(15, 23, 42, 0.65);
+  background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--card-shadow);
 }
 .tg-chat-header{
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 18px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--surface-alt);
   border-bottom: 1px solid var(--glass-border);
 }
 .tg-chat-status{
@@ -587,12 +772,6 @@ button.action-btn{
   height: 8px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulseDot 2s infinite ease-in-out;
-}
-@keyframes pulseDot{
-  0%, 100%{ transform: scale(1); opacity: 1; }
-  50%{ transform: scale(1.3); opacity: 0.6; }
 }
 .tg-chat-messages{
   flex: 1;
@@ -602,7 +781,7 @@ button.action-btn{
   flex-direction: column;
   gap: 12px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
+  scrollbar-color: var(--glass-border) transparent;
 }
 .tg-bubble{
   max-width: 90%;
@@ -610,30 +789,30 @@ button.action-btn{
   border-radius: 14px;
   font-size: 0.84rem;
   line-height: 1.5;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  box-shadow: var(--card-shadow);
   position: relative;
   word-break: break-word;
 }
 .tg-bubble-bot{
   align-self: flex-start;
-  background: rgba(30, 41, 59, 0.85);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   color: var(--text);
   border-top-right-radius: 4px;
 }
 .tg-bubble-user{
   align-self: flex-end;
-  background: var(--accent-grad);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--accent);
+  color: var(--btn-text);
+  border: 1px solid var(--accent-hover);
   border-top-left-radius: 4px;
 }
 .tg-bubble code{
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--input-bg);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: monospace;
-  color: #38bdf8;
+  color: var(--cyan);
 }
 .tg-bubble-time{
   font-size: 0.65rem;
@@ -648,7 +827,7 @@ button.action-btn{
   padding: 8px 14px;
   overflow-x: auto;
   white-space: nowrap;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--surface-alt);
   border-top: 1px solid var(--glass-border);
   scrollbar-width: none;
 }
@@ -659,8 +838,8 @@ button.action-btn{
   font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   color: var(--text);
   transition: all 0.2s ease;
   display: inline-flex;
@@ -668,16 +847,16 @@ button.action-btn{
   direction: ltr;
 }
 .tg-chip:hover{
-  background: rgba(56, 189, 248, 0.2);
-  border-color: #38bdf8;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--btn-text);
   transform: translateY(-1px);
 }
 .tg-chat-input-bar{
   display: flex;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--surface-alt);
   border-top: 1px solid var(--glass-border);
 }
 .tg-chat-input-bar input{
@@ -685,9 +864,9 @@ button.action-btn{
   padding: 8px 12px;
   font-size: 0.85rem;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
-  color: #fff;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--input-text);
 }
 .tg-chat-input-bar button{
   padding: 8px 18px;
@@ -696,37 +875,39 @@ button.action-btn{
   font-weight: 700;
 }
 .primary-btn{
-  background:var(--accent-grad);color:#fff;border:none;padding:11px 18px;border-radius:10px;
-  font-weight:700;cursor:pointer;box-shadow:0 3px 12px var(--accent-shadow);transition:all .2s;
+  background:var(--accent);color:var(--btn-text);border:none;padding:11px 18px;border-radius:10px;
+  font-weight:700;cursor:pointer;box-shadow:0 2px 8px var(--accent-shadow);transition:all .2s;
   display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:0.92rem;
 }
-.primary-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.primary-btn:hover{background:var(--accent-hover);transform:translateY(-1px)}
 .danger-btn{
-  background:linear-gradient(135deg,#b91c1c,#ef4444);color:#fff;border:none;padding:11px 18px;
-  border-radius:10px;font-weight:700;cursor:pointer;transition:all .2s;font-size:0.92rem;
+  background:var(--red);color:var(--btn-text);border:none;padding:11px 18px;
+  border-radius:10px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px var(--red-subtle);transition:all .2s;font-size:0.92rem;
 }
+.danger-btn:hover{background:var(--red-hover);transform:translateY(-1px)}
 table{width:100%;border-collapse:collapse;table-layout:auto}
-th,td{padding:8px 6px;border-bottom:1px solid var(--glass-border);text-align:center;font-size:12px}
-th{color:var(--muted);background:rgba(0,0,0,0.3);font-weight:700}
+th,td{padding:8px 6px;text-align:center;font-size:12px}
+th{color:var(--tbl-header-color);background:var(--tbl-header-bg);border-bottom:1px solid var(--tbl-header-border);font-weight:700}
+td{color:var(--text);border-bottom:1px solid var(--tbl-row-border)}
 input,select{
-  width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--glass-border);
-  background:rgba(0,0,0,0.3);color:var(--text);font-size:14px;outline:none;
+  width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--input-border);
+  background:var(--input-bg);color:var(--input-text);font-size:14px;outline:none;
 }
-input:focus,select:focus{border-color:var(--accent)}
+input:focus,select:focus{border-color:var(--input-focus-border)}
 .form-group{margin-bottom:12px}
 .form-group label{font-size:0.84rem;color:var(--muted);font-weight:600;display:block;margin-bottom:4px}
 .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:600px){.form-row-2{grid-template-columns:1fr}}
-.checkbox-label{display:inline-flex;align-items:center;gap:8px;font-size:0.86rem;font-weight:600;cursor:pointer}
+.checkbox-label{display:inline-flex;align-items:center;gap:8px;font-size:0.86rem;font-weight:600;cursor:pointer;color:var(--text)}
 .checkbox-label input[type='checkbox']{width:auto;cursor:pointer}
 .modal-backdrop{
-  position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);
+  position:fixed;top:0;left:0;right:0;bottom:0;background:var(--overlay-bg);
   display:none;align-items:center;justify-content:center;z-index:9999;padding:14px;
 }
 .modal-card{
-  width:100%;max-width:440px;background:var(--glass-bg);backdrop-filter:blur(25px);
+  width:100%;max-width:440px;background:var(--glass-bg);
   border:1px solid var(--glass-border);border-radius:16px;padding:24px;position:relative;
-  box-shadow:0 12px 48px rgba(0,0,0,0.6);
+  box-shadow:var(--shadow-modal);
 }
 .modal-close{
   position:absolute;top:16px;left:16px;background:none;border:none;color:var(--muted);
@@ -739,21 +920,21 @@ input:focus,select:focus{border-color:var(--accent)}
   padding:4px 6px;font-size:1rem;
 }
 .lockout-banner{
-  display:none;background:rgba(239,68,68,0.2);border:1px solid var(--red);color:#fecaca;
+  display:none;background:var(--red-subtle);border:1px solid var(--red);color:var(--red);
   padding:10px 14px;border-radius:8px;font-size:0.84rem;margin-bottom:12px;font-weight:700;
 }
 .info-box{
-  background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);padding:12px 14px;
+  background:var(--surface-alt);border:1px solid var(--glass-border);padding:12px 14px;
   border-radius:10px;font-size:0.84rem;line-height:1.6;color:var(--muted);
 }
-.quota-mini-bar{height:6px;width:100%;max-width:80px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;margin:3px auto 2px auto}
+.quota-mini-bar{height:6px;width:100%;max-width:80px;background:var(--tbl-track-bg);border-radius:4px;overflow:hidden;margin:3px auto 2px auto}
 .quota-mini-fill{height:100%;border-radius:4px;transition:width .3s}
-.dev-controls-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0;background:rgba(0,0,0,0.2);padding:8px;border-radius:8px;border:1px solid var(--glass-border)}
+.dev-controls-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0;background:var(--surface-alt);padding:8px;border-radius:8px;border:1px solid var(--glass-border)}
 .dev-controls-grid label{font-size:0.72rem;color:var(--muted);display:block;margin-bottom:2px}
 .dev-controls-grid input{padding:4px 6px;font-size:0.8rem;text-align:center}
 .ota-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
 @media(max-width:650px){.ota-grid{grid-template-columns:1fr}}
-.ota-box{background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);padding:14px;border-radius:12px}
+.ota-box{background:var(--surface-alt);border:1px solid var(--glass-border);padding:14px;border-radius:12px}
 
 /* MOBILE & RESPONSIVE FLEXIBLE ENHANCEMENTS (< 768px) */
 @media(max-width: 768px) {
@@ -835,7 +1016,7 @@ input:focus,select:focus{border-color:var(--accent)}
       padding: 12px 14px;
       border-radius: 10px;
       border: 1px solid var(--glass-border);
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--bg-subtle);
       color: var(--text);
       font-size: 0.88rem;
       font-weight: 600;
@@ -845,14 +1026,14 @@ input:focus,select:focus{border-color:var(--accent)}
     }
     .perf-preset-btn:hover {
       border-color: var(--green);
-      background: rgba(16, 185, 129, 0.08);
-      color: #fff;
+      background: var(--green-subtle);
+      color: var(--btn-text);
     }
     .perf-preset-btn.active {
       border: 1.5px solid var(--green) !important;
-      background: rgba(16, 185, 129, 0.16) !important;
-      color: #fff !important;
-      box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
+      background: var(--green-subtle) !important;
+      color: var(--btn-text) !important;
+      box-shadow: 0 0 12px var(--green-border);
       font-weight: 700;
     }
 
@@ -865,7 +1046,7 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   margin: 0 !important;
   padding: 0 !important;
   cursor: pointer;
-  accent-color: #10b981;
+  accent-color: var(--green);
   flex-shrink: 0;
 }
 
@@ -921,8 +1102,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   gap: 8px;
   padding: 4px 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
   transition: all 0.2s ease;
 }
 
@@ -930,7 +1111,7 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: #fff;
+  color: var(--text);
   font-weight: 700;
   font-size: 0.86rem;
   padding: 2px 6px;
@@ -940,19 +1121,19 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   font-family: inherit;
 }
 .dev-name-input:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.25);
+  border-color: var(--glass-border);
+  background: var(--surface-alt);
 }
 .dev-name-input:focus {
   border-color: var(--accent);
-  background: rgba(0, 0, 0, 0.5);
-  box-shadow: 0 0 10px var(--accent-shadow);
+  background: var(--surface-alt);
+  box-shadow: 0 0 0 2px var(--accent-shadow);
 }
 .dev-name-input-card {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: #fff;
+  color: var(--text);
   font-weight: 800;
   font-size: 0.95rem;
   padding: 2px 6px;
@@ -962,13 +1143,13 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   font-family: inherit;
 }
 .dev-name-input-card:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.25);
+  border-color: var(--glass-border);
+  background: var(--surface-alt);
 }
 .dev-name-input-card:focus {
   border-color: var(--accent);
-  background: rgba(0, 0, 0, 0.5);
-  box-shadow: 0 0 10px var(--accent-shadow);
+  background: var(--surface-alt);
+  box-shadow: 0 0 0 2px var(--accent-shadow);
 }
 .rename-icon {
   font-size: 0.72rem;
@@ -983,8 +1164,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
 }
 
 .device-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--surface-alt);
+  border-color: var(--glass-border-hover);
 }
 .dev-type-icon {
   font-size: 1.1rem;
@@ -994,8 +1175,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   flex-shrink: 0;
 }
 .dev-name-txt {
@@ -1024,8 +1205,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--cyan);
-  background: rgba(6, 182, 212, 0.08);
-  border: 1px solid rgba(6, 182, 212, 0.25);
+  background: var(--cyan-subtle);
+  border: 1px solid var(--cyan-border);
 }
 .mac-pill {
   display: flex;
@@ -1037,8 +1218,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   font-family: monospace;
   font-size: 0.72rem;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
 }
 
 .quota-stacked {
@@ -1056,10 +1237,11 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   gap: 6px;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   font-size: 0.78rem;
   font-weight: 700;
+  color: var(--text);
 }
 .quota-line-bottom {
   display: flex;
@@ -1068,8 +1250,8 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   gap: 6px;
   padding: 2px 6px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
 }
 
 /* =====================================================================
@@ -1092,11 +1274,11 @@ input[type="checkbox"], .checkbox-label input[type="checkbox"] {
   height: 6px;
 }
 .table-responsive-wrapper::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--tbl-track-bg);
   border-radius: 6px;
 }
 .table-responsive-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--glass-border);
   border-radius: 6px;
 }
 .table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
@@ -1124,12 +1306,12 @@ table.devices-table {
 .devices-table th:nth-child(9), .devices-table td:nth-child(9) { width: 17% !important; text-align: center; } /* الإجراءات */
 
 .devices-table thead th {
-  background-color: var(--tbl-header-bg, rgba(10, 28, 19, 0.92));
-  color: var(--tbl-header-color, #a7f3d0);
+  background-color: var(--tbl-header-bg);
+  color: var(--tbl-header-color);
   font-weight: 700;
   font-size: 0.82rem;
   padding: 10px 8px;
-  border-bottom: 1px solid var(--tbl-header-border, rgba(0, 255, 157, 0.22));
+  border-bottom: 1px solid var(--tbl-header-border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1139,12 +1321,12 @@ table.devices-table {
   height: 68px !important;
   max-height: 68px !important;
   min-height: 68px !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--tbl-row-border);
   transition: background-color 0.15s ease;
 }
 
 .devices-table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.035);
+  background-color: var(--tbl-row-hover);
 }
 
 .devices-table tbody td {
@@ -1165,15 +1347,13 @@ table.devices-table {
   flex-shrink: 0;
 }
 .status-dot.online {
-  background-color: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+  background-color: var(--green);
 }
 .status-dot.offline {
-  background-color: #64748b;
+  background-color: var(--muted);
 }
 .status-dot.blocked {
-  background-color: #ef4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.75);
+  background-color: var(--red);
 }
 
 /* Device Info */
@@ -1187,8 +1367,8 @@ table.devices-table {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1203,7 +1383,7 @@ table.devices-table {
   width: 100%;
   font-weight: 700;
   font-size: 0.88rem;
-  color: #fff;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1214,13 +1394,13 @@ table.devices-table {
   font-family: inherit;
 }
 .tbl-device-name-input:focus {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--surface-alt);
   border-radius: 4px;
   padding: 1px 4px;
 }
 .tbl-device-type {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1239,14 +1419,14 @@ table.devices-table {
   white-space: nowrap;
 }
 .tbl-time-pill.connected {
-  background: rgba(0, 255, 157, 0.12);
-  color: #00ff9d;
-  border: 1px solid rgba(0, 255, 157, 0.3);
+  background: var(--green-subtle);
+  color: var(--green);
+  border: 1px solid var(--green-border);
 }
 .tbl-time-pill.offline {
-  background: rgba(255, 255, 255, 0.05);
-  color: #94a3b8;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-alt);
+  color: var(--muted);
+  border: 1px solid var(--glass-border);
 }
 .tbl-time-icon {
   font-size: 0.75rem;
@@ -1262,14 +1442,14 @@ table.devices-table {
 .tbl-ip-addr {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--tbl-ip-color, #38bdf8);
+  color: var(--tbl-ip-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tbl-mac-addr {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--muted);
   opacity: 0.85;
   white-space: nowrap;
   overflow: hidden;
@@ -1297,14 +1477,14 @@ table.devices-table {
   font-variant-numeric: tabular-nums;
 }
 .tbl-speed-pill.down {
-  background: var(--tbl-dl-bg, rgba(56, 189, 248, 0.12));
-  color: var(--tbl-dl-color, #38bdf8);
-  border: 1px solid var(--tbl-dl-border, rgba(56, 189, 248, 0.25));
+  background: var(--tbl-dl-bg);
+  color: var(--tbl-dl-color);
+  border: 1px solid var(--tbl-dl-border);
 }
 .tbl-speed-pill.up {
-  background: var(--tbl-ul-bg, rgba(192, 132, 252, 0.12));
-  color: var(--tbl-ul-color, #c084fc);
-  border: 1px solid var(--tbl-ul-border, rgba(192, 132, 252, 0.25));
+  background: var(--tbl-ul-bg);
+  color: var(--tbl-ul-color);
+  border: 1px solid var(--tbl-ul-border);
 }
 .tbl-speed-val {
   direction: ltr;
@@ -1329,7 +1509,7 @@ table.devices-table {
 .tbl-progress-track {
   width: 100%;
   height: 5px;
-  background: var(--tbl-track-bg, rgba(0, 255, 157, 0.1));
+  background: var(--tbl-track-bg);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -1349,13 +1529,13 @@ table.devices-table {
 .tbl-limit-box {
   display: inline-flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   border-radius: 6px;
   padding: 1px 3px;
 }
-.tbl-limit-box.down { border-color: var(--tbl-dl-border, rgba(56, 189, 248, 0.35)); }
-.tbl-limit-box.up { border-color: var(--tbl-ul-border, rgba(192, 132, 252, 0.35)); }
+.tbl-limit-box.down { border-color: var(--tbl-dl-border); }
+.tbl-limit-box.up { border-color: var(--tbl-ul-border); }
 .tbl-limit-input {
   width: 38px;
   height: 22px;
@@ -1368,8 +1548,8 @@ table.devices-table {
   outline: none;
   font-family: inherit;
 }
-.tbl-limit-box.down .tbl-limit-input { color: var(--tbl-dl-color, #38bdf8); }
-.tbl-limit-box.up .tbl-limit-input { color: var(--tbl-ul-color, #c084fc); }
+.tbl-limit-box.down .tbl-limit-input { color: var(--tbl-dl-color); }
+.tbl-limit-box.up .tbl-limit-input { color: var(--tbl-ul-color); }
 
 /* Action Icon Buttons */
 .tbl-actions-group {
@@ -1386,9 +1566,9 @@ table.devices-table {
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  border: 1px solid var(--glass-border);
+  background: var(--surface-alt);
+  color: var(--text);
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.18s ease;
@@ -1398,73 +1578,74 @@ table.devices-table {
 }
 .tbl-icon-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--card-shadow);
 }
 
 /* Distinctive semantic button styles */
 .tbl-icon-btn.btn-save {
-  background: rgba(16, 185, 129, 0.18);
-  border-color: rgba(16, 185, 129, 0.45);
-  color: #34d399;
+  background: var(--green-subtle);
+  border-color: var(--green-border);
+  color: var(--green);
 }
 .tbl-icon-btn.btn-save:hover {
-  background: rgba(16, 185, 129, 0.35);
-  border-color: #10b981;
+  background: var(--green);
+  color: var(--btn-text);
 }
 
 .tbl-icon-btn.btn-gaming {
-  background: rgba(245, 158, 11, 0.18);
-  border-color: rgba(245, 158, 11, 0.45);
-  color: #fbbf24;
+  background: var(--amber-subtle);
+  border-color: var(--amber-border);
+  color: var(--amber);
 }
 .tbl-icon-btn.btn-gaming:hover {
-  background: rgba(245, 158, 11, 0.35);
-  border-color: #f59e0b;
+  background: var(--amber);
+  color: var(--btn-text);
 }
 .tbl-icon-btn.btn-gaming.active {
-  background: rgba(245, 158, 11, 0.4);
-  border-color: #f59e0b;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.55);
+  background: var(--amber);
+  border-color: var(--amber-hover);
+  color: var(--btn-text);
+  box-shadow: 0 2px 8px var(--amber-subtle);
 }
 
 .tbl-icon-btn.btn-block {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.45);
-  color: #f87171;
+  background: var(--red-subtle);
+  border-color: var(--red-border);
+  color: var(--red);
 }
 .tbl-icon-btn.btn-block:hover {
-  background: rgba(239, 68, 68, 0.35);
-  border-color: #ef4444;
+  background: var(--red);
+  color: var(--btn-text);
 }
 
 .tbl-icon-btn.btn-unblock {
-  background: rgba(16, 185, 129, 0.22);
-  border-color: rgba(16, 185, 129, 0.5);
-  color: #34d399;
+  background: var(--green-subtle);
+  border-color: var(--green-border);
+  color: var(--green);
 }
 .tbl-icon-btn.btn-unblock:hover {
-  background: rgba(16, 185, 129, 0.4);
-  border-color: #10b981;
+  background: var(--green);
+  color: var(--btn-text);
 }
 
 .tbl-icon-btn.btn-reset {
-  background: rgba(148, 163, 184, 0.16);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #cbd5e1;
+  background: var(--surface-alt);
+  border-color: var(--glass-border);
+  color: var(--muted);
 }
 .tbl-icon-btn.btn-reset:hover {
-  background: rgba(148, 163, 184, 0.32);
-  border-color: #94a3b8;
+  background: var(--glass-border);
+  color: var(--text);
 }
 
 .tbl-icon-btn.btn-delete {
-  background: rgba(159, 18, 57, 0.22);
-  border-color: rgba(225, 29, 72, 0.4);
-  color: #fda4af;
+  background: var(--red-subtle);
+  border-color: var(--red-border);
+  color: var(--red);
 }
 .tbl-icon-btn.btn-delete:hover {
-  background: rgba(225, 29, 72, 0.38);
-  border-color: #e11d48;
+  background: var(--red);
+  color: var(--btn-text);
 }
 
 /* Floating Live Toast */
@@ -1480,12 +1661,12 @@ table.devices-table {
   gap: 10px;
   padding: 8px 18px;
   border-radius: 999px;
-  background: rgba(6, 78, 59, 0.92);
-  border: 1px solid rgba(34, 197, 94, 0.45);
-  color: #dcfce7;
+  background: var(--green);
+  border: 1px solid var(--green-hover);
+  color: var(--btn-text);
   font-size: 0.82rem;
   font-weight: 600;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--card-shadow);
   white-space: nowrap;
   pointer-events: none;
   transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
@@ -1496,27 +1677,12 @@ table.devices-table {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #22c55e;
+  background-color: var(--text);
   flex-shrink: 0;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
-}
-.pulse-dot::after {
-  content: '';
-  position: absolute;
-  top: -2px; left: -2px; right: -2px; bottom: -2px;
-  border-radius: 50%;
-  border: 1.5px solid #22c55e;
-  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-  pointer-events: none;
-}
-@keyframes pulse-ring {
-  0% { transform: scale(0.9); opacity: 0.9; }
-  70% { transform: scale(2.2); opacity: 0; }
-  100% { transform: scale(2.2); opacity: 0; }
 }
 
 /* =============================================================================
-   OVERVIEW TAB DASHBOARD (MODERN RESPONSIVE GLASSMORPHISM)
+   OVERVIEW TAB DASHBOARD (MODERN RESPONSIVE SOLID DESIGN)
    ============================================================================= */
 .metrics-grid.collapsed-on-overview {
   display: none !important;
@@ -1527,7 +1693,8 @@ table.devices-table {
   border-radius: 18px;
   margin-bottom: 16px;
   border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  box-shadow: var(--card-shadow);
+  background: var(--glass-bg);
 }
 .ov-topology-header {
   display: flex;
@@ -1536,13 +1703,13 @@ table.devices-table {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 14px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--glass-border);
   padding-bottom: 10px;
 }
 .ov-topology-title {
   font-size: 0.95rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1551,8 +1718,8 @@ table.devices-table {
   font-size: 0.76rem;
   font-weight: 700;
   color: var(--green);
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: var(--green-subtle);
+  border: 1px solid var(--green-border);
   border-radius: 30px;
   padding: 4px 12px;
 }
@@ -1566,14 +1733,15 @@ table.devices-table {
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--glass-border);
+  background: var(--surface-alt);
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
 .ov-node-center {
-  border: 1px solid rgba(16, 185, 129, 0.45);
-  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid var(--green);
+  background: var(--green-subtle);
 }
 .ov-node-top {
   display: flex;
@@ -1591,9 +1759,9 @@ table.devices-table {
   font-weight: 800;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.35);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
 }
 .ov-node-main {
   display: flex;
@@ -1611,7 +1779,7 @@ table.devices-table {
 .ov-node-name {
   font-size: 0.96rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1627,7 +1795,7 @@ table.devices-table {
   font-family: monospace;
   font-size: 0.88rem;
   font-weight: 800;
-  color: #a7f3d0;
+  color: var(--cyan);
   direction: ltr;
   text-align: center;
 }
@@ -1664,8 +1832,8 @@ table.devices-table {
 .ov-manage-btn {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #fff;
-  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  background: var(--surface-alt);
   border: 1px solid var(--glass-border);
   border-radius: 8px;
   padding: 4px 10px;
@@ -1673,8 +1841,7 @@ table.devices-table {
   transition: all 0.2s;
 }
 .ov-manage-btn:hover {
-  background: rgba(255,255,255,0.18);
-  border-color: rgba(255,255,255,0.3);
+  background: var(--glass-border);
 }
 
 /* 3-COLUMN MAIN GRID */
@@ -1687,7 +1854,8 @@ table.devices-table {
   padding: 16px;
   border-radius: 18px;
   border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: var(--card-shadow);
+  background: var(--glass-bg);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1697,13 +1865,13 @@ table.devices-table {
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--glass-border);
   padding-bottom: 8px;
 }
 .ov-card-title {
   font-size: 0.95rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
 }
 .ov-card-subtitle {
   font-size: 0.7rem;
@@ -1715,8 +1883,8 @@ table.devices-table {
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: var(--surface-alt);
+  color: var(--text);
   border: 1px solid var(--glass-border);
   white-space: nowrap;
 }
@@ -1742,7 +1910,7 @@ table.devices-table {
 .ov-bar-bg {
   width: 100%;
   height: 7px;
-  background: rgba(255,255,255,0.07);
+  background: var(--tbl-track-bg);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1764,15 +1932,14 @@ table.devices-table {
   font-weight: 700;
   border-radius: 10px;
   border: 1px solid var(--glass-border);
-  background: rgba(255,255,255,0.05);
-  color: #fff;
+  background: var(--surface-alt);
+  color: var(--text);
   cursor: pointer;
   transition: all 0.2s;
   text-align: center;
 }
 .ov-action-btn:hover {
-  background: rgba(255,255,255,0.12);
-  border-color: rgba(255,255,255,0.25);
+  background: var(--glass-border);
   transform: translateY(-1px);
 }
 
@@ -1796,7 +1963,7 @@ table.devices-table {
 }
 .ov-ring-bg {
   fill: none;
-  stroke: rgba(255,255,255,0.08);
+  stroke: var(--tbl-track-bg);
   stroke-width: 9;
 }
 .ov-ring-fill {
@@ -1818,7 +1985,7 @@ table.devices-table {
 .ov-ring-pct {
   font-size: 1.15rem;
   font-weight: 900;
-  color: #fff;
+  color: var(--text);
 }
 .ov-ring-sub {
   font-size: 0.64rem;
@@ -1843,7 +2010,7 @@ table.devices-table {
 .ov-stat-num {
   font-size: 1.05rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
 }
 .ov-stat-denom {
   font-size: 0.78rem;
@@ -1858,8 +2025,8 @@ table.devices-table {
 .ov-mini-box {
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.05);
+  background: var(--surface-alt);
+  border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1872,7 +2039,7 @@ table.devices-table {
 .ov-mini-val {
   font-size: 0.86rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
 }
 .ov-mini-sub {
   font-size: 0.66rem;
@@ -1890,10 +2057,10 @@ table.devices-table {
 .ov-predict-pill {
   color: var(--green);
   font-weight: 700;
-  background: rgba(16, 185, 129, 0.1);
+  background: var(--green-subtle);
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  border: 1px solid var(--green-border);
 }
 .ov-sub-pill {
   color: var(--muted);
@@ -1953,7 +2120,7 @@ table.devices-table {
 .ov-speed-val {
   font-size: 1.12rem;
   font-weight: 900;
-  color: #fff;
+  color: var(--text);
   font-family: monospace;
 }
 .ov-speed-unit {
@@ -1967,10 +2134,10 @@ table.devices-table {
   font-family: monospace;
 }
 .ov-sparkline-box {
-  background: rgba(0,0,0,0.3);
+  background: var(--surface-alt);
   border-radius: 12px;
   padding: 8px 10px;
-  border: 1px solid rgba(255,255,255,0.05);
+  border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1980,7 +2147,7 @@ table.devices-table {
   justify-content: space-between;
   font-size: 0.68rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text);
 }
 .ov-live-canvas {
   width: 100%;
@@ -2020,8 +2187,8 @@ table.devices-table {
   </div>
   <div class="header-actions">
     <div class="theme-switcher">
-      <button class="theme-btn active" id="btn-theme-sunset" onclick="setTheme('sunset')">🌅 الغروب الكوني</button>
-      <button class="theme-btn" id="btn-theme-matrix" onclick="setTheme('matrix')">⚡ الأخضر السيبراني</button>
+      <button class="theme-btn active" id="btn-theme-sunset" onclick="setTheme('dark')" title="الوضع الداكن المريح للعين">🌙 الداكن</button>
+      <button class="theme-btn" id="btn-theme-matrix" onclick="setTheme('light')" title="الوضع الفاتح النقي">☀️ الفاتح</button>
     </div>
     <div class="wan-badge" id="wan-status">
       <span class="pulse offline" id="wan-pulse"></span>
@@ -2062,7 +2229,7 @@ table.devices-table {
     <span class="metric-value" id="uptime-str">--</span>
     <span class="metric-sub" id="cpu-clock-str">240 MHz</span>
   </div>
-  <div class="metric-card glass" style="border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.05)">
+  <div class="metric-card glass" style="border:1px solid var(--green-border);background:var(--green-subtle)">
     <span class="metric-label">📡 شبكة الإنترنت المزودة (WAN)</span>
     <span class="metric-value" id="wan-ssid-val" style="color:var(--green);font-size:1.18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">--</span>
     <span class="metric-sub" id="wan-info-sub">جاري الفحص...</span>
@@ -2216,9 +2383,9 @@ table.devices-table {
         <div class="ov-meter-row">
           <div class="ov-meter-head">
             <span>جودة إشارة المصدر (WAN Signal)</span>
-            <span id="ov-rssi-val" style="color:#a3e635">-- dBm (--%)</span>
+            <span id="ov-rssi-val" style="color:var(--lime)">-- dBm (--%)</span>
           </div>
-          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-rssi-bar" style="width:0%;background:#a3e635"></div></div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-rssi-bar" style="width:0%;background:var(--lime)"></div></div>
         </div>
       </div>
 
@@ -2338,7 +2505,7 @@ table.devices-table {
 
 <section id="tab-devices" class="tab-content">
   <div class="view-bar">
-    <div style="font-weight:700;font-size:1.05rem;color:#fff">الأجهزة والتحكم في الكوتة والسرعات (<span id="dev-count-txt">0</span>)</div>
+    <div style="font-weight:700;font-size:1.05rem;color:var(--text)">الأجهزة والتحكم في الكوتة والسرعات (<span id="dev-count-txt">0</span>)</div>
     <div class="view-btns theme-switcher">
       <button class="theme-btn active" id="btn-view-cards" onclick="setViewMode('cards')">بطاقات (Cards)</button>
       <button class="theme-btn" id="btn-view-table" onclick="setViewMode('table')">جدول (Table)</button>
@@ -2347,7 +2514,7 @@ table.devices-table {
 
   <!-- SECTION 1: CONNECTED DEVICES -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <h3 style="font-size:1.05rem;color:#fff;display:flex;align-items:center;gap:8px">
+    <h3 style="font-size:1.05rem;color:var(--text);display:flex;align-items:center;gap:8px">
       <span>🟢</span> الأجهزة المتصلة حالياً
       <span class="badge badge-online" id="connected-count-badge">0 متصل</span>
     </h3>
@@ -2379,9 +2546,9 @@ table.devices-table {
   </div>
 
   <!-- ELEGANT DIVIDER BETWEEN CONNECTED & OFFLINE -->
-  <div style="margin:38px 0 26px 0;border-top:1px dashed rgba(16,185,129,0.35);position:relative;text-align:center">
-    <button type="button" onclick="toggleOfflineSection()" id="btn-toggle-offline" style="position:relative;top:-19px;background:#0d1117;border:1.5px solid #10b981;border-radius:24px;color:#fff;padding:8px 24px;font-size:0.86rem;font-weight:700;cursor:pointer;box-shadow:0 0 16px rgba(16,185,129,0.25);transition:all .25s ease;display:inline-flex;align-items:center;gap:8px">
-      <span id="offline-toggle-icon" style="color:#10b981;font-size:0.82rem">▼</span>
+  <div style="margin:38px 0 26px 0;border-top:1px dashed var(--green-border);position:relative;text-align:center">
+    <button type="button" onclick="toggleOfflineSection()" id="btn-toggle-offline" style="position:relative;top:-19px;background:var(--surface-alt);border:1.5px solid var(--green);border-radius:24px;color:var(--text);padding:8px 24px;font-size:0.86rem;font-weight:700;cursor:pointer;box-shadow:var(--card-shadow);transition:all .25s ease;display:inline-flex;align-items:center;gap:8px">
+      <span id="offline-toggle-icon" style="color:var(--green);font-size:0.82rem">▼</span>
       <span id="offline-toggle-text">إخفاء الأجهزة غير المتصلة (0 أجهزة)</span>
     </button>
   </div>
@@ -2391,7 +2558,7 @@ table.devices-table {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <h3 style="font-size:1rem;color:var(--muted);display:flex;align-items:center;gap:8px">
         <span>⚪</span> الأجهزة غير المتصلة حالياً (المسجلة مسبقاً)
-        <span class="badge" style="background:rgba(255,255,255,0.08);color:var(--muted)" id="offline-count-badge">0 أجهزة</span>
+        <span class="badge" style="background:var(--bg-subtle);color:var(--muted)" id="offline-count-badge">0 أجهزة</span>
       </h3>
       <span style="font-size:0.75rem;color:var(--muted);align-self:center">💡 يمكنك ضبط الكوتة وسقف السرعة أو الحظر مسبقاً قبل اتصال الجهاز</span>
     </div>
@@ -2440,18 +2607,18 @@ table.devices-table {
           <input id="cfg_end_date" type="date">
         </div>
         <div style="display:flex;justify-content:flex-start;margin-top:4px">
-          <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)" style="padding:10px 22px;background:linear-gradient(135deg,#f97316,#ea580c);border:none;box-shadow:0 4px 14px rgba(249,115,22,0.35)">💾 حفظ إعدادات الباقة</button>
+          <button type="button" class="primary-btn" onclick="saveMainQuotaConfig(this)" style="padding:10px 22px;">💾 حفظ إعدادات الباقة</button>
         </div>
       </div>
 
       <!-- LEFT COLUMN: LIVE CONSUMPTION & PROGRESS WIDGET -->
-      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
+      <div style="background:var(--surface-alt);border:1px solid var(--glass-border);border-radius:12px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:14px">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="color:var(--muted);font-size:0.95rem">إجمالي المستهلك:</span>
-          <b id="isp-used-txt" style="font-size:1.1rem;color:#fff">0.00 GB (0.0%)</b>
+          <b id="isp-used-txt" style="font-size:1.1rem;color:var(--text)">0.00 GB (0.0%)</b>
         </div>
 
-        <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:6px;overflow:hidden">
+        <div style="height:10px;background:var(--tbl-track-bg);border-radius:6px;overflow:hidden">
           <div id="isp-quota-bar" style="height:100%;width:0%;background:var(--green);border-radius:6px;transition:width 0.4s ease,background 0.4s ease"></div>
         </div>
 
@@ -2462,10 +2629,10 @@ table.devices-table {
 
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="color:var(--muted);font-size:0.95rem">الوقت المتبقي حتى التجديد:</span>
-          <b id="isp-time-txt" style="font-size:0.98rem;color:#38bdf8">--</b>
+          <b id="isp-time-txt" style="font-size:0.98rem;color:var(--cyan)">--</b>
         </div>
 
-        <button type="button" class="danger-btn" onclick="resetMainQuota()" style="width:100%;padding:11px;border-radius:8px;font-weight:700;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.28);margin-top:4px">
+        <button type="button" class="danger-btn" onclick="resetMainQuota()" style="width:100%;padding:11px;margin-top:4px">
           🔄 تصفير عدادات الاستهلاك لدورة جديدة
         </button>
       </div>
@@ -2473,10 +2640,10 @@ table.devices-table {
   </div>
 
   <!-- METER SCALING & GB STANDARD CARD -->
-  <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.35);background:rgba(16, 185, 129, 0.03);margin-top:16px">
+  <div class="card-section glass" style="border:1px solid var(--green-border);background:var(--green-subtle);margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0;color:#fff">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
-      <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b> | <b id="badge-meter-mode">فوري وشامل</b></span>
+      <h2 style="margin:0;color:var(--text)">📐 دقة ومعايرة العداد وحساب الجيجا (Meter Scaling & GB Standard)</h2>
+      <span class="badge badge-online" style="background:var(--green-subtle);color:var(--green);border:1px solid var(--green)">المعايرة: <b id="badge-meter-scale">100%</b> | <b id="badge-gb-std">1024 MB</b> | <b id="badge-meter-mode">فوري وشامل</b></span>
     </div>
     <p class="note" style="margin-bottom:16px">حدد النسبة المئوية لاحتساب استهلاك بايتات التحميل والرفع في العداد، ومعيار حساب الجيجابايت ليتطابق بدقة مع عداد شركة الإنترنت أو أنظمة التشغيل، دون أي تأثير على السرعة اللحظية الفعلية للخط.</p>
 
@@ -2526,7 +2693,7 @@ table.devices-table {
       </div>
     </div>
 
-    <div style="background:rgba(0,0,0,0.22);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
+    <div style="background:var(--surface-alt);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:var(--muted);line-height:1.6">
       ℹ️ <b>توضيح الفرق بين الإعدادات:</b><br>
       • <b>السرعة اللحظية:</b> تظل سرعة الأجهزة الفعلية وسرعة السحب والرفع الحقيقية 100% دقيقة دائماً دون أي تلاعب أو تغيير مهما كانت نسبة المعايرة.<br>
       • <b>معيار 1024 MB (ثنائي):</b> 1 جيجا = 1,073,741,824 بايت، وهو المعيار البرمجي الدقيق المستخدم في أنظمة التشغيل (ويندوز، لينكس).<br>
@@ -2535,7 +2702,7 @@ table.devices-table {
     </div>
 
     <div style="display:flex;justify-content:flex-start">
-      <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
+      <button id="scale_save_btn" type="button" class="primary-btn" onclick="saveMeterScaleConfig()" style="padding:10px 24px;font-size:0.9rem;background:var(--green);">
         💾 حفظ وتطبيق إعدادات المعايرة
       </button>
     </div>
@@ -2552,7 +2719,7 @@ table.devices-table {
           <span class="tg-chat-status-dot"></span>
           <span>Online</span>
         </div>
-        <div style="font-weight:700;font-size:0.95rem;color:#fff;display:flex;align-items:center;gap:6px">
+        <div style="font-weight:700;font-size:0.95rem;color:var(--text);display:flex;align-items:center;gap:6px">
           <span>ESP32 Router Bot (محادثة تفاعلية حية)</span>
           <span>🤖</span>
         </div>
@@ -2637,7 +2804,7 @@ table.devices-table {
       </form>
 
       <!-- Discovered Telegram Users Card -->
-      <div class="glass" style="margin-top:12px;padding:14px;border-radius:12px;background:rgba(0,0,0,0.25);border:1px solid rgba(59,130,246,0.3)">
+      <div class="glass" style="margin-top:12px;padding:14px;border-radius:12px;background:var(--surface-overlay);border:1px solid var(--accent-border)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
           <b style="color:var(--blue);font-size:0.88rem">👥 المستخدمين المكتشفين في التيليجرام:</b>
           <span style="font-size:0.75rem;color:var(--muted)">يتم التقاط المعرفات تلقائياً فور مراسلة البوت</span>
@@ -2647,7 +2814,7 @@ table.devices-table {
         </div>
       </div>
 
-      <div class="glass" style="margin-top:10px;padding:14px;border-radius:12px;background:rgba(0,0,0,0.25);border:1px solid rgba(244,63,94,0.25)">
+      <div class="glass" style="margin-top:10px;padding:14px;border-radius:12px;background:var(--surface-overlay);border:1px solid var(--red-border)">
         <b style="color:var(--accent);display:block;margin-bottom:8px;font-size:0.88rem">📌 ميزات التيليجرام المتقدمة المدمجة:</b>
         <ol style="margin:0;padding-right:20px;font-size:0.82rem;color:var(--muted);line-height:1.7">
           <li>تنبيهات تلقائية (Push Alerts) للباقة العامة وباقات الأجهزة فور تجاوز الحدود المقررة بدون تكرار إلى المشرفين ومالك الجهاز.</li>
@@ -2680,28 +2847,28 @@ table.devices-table {
 
     
 <!-- DEDICATED PARENT NETWORK INFO BOX -->
-<div class="card-section glass" style="margin-bottom:20px;padding:16px 20px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.04)">
+<div class="card-section glass" style="margin-bottom:20px;padding:16px 20px;border:1px solid var(--green-border);background:var(--green-subtle)">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-    <h3 style="font-size:1.05rem;color:#fff;display:flex;align-items:center;gap:8px;margin:0">
+    <h3 style="font-size:1.05rem;color:var(--text);display:flex;align-items:center;gap:8px;margin:0">
       <span>📡</span> بيانات شبكة الإنترنت التي يستقبل منها الـ ESP النت (Parent Wi-Fi Network)
       <span class="badge badge-online" id="parent-net-badge">متصل بالإنترنت 🟢</span>
     </h3>
     <span style="font-size:0.78rem;color:var(--muted)">تغذية الإنترنت عبر واجهة STA مع تسريع الـ NAPT العتادي</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;font-size:0.85rem">
-    <div style="background:rgba(0,0,0,0.25);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
       <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">اسم شبكة المصدر (SSID):</span>
-      <b style="color:#fff;font-size:1rem;display:flex;align-items:center;gap:6px"><span>📶</span> <span id="parent-ssid-txt">--</span></b>
+      <b style="color:var(--text);font-size:1rem;display:flex;align-items:center;gap:6px"><span>📶</span> <span id="parent-ssid-txt">--</span></b>
     </div>
-    <div style="background:rgba(0,0,0,0.25);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
       <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">قوة الإشارة وجودة الاتصال:</span>
       <b style="color:var(--green);font-size:1rem" id="parent-rssi-txt">-- dBm</b>
     </div>
-    <div style="background:rgba(0,0,0,0.25);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
       <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">عنوان الـ IP المخصص للـ ESP:</span>
       <code style="color:var(--cyan);font-weight:700;font-size:0.95rem" id="parent-ip-txt">--</code>
     </div>
-    <div style="background:rgba(0,0,0,0.25);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
+    <div style="background:var(--surface-alt);padding:12px 14px;border-radius:12px;border:1px solid var(--glass-border)">
       <span style="color:var(--muted);display:block;font-size:0.75rem;margin-bottom:3px">بوابة الراوتر وقناة البث (Gateway):</span>
       <b style="color:var(--text);font-size:0.95rem" id="parent-gw-txt">--</b>
     </div>
@@ -2710,12 +2877,12 @@ table.devices-table {
 
 
 <!-- DAILY AUTO-REBOOT CARD -->
-    <div class="card-section glass" style="margin-bottom:20px;border:1px solid rgba(245, 158, 11, 0.4);background:rgba(245, 158, 11, 0.03)">
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--amber-border);background:var(--amber-subtle)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-        <h2 style="margin:0;color:#fff;display:flex;align-items:center;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
           <span>🔄</span> إعادة التشغيل اليومي التلقائي (Daily Scheduled Auto-Reboot)
         </h2>
-        <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--amber);border:1px solid var(--amber)">
+        <span class="badge" style="background:var(--amber-subtle);color:var(--amber);border:1px solid var(--amber)">
           تفريغ الذاكرة المؤقتة دورياً
         </span>
       </div>
@@ -2739,7 +2906,7 @@ table.devices-table {
           <div class="form-group">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
               <label style="margin:0;font-weight:700">فرق التوقيت (Timezone):</label>
-              <button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:0.75rem;background:rgba(6,182,212,0.15);color:var(--cyan);border:1px solid rgba(6,182,212,0.4)" onclick="autoDetectLocalTimezone()">⚡ مزامنة من جهازك</button>
+              <button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:0.75rem;background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border)" onclick="autoDetectLocalTimezone()">⚡ مزامنة من جهازك</button>
             </div>
             <select id="cfg_rb_tz">
               <option value="2">UTC+2 (مصر بالتوقيت الشتوي / القدس / طرابلس)</option>
@@ -2751,7 +2918,7 @@ table.devices-table {
           </div>
         </div>
 
-        <div class="glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 16px;background:rgba(0,0,0,0.35);border-radius:12px">
+        <div class="glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 16px;background:var(--surface-overlay);border-radius:12px">
           <div style="font-size:0.88rem">
             🕒 ساعة الراوتر الآن: <b id="rb_router_clock" style="color:var(--cyan);font-family:monospace;font-size:1rem">جاري المزامنة...</b>
           </div>
@@ -2761,9 +2928,9 @@ table.devices-table {
           </div>
         </div>
 
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(0,136,204,0.08);border:1px solid rgba(0,136,204,0.25);border-radius:10px">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--tg-subtle);border:1px solid var(--tg-border);border-radius:10px">
           <span style="font-size:1.1rem">🤖</span>
-          <span style="font-size:0.82rem;color:#90caf9">إرسال إشعار تيليجرام تلقائي للمدير فور اكتمال إعادة التشغيل اليومية موضحاً الذاكرة الحرة (Free RAM) وساعة الإقلاع.</span>
+          <span style="font-size:0.82rem;color:var(--tg-blue)">إرسال إشعار تيليجرام تلقائي للمدير فور اكتمال إعادة التشغيل اليومية موضحاً الذاكرة الحرة (Free RAM) وساعة الإقلاع.</span>
         </div>
 
         <div style="display:flex;justify-content:flex-end;margin-top:6px">
@@ -2773,9 +2940,9 @@ table.devices-table {
     </div>
 
     <!-- HARDWARE BOOT & POWER DIAGNOSTICS CARD -->
-    <div class="card-section glass" style="margin-bottom:20px;border:1px solid rgba(59, 130, 246, 0.35);background:rgba(59, 130, 246, 0.03)">
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--accent);background:var(--surface-alt)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <h2 style="margin:0;color:#fff;display:flex;align-items:center;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
           <span>🩺</span> تشخيص الهاردوير وسبب آخر إقلاع
         </h2>
         <span id="rst_reason_badge" class="badge badge-online">تشغيل سليم 🟢</span>
@@ -2783,23 +2950,23 @@ table.devices-table {
       <p style="font-size:0.84rem;color:var(--muted);margin-bottom:10px">
         يوضح سبب إعادة تشغيل الراوتر الأخيرة (هل هو إقلاع طبيعي، ريستارت برمجي، أم انخفاض في جهد مزود الطاقة Brownout):
       </p>
-      <div style="padding:10px 14px;background:rgba(0,0,0,0.3);border-radius:10px;border:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:6px">
+      <div style="padding:10px 14px;background:var(--surface-alt);border-radius:10px;border:1px solid var(--glass-border);display:flex;flex-direction:column;gap:6px">
         <div style="font-size:0.86rem;color:var(--text)">
           📌 <b>سبب آخر إقلاع:</b> <span id="rst_reason_txt" style="color:var(--cyan);font-weight:700">جاري القراءة...</span>
         </div>
-        <div id="rst_brownout_alert" style="display:none;padding:8px 12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#fca5a5;font-size:0.8rem">
+        <div id="rst_brownout_alert" style="display:none;padding:8px 12px;background:var(--red-subtle);border:1px solid var(--red-border);border-radius:8px;color:var(--red);font-size:0.8rem">
           ⚠️ <b>تنبيه هام حول الطاقة:</b> تم رصد انخفاض في الجهد الكهربي (Brownout). يحدث هذا عند توصيل الراوتر بمنفذ USB في كمبيوتر محمول أو كابل طويل رقيق عند سحب سرعات عالية. لحل المشكلة نهائياً، يرجى توصيل الراوتر بشاحن هاتف أصلي (5V 2A) أو منفذ USB 3.0 عالي الطاقة.
         </div>
       </div>
     </div>
 
     <!-- QUICK MANUAL REBOOT CARD -->
-    <div class="card-section glass" style="margin-bottom:20px;border:1px solid rgba(239, 68, 68, 0.35);background:rgba(239, 68, 68, 0.03)">
+    <div class="card-section glass" style="margin-bottom:20px;border:1px solid var(--red-border);background:var(--red-subtle)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <h2 style="margin:0;color:#fff;display:flex;align-items:center;gap:8px">
+        <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
           <span>⚡</span> إعادة التشغيل اليدوية والعد التنازلي
         </h2>
-        <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--red);border:1px solid var(--red)">حفظ فوري في NVS</span>
+        <span class="badge" style="background:var(--red-subtle);color:var(--red);border:1px solid var(--red)">حفظ فوري في NVS</span>
       </div>
       <p class="note" style="margin-bottom:14px">
         يمكنك إعادة تشغيل الراوتر فوراً في أي وقت، أو ضبط عد تنازلي بالدقائق قبل إعادة التشغيل.
@@ -2828,10 +2995,10 @@ table.devices-table {
   </section>
 
 <section id="tab-settings" class="tab-content">
-  <div class="card-section glass" style="border:1px solid rgba(16, 185, 129, 0.4);background:rgba(16, 185, 129, 0.03);margin-bottom:20px">
+  <div class="card-section glass" style="border:1px solid var(--green-border);background:var(--green-subtle);margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0;color:#fff">⚡ أداء المعالج وتوفير الطاقة (ESP32 Performance)</h2>
-      <span class="badge badge-online" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">تردد نشط: <b id="perf-badge-freq">240 MHz</b></span>
+      <h2 style="margin:0;color:var(--text)">⚡ أداء المعالج وتوفير الطاقة (ESP32 Performance)</h2>
+      <span class="badge badge-online" style="background:var(--green-subtle);color:var(--green);border:1px solid var(--green)">تردد نشط: <b id="perf-badge-freq">240 MHz</b></span>
     </div>
     <p class="note" style="margin-bottom:16px">تحكم بتردد معالج الـ ESP32 ووضع توفير طاقة الواي فاي للوصول لأقصى سرعة ممكنة أو تقليل الحرارة واستهلاك الكهرباء.</p>
 
@@ -2862,14 +3029,14 @@ table.devices-table {
       <!-- WI-FI POWER SAVE CHECKBOX -->
       <div style="margin-bottom:18px;display:flex;align-items:center">
         <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;width:auto">
-          <input type="checkbox" id="cfg_wifi_ps" onchange="onManualPowerSaveChange(this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#10b981;margin:0;flex-shrink:0">
+          <input type="checkbox" id="cfg_wifi_ps" onchange="onManualPowerSaveChange(this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green);margin:0;flex-shrink:0">
           <span style="font-weight:600">تفعيل وضع توفير طاقة الواي فاي (Wi-Fi Power Save)</span>
         </label>
       </div>
 
       <!-- SAVE BUTTON -->
       <div style="display:flex;justify-content:flex-end">
-        <button id="perf_save_btn" type="submit" class="primary-btn" style="padding:10px 24px;font-size:0.9rem;background:linear-gradient(135deg,#059669,#10b981);border:none;box-shadow:0 0 12px rgba(16,185,129,0.35)">
+        <button id="perf_save_btn" type="submit" class="primary-btn" style="padding:10px 24px;font-size:0.9rem;background:var(--green);">
           💾 حفظ إعدادات الأداء
         </button>
       </div>
@@ -2877,10 +3044,10 @@ table.devices-table {
   </div>
   <div class="card-section glass" style="margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0;color:#fff;display:flex;align-items:center;gap:8px">
+      <h2 style="margin:0;color:var(--text);display:flex;align-items:center;gap:8px">
         <span>📶</span> الاتصال بالراوتر الأساسي والواي فاي
       </h2>
-      <span class="badge" id="wifi-status-badge" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid var(--green)">
+      <span class="badge" id="wifi-status-badge" style="background:var(--green-subtle);color:var(--green);border:1px solid var(--green-border)">
         متصل بالإنترنت 🟢
       </span>
     </div>
@@ -2891,7 +3058,7 @@ table.devices-table {
       <div class="form-group" style="margin-bottom:14px;position:relative">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap">
           <label style="font-weight:700;margin:0">اسم شبكة الراوتر الأساسي (SSID):</label>
-          <button type="button" id="btn_scan_wifi" class="btn btn-secondary" onclick="scanWifiNetworks()" style="font-size:0.8rem;padding:4px 12px;background:rgba(139,92,246,0.18);color:#c4b5fd;border:1px solid rgba(139,92,246,0.38);border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;transition:all 0.2s">
+          <button type="button" id="btn_scan_wifi" class="btn btn-secondary" onclick="scanWifiNetworks()" style="font-size:0.8rem;padding:4px 12px;background:var(--purple-subtle);color:var(--purple-color);border:1px solid var(--purple-border);border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;transition:all 0.2s">
             <span id="scan_spinner" style="display:none;animation:spin 1s linear infinite">🔄</span>
             <span id="scan_icon">🔍</span>
             <span id="scan_btn_text">فحص الشبكات المحيطة</span>
@@ -2900,7 +3067,7 @@ table.devices-table {
         <div style="position:relative">
           <input name="router_ssid" id="cfg_router_ssid" maxlength="32" required placeholder="مثال: Home_Fiber_5G" style="font-size:0.92rem;font-family:inherit;width:100%">
           <!-- Scan Dropdown Results Container -->
-          <div id="wifi_scan_results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:999;background:rgba(18,22,34,0.96);backdrop-filter:blur(16px);border:1px solid rgba(139,92,246,0.35);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,0.6);max-height:280px;overflow-y:auto;padding:6px">
+          <div id="wifi_scan_results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:999;background:var(--glass-bg);backdrop-filter:blur(16px);border:1px solid var(--purple-border);border-radius:12px;box-shadow:var(--card-shadow);max-height:280px;overflow-y:auto;padding:6px">
           </div>
         </div>
       </div>
@@ -2918,19 +3085,19 @@ table.devices-table {
       </div>
 
       <!-- STATIC IP SECTION -->
-      <div class="glass" style="margin:18px 0;padding:16px 18px;border-radius:14px;border:1px solid rgba(6, 182, 212, 0.35);background:rgba(6, 182, 212, 0.04)">
+      <div class="glass" style="margin:18px 0;padding:16px 18px;border-radius:14px;border:1px solid var(--cyan);background:var(--surface-alt)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;color:#fff;cursor:pointer;margin:0">
+          <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:0.95rem;color:var(--text);cursor:pointer;margin:0">
             <input type="checkbox" name="static_enabled" value="1" id="static_toggle" onchange="document.getElementById('static_fields').style.display=this.checked?'block':'none'" style="width:18px;height:18px;accent-color:var(--cyan);cursor:pointer">
             <span>🌐 تفعيل ميزة تثبيت عنوان الـ IP للراوتر (Static IP) بدل DHCP</span>
           </label>
-          <span class="badge" style="background:rgba(6,182,212,0.15);color:var(--cyan);border:1px solid var(--cyan);font-size:0.75rem">اتصال فائق الاستقرار</span>
+          <span class="badge" style="background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border);font-size:0.75rem">اتصال فائق الاستقرار</span>
         </div>
         <p class="note" style="margin-bottom:12px;font-size:0.8rem;line-height:1.6">
           تثبيت الـ IP يمنح راوتر الـ ESP32 عنواناً ثابتاً ومحدداً لا يتغير داخل شبكة المودم الرئيسي، مما يمنع انقطاع الاتصال ويسهل فتح المنافذ (Port Forwarding) وإدارة الشبكة بدقة.
         </p>
 
-        <div id="static_fields" style="display:none;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div id="static_fields" style="display:none;padding-top:10px;border-top:1px solid var(--glass-border)">
           <div class="form-row-2">
             <div class="form-group">
               <label style="font-weight:600;font-size:0.85rem">📌 عنوان الـ IP الثابت للراوتر (Static IP):</label>
@@ -2952,7 +3119,7 @@ table.devices-table {
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;margin-top:12px">
-            <button type="button" class="btn btn-secondary" style="font-size:0.78rem;padding:5px 12px;background:rgba(6,182,212,0.12);color:var(--cyan);border:1px solid rgba(6,182,212,0.3)" onclick="document.getElementById('cfg_sta_ip').value='192.168.1.50';document.getElementById('cfg_sta_mask').value='255.255.255.0';document.getElementById('cfg_sta_gw').value='192.168.1.1';document.getElementById('cfg_sta_dns').value='8.8.8.8';">
+            <button type="button" class="btn btn-secondary" style="font-size:0.78rem;padding:5px 12px;background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border)" onclick="document.getElementById('cfg_sta_ip').value='192.168.1.50';document.getElementById('cfg_sta_mask').value='255.255.255.0';document.getElementById('cfg_sta_gw').value='192.168.1.1';document.getElementById('cfg_sta_dns').value='8.8.8.8';">
               ⚡ اقتراح إعدادات تلقائية (192.168.1.50)
             </button>
           </div>
@@ -2961,7 +3128,7 @@ table.devices-table {
 
       <!-- ESP32 BROADCAST AP -->
       <hr style="border:none;border-top:1px solid var(--glass-border);margin:18px 0">
-      <h3 style="font-size:1rem;color:#fff;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      <h3 style="font-size:1rem;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px">
         <span>📡</span> بث شبكة الواي فاي للـ ESP32 (SoftAP)
       </h3>
       <div class="form-row-2">
@@ -2980,7 +3147,7 @@ table.devices-table {
       <div class="form-group" style="margin-top:12px">
         <label style="font-weight:600;display:flex;align-items:center;gap:6px">
           📡 تردد ونطاق الواي فاي (Wi-Fi Band Control - ESP32-C5):
-          <span class="badge" style="background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid #a78bfa;font-size:0.75rem;padding:2px 8px">Dual-Band 2.4 / 5 GHz</span>
+          <span class="badge" style="background:var(--purple-subtle);color:var(--purple-color);border:1px solid var(--purple-border);font-size:0.75rem;padding:2px 8px">Dual-Band 2.4 / 5 GHz</span>
         </label>
         <select name="wifi_band" id="cfg_wifi_band" style="font-weight:600">
           <option value="3">⚡ كلاهما / تلقائي Dual-Band (2.4GHz + 5GHz) — موصى به مع تسريع Wi-Fi 6</option>
@@ -3010,10 +3177,10 @@ table.devices-table {
   </div>
 
   <!-- TELEGRAM BOT & ALERTS CARD IN TAB-SETTINGS -->
-  <div class="card-section glass" style="border:1px solid rgba(96, 165, 250, 0.4);background:rgba(96, 165, 250, 0.04);margin-bottom:20px">
+  <div class="card-section glass" style="border:1px solid var(--accent);background:var(--surface-alt);margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0;color:#fff">🤖 إعدادات بوت وتنبيهات التيليجرام (Telegram Bot & Alerts)</h2>
-      <span class="badge" style="background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid #60a5fa">تنبيهات تلقائية + أوامر تفاعلية</span>
+      <h2 style="margin:0;color:var(--text)">🤖 إعدادات بوت وتنبيهات التيليجرام (Telegram Bot & Alerts)</h2>
+      <span class="badge" style="background:var(--accent-subtle);color:var(--accent);border:1px solid var(--accent-border)">تنبيهات تلقائية + أوامر تفاعلية</span>
     </div>
     <p class="note" style="margin-bottom:14px">إرسال تنبيهات استهلاك تلقائية عند تجاوز النسب المقررة للباقة وللأجهزة، واستقبال الأوامر والاستعلامات التفاعلية على النواة 1.</p>
 
@@ -3056,7 +3223,7 @@ table.devices-table {
     </div>
   </div>
 
-  <div class="card-section glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;border:1px solid rgba(245, 158, 11, 0.3)">
+  <div class="card-section glass" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px;border:1px solid var(--amber-border)">
     <div>
       <h2 style="margin:0 0 6px 0;display:flex;align-items:center;gap:8px"><span>🔄</span> مؤقت إعادة التشغيل اليومي (Daily Auto-Reboot)</h2>
       <p class="note" style="margin:0">تم تخصيص تبويب مستقل وكامل في القائمة العلوية لإدارة مؤقت الريستارت، العد التنازلي، والتشغيل الفوري.</p>
@@ -3079,7 +3246,7 @@ table.devices-table {
           <button type="button" class="pw-toggle" onclick="togglePwVis('pw_new_pass',this)">👁️</button>
         </div>
       </div>
-      <button id="pw_save_btn" type="submit" class="danger-btn" style="padding:10px 24px;font-size:0.92rem;font-weight:700;background:linear-gradient(135deg, #ef4444 0%, #f97316 100%);border:none;box-shadow:0 4px 14px rgba(239, 68, 68, 0.35);cursor:pointer;border-radius:10px;color:#fff">تحديث بيانات المشرف</button>
+      <button id="pw_save_btn" type="submit" class="danger-btn" style="padding:10px 24px;font-size:0.92rem;font-weight:700;border-radius:10px;">تحديث بيانات المشرف</button>
     </form>
     <p class="note" style="margin-top:12px">في حال نسيان كلمة المرور، اضغط باستمرار على زر BOOT في البوردة لمدة 10 ثوانٍ للاستعادة الافتراضية (admin/admin).</p>
     <hr style="border:none;border-top:1px solid var(--glass-border);margin:16px 0">
@@ -3097,10 +3264,10 @@ table.devices-table {
     <p class="note">ترقية نظام وتشغيل الراوتر هوائياً دون الحاجة لتوصيل كابل USB مع حماية كاملة عبر نظام الإقلاع المزدوج (Dual-Bank OTA) وميزة التراجع التلقائي الآمن (Anti-Rollback).</p>
 
     <!-- Auto-Update Switch Feature Card -->
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:14px 0;background:rgba(255,255,255,0.03);padding:14px;border-radius:12px;border:1px solid var(--glass-border)">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:14px 0;background:var(--surface-alt);padding:14px;border-radius:12px;border:1px solid var(--glass-border)">
       <div style="max-width:580px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span style="font-weight:700;font-size:1rem;color:#fff">🔄 التحديث التلقائي السحابي من GitHub (Auto-Update)</span>
+          <span style="font-weight:700;font-size:1rem;color:var(--text)">🔄 التحديث التلقائي السحابي من GitHub (Auto-Update)</span>
           <span class="badge badge-gaming" id="ota-auto-status-badge">مفعّل ✅</span>
         </div>
         <div style="font-size:0.82rem;color:var(--muted)">فحص دوري في الخلفية (فور إقلاع الراوتر وكل 6 ساعات) وتثبيت التحديث مباشرة من GitHub عند استقرار حركة الإنترنت دون أي تدخل يدوي مع ضمان الأمان وحماية النظام وعدم التأثير على سرعة الاتصال.</div>
@@ -3111,29 +3278,29 @@ table.devices-table {
       </div>
     </div>
     
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:14px 0 8px 0;background:rgba(255,255,255,0.03);padding:12px;border-radius:10px;border:1px solid var(--glass-border)">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:14px 0 8px 0;background:var(--surface-alt);padding:12px;border-radius:10px;border:1px solid var(--glass-border)">
       <div>
         <span style="font-weight:700;font-size:0.95rem">🔍 التحقق الآلي من التحديثات السحابية</span>
         <div style="font-size:0.8rem;color:var(--muted)">فحص مستودع GitHub السحابي بحثاً عن إصدارات أو مميزات جديدة</div>
       </div>
       <button type="button" class="primary-btn" style="padding:7px 16px;font-size:0.85rem" onclick="checkCloudUpdates(this)">🔍 فحص التحديثات السحابية الآن</button>
     </div>
-    <div id="cloud-update-result" style="display:none;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border)"></div>
+    <div id="cloud-update-result" style="display:none;margin-bottom:12px;padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--glass-border)"></div>
 
     <div class="ota-grid">
       <div class="ota-box">
-        <h3 style="font-size:0.95rem;color:#fff;margin-bottom:8px">📁 تثبيت ملف تحديث محلي (.bin Upload)</h3>
+        <h3 style="font-size:0.95rem;color:var(--text);margin-bottom:8px">📁 تثبيت ملف تحديث محلي (.bin Upload)</h3>
         <form onsubmit="uploadOtaFirmware(event)">
           <div class="form-group">
             <label>اختر ملف الفيرموير المترجم (.bin):</label>
-            <input type="file" id="ota_file" accept=".bin" style="padding:6px;background:rgba(0,0,0,0.4)">
+            <input type="file" id="ota_file" accept=".bin" style="padding:6px;background:var(--input-bg)">
           </div>
           <button type="submit" class="primary-btn" style="width:100%">⚡ رفع وتثبيت الفيرموير (Direct Flash)</button>
         </form>
       </div>
 
       <div class="ota-box">
-        <h3 style="font-size:0.95rem;color:#fff;margin-bottom:8px">🌐 الترقية السحابية عبر رابط إنترنت (Remote URL)</h3>
+        <h3 style="font-size:0.95rem;color:var(--text);margin-bottom:8px">🌐 الترقية السحابية عبر رابط إنترنت (Remote URL)</h3>
         <form onsubmit="triggerUrlOta(event)">
           <div class="form-group">
             <label>رابط الفيرموير المباشر (HTTP/HTTPS):</label>
@@ -3145,7 +3312,7 @@ table.devices-table {
     </div>
 
     <!-- OTA Progress & Status Box -->
-    <div id="ota-progress-box" style="display:none;background:rgba(0,0,0,0.3);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-top:12px">
+    <div id="ota-progress-box" style="display:none;background:var(--surface-alt);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-top:12px">
       <div style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px">
         <span id="ota-status-msg" style="color:var(--text)">جاري معالجة التحديث...</span>
         <span id="ota-progress-text" style="color:var(--accent)">0%</span>
@@ -3179,13 +3346,13 @@ table.devices-table {
   <div class="modal-card">
     <button type="button" class="modal-close" onclick="closeLoginModal()">&times;</button>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <div style="width:44px;height:44px;border-radius:12px;background:rgba(244,63,94,0.15);border:1px solid rgba(244,63,94,0.4);display:flex;align-items:center;justify-content:center;font-size:1.5rem">🔐</div>
+      <div style="width:44px;height:44px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;font-size:1.5rem">🔐</div>
       <div>
-        <h2 style="font-size:1.2rem;color:#fff;margin:0;font-weight:800">تسجيل دخول المشرف</h2>
+        <h2 style="font-size:1.2rem;color:var(--text);margin:0;font-weight:800">تسجيل دخول المشرف</h2>
         <span style="font-size:0.78rem;color:var(--muted)">مطلوب لتأكيد التعديلات والتحكم الكامل بالراوتر</span>
       </div>
     </div>
-    <div id="login-reason-banner" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);color:#fcd34d;padding:10px 14px;border-radius:10px;font-size:0.82rem;margin-bottom:14px;line-height:1.5;display:none">
+    <div id="login-reason-banner" style="background:var(--amber-subtle);border:1px solid var(--amber-border);color:var(--amber-color);padding:10px 14px;border-radius:10px;font-size:0.82rem;margin-bottom:14px;line-height:1.5;display:none">
       🔒 يتطلب هذا الإجراء صلاحيات المشرف لتطبيقه وحفظه.
     </div>
     <div id="login-lockout" class="lockout-banner"></div>
@@ -3207,6 +3374,11 @@ table.devices-table {
 </div>
 
 <script>
+
+// Dynamic CSS token getter for canvas, charts and dynamic styling
+function getToken(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
 
 // -----------------------------------------------------------------------------
 // GLOBAL FULL-PAGE ZOOM / SCALE CONTROLLER
@@ -3260,24 +3432,24 @@ function showToast(msg, type = 'success') {
   }
 
   let icon = '✅';
-  let bg = 'rgba(6, 78, 59, 0.94)';
-  let border = 'rgba(34, 197, 94, 0.6)';
-  let color = '#dcfce7';
+  let bg = 'var(--toast-success-bg)';
+  let border = 'var(--toast-success-border)';
+  let color = 'var(--toast-success-text)';
 
   if (type === 'error') {
-    bg = 'rgba(153, 27, 27, 0.94)';
-    border = 'rgba(239, 68, 68, 0.6)';
-    color = '#fee2e2';
+    bg = 'var(--toast-error-bg)';
+    border = 'var(--toast-error-border)';
+    color = 'var(--toast-error-text)';
     icon = '❌';
   } else if (type === 'warn') {
-    bg = 'rgba(146, 64, 14, 0.94)';
-    border = 'rgba(245, 158, 11, 0.6)';
-    color = '#fef3c7';
+    bg = 'var(--toast-warning-bg)';
+    border = 'var(--toast-warning-border)';
+    color = 'var(--toast-warning-text)';
     icon = '⚠️';
   } else if (type === 'info') {
-    bg = 'rgba(12, 74, 110, 0.94)';
-    border = 'rgba(56, 189, 248, 0.6)';
-    color = '#e0f2fe';
+    bg = 'var(--toast-info-bg)';
+    border = 'var(--toast-info-border)';
+    color = 'var(--toast-info-text)';
     icon = 'ℹ️';
   }
 
@@ -3288,9 +3460,9 @@ function showToast(msg, type = 'success') {
 
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => {
-    toast.style.background = 'rgba(6, 78, 59, 0.9)';
-    toast.style.borderColor = 'rgba(34, 197, 94, 0.45)';
-    toast.style.color = '#dcfce7';
+    toast.style.background = 'var(--toast-success-bg)';
+    toast.style.borderColor = 'var(--toast-success-border)';
+    toast.style.color = 'var(--toast-success-text)';
     txt.textContent = 'يتم تحديث السرعة اللحظية والاستهلاك مباشرة كل ثانيتين';
   }, 3200);
 }
@@ -3362,19 +3534,25 @@ function getDeviceIcon(name) {
 }
 
 let isAdmin = false;
-let currentTheme = localStorage.getItem('esp_theme') || 'sunset';
+let currentTheme = localStorage.getItem('esp_theme') || 'dark';
+if (currentTheme === 'sunset') currentTheme = 'dark';
+if (currentTheme === 'matrix') currentTheme = 'light';
 let viewMode = localStorage.getItem('esp_view') || 'cards';
 let speedHistoryDown = new Array(30).fill(0);
 let speedHistoryUp = new Array(30).fill(0);
 
 function setTheme(theme) {
+  if (theme === 'sunset') theme = 'dark';
+  if (theme === 'matrix') theme = 'light';
   currentTheme = theme;
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('esp_theme', theme);
-  document.getElementById('btn-theme-sunset').classList.toggle('active', theme === 'sunset');
-  document.getElementById('btn-theme-matrix').classList.toggle('active', theme === 'matrix');
+  let btnDark = document.getElementById('btn-theme-sunset');
+  let btnLight = document.getElementById('btn-theme-matrix');
+  if (btnDark) btnDark.classList.toggle('active', theme === 'dark');
+  if (btnLight) btnLight.classList.toggle('active', theme === 'light');
   drawSpeedChart();
-    
+  if (typeof drawOvSparkline === 'function') drawOvSparkline();
 }
 setTheme(currentTheme);
 
@@ -3698,7 +3876,7 @@ function drawSpeedChart() {
 
   // Draw Download line
   ctx.beginPath();
-  let colorDown = (currentTheme === 'sunset') ? '#10b981' : '#00ff9d';
+  let colorDown = getToken('--green');
   ctx.strokeStyle = colorDown;
   ctx.lineWidth = 2.5;
   for (let i = 0; i < speedHistoryDown.length; i++) {
@@ -3710,7 +3888,7 @@ function drawSpeedChart() {
 
   // Draw Upload line
   ctx.beginPath();
-  let colorUp = (currentTheme === 'sunset') ? '#f43f5e' : '#a3e635';
+  let colorUp = getToken('--flow-up-color');
   ctx.strokeStyle = colorUp;
   ctx.lineWidth = 2.5;
   for (let i = 0; i < speedHistoryUp.length; i++) {
@@ -3748,8 +3926,8 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
     }
     if (wanBandEl) {
       wanBandEl.textContent = (data.sta_channel > 14) ? '5GHz' : '2.4GHz';
-      wanBandEl.style.background = (data.sta_channel > 14) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)';
-      wanBandEl.style.color = (data.sta_channel > 14) ? '#6ee7b7' : '#a5b4fc';
+      wanBandEl.style.background = (data.sta_channel > 14) ? 'var(--green-subtle)' : 'var(--accent-subtle)';
+      wanBandEl.style.color = (data.sta_channel > 14) ? 'var(--green)' : 'var(--accent)';
     }
 
     let ipTransEl = document.getElementById('ov-ip-transition');
@@ -3808,9 +3986,9 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
     if (qRingEl) {
       let offset = 314 - (314 * (quotaPct / 100));
       qRingEl.style.strokeDashoffset = offset;
-      if (quotaPct > 90) qRingEl.style.stroke = 'var(--red, #f43f5e)';
-      else if (quotaPct > 75) qRingEl.style.stroke = '#f59e0b';
-      else qRingEl.style.stroke = 'var(--green, #10b981)';
+      if (quotaPct > 90) qRingEl.style.stroke = 'var(--red)';
+      else if (quotaPct > 75) qRingEl.style.stroke = 'var(--amber)';
+      else qRingEl.style.stroke = 'var(--green)';
     }
 
     let qConsEl = document.getElementById('ov-quota-consumed');
@@ -3837,10 +4015,10 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
     if (safeBadgeEl) {
       if (avgDailyUsage <= safeDailyRate || mainQuotaGb === 0) {
         safeBadgeEl.textContent = 'استهلاكك ضمن الآمن ✅';
-        safeBadgeEl.style.color = 'var(--green, #10b981)';
+        safeBadgeEl.style.color = 'var(--green)';
       } else {
         safeBadgeEl.textContent = 'تجاوز المعدل الآمن ⚠️';
-        safeBadgeEl.style.color = 'var(--red, #f43f5e)';
+        safeBadgeEl.style.color = 'var(--red)';
       }
     }
 
@@ -3848,16 +4026,16 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
     if (predictPillEl) {
       if (remGb > 0 && avgDailyUsage <= safeDailyRate) {
         predictPillEl.textContent = '✅ توقع: تكفي لنهاية الشهر';
-        predictPillEl.style.color = 'var(--green, #10b981)';
-        predictPillEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        predictPillEl.style.color = 'var(--green)';
+        predictPillEl.style.borderColor = 'var(--green-border)';
       } else if (mainQuotaGb > 0 && remGb <= 0) {
         predictPillEl.textContent = '⚠️ انتهت الباقة بالكامل';
-        predictPillEl.style.color = 'var(--red, #f43f5e)';
-        predictPillEl.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+        predictPillEl.style.color = 'var(--red)';
+        predictPillEl.style.borderColor = 'var(--red-border)';
       } else {
         predictPillEl.textContent = '⚠️ استهلاكك أسرع من المتوقع';
-        predictPillEl.style.color = '#f59e0b';
-        predictPillEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+        predictPillEl.style.color = 'var(--amber)';
+        predictPillEl.style.borderColor = 'var(--amber-border)';
       }
     }
 
@@ -3930,10 +4108,11 @@ function drawOvSparkline() {
 
     let stepX = w / (ovSpeedHistory.length - 1);
 
-    // Draw Download Curve (Green)
+    // Draw Download Curve (Emerald)
     ctx.beginPath();
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 2.5;
+    let ovDown = getToken('--green');
+    ctx.strokeStyle = ovDown;
+    ctx.lineWidth = 2.2;
     ctx.lineJoin = 'round';
     for (let i = 0; i < ovSpeedHistory.length; i++) {
       let x = i * stepX;
@@ -3943,21 +4122,19 @@ function drawOvSparkline() {
     }
     ctx.stroke();
 
-    // Draw Download Gradient Fill
-    if (ctx.createLinearGradient && ctx.closePath) {
+    // Solid single-tint fill without gradient
+    if (ctx.closePath) {
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
       ctx.closePath();
-      let gradDown = ctx.createLinearGradient(0, 0, 0, h);
-      gradDown.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
-      gradDown.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-      ctx.fillStyle = gradDown;
+      ctx.fillStyle = getToken('--chart-fill-down');
       ctx.fill();
     }
 
     // Draw Upload Curve (Cyan Accent)
     ctx.beginPath();
-    ctx.strokeStyle = '#38bdf8';
+    let ovUp = getToken('--cyan');
+    ctx.strokeStyle = ovUp;
     ctx.lineWidth = 2.0;
     ctx.lineJoin = 'round';
     for (let i = 0; i < ovSpeedHistory.length; i++) {
@@ -4547,7 +4724,7 @@ function renderDevices(devices) {
                   <input type="number" step="0.5" min="0" value="${quotaGB}" id="tbl_q_${canonMac}" 
                          oninput="this.dataset.dirty='1'"
                          onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                         style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
+                         style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--input-text)" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
                   <span style="font-size:0.68rem;color:var(--text-secondary)">GB</span>
                 </div>
               </div>
@@ -4565,14 +4742,14 @@ function renderDevices(devices) {
           <td class="text-center">
             <div class="tbl-limit-group">
               <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
-                <span style="color:var(--tbl-dl-color, #38bdf8);font-size:0.68rem;font-weight:700">⬇️</span>
+                <span style="color:var(--tbl-dl-color);font-size:0.68rem;font-weight:700">⬇️</span>
                 <input type="number" step="0.5" min="0" value="${downLimit}" id="tbl_dl_${canonMac}" 
                        class="tbl-limit-input"
                        oninput="this.dataset.dirty='1'"
                        onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
               </div>
               <div class="tbl-limit-box up" title="أقصى سرعة رفع Mbps">
-                <span style="color:var(--tbl-ul-color, #c084fc);font-size:0.68rem;font-weight:700">⬆️</span>
+                <span style="color:var(--tbl-ul-color);font-size:0.68rem;font-weight:700">⬆️</span>
                 <input type="number" step="0.5" min="0" value="${upLimit}" id="tbl_ul_${canonMac}" 
                        class="tbl-limit-input"
                        oninput="this.dataset.dirty='1'"
@@ -4587,7 +4764,7 @@ function renderDevices(devices) {
             <input type="text" list="tg_users_datalist" value="${tgChat}" id="tbl_tg_${canonMac}" 
                    oninput="this.dataset.dirty='1'"
                    onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                   style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border, rgba(96,165,250,0.3));background:rgba(0,0,0,0.35);color:var(--tbl-tg-color, #93c5fd)" 
+                   style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border);background:var(--surface-overlay);color:var(--tbl-tg-color)" 
                    placeholder="Chat ID" title="معرف التيليجرام">
           </td>
 
@@ -4933,7 +5110,7 @@ function renderDevices(devices) {
                       <input type="number" step="0.5" min="0" value="${quotaGB}" id="off_tbl_q_${canonMac}" 
                              oninput="this.dataset.dirty='1'"
                              onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                             style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.4);color:#fff" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
+                             style="width:40px;height:22px;padding:1px 2px;font-size:0.74rem;font-weight:700;text-align:center;border-radius:4px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--input-text)" title="كوتة الجهاز بالجيجابايت (0 = غير محدود)">
                       <span style="font-size:0.68rem;color:var(--text-secondary)">GB</span>
                     </div>
                   </div>
@@ -4951,14 +5128,14 @@ function renderDevices(devices) {
               <td class="text-center">
                 <div class="tbl-limit-group">
                   <div class="tbl-limit-box down" title="أقصى سرعة تحميل Mbps">
-                    <span style="color:var(--tbl-dl-color, #38bdf8);font-size:0.68rem;font-weight:700">⬇️</span>
+                    <span style="color:var(--tbl-dl-color);font-size:0.68rem;font-weight:700">⬇️</span>
                     <input type="number" step="0.5" min="0" value="${downLimit}" id="off_tbl_dl_${canonMac}" 
                            class="tbl-limit-input"
                            oninput="this.dataset.dirty='1'"
                            onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')">
                   </div>
                   <div class="tbl-limit-box up" title="أقصى سرعة رفع Mbps">
-                    <span style="color:var(--tbl-ul-color, #c084fc);font-size:0.68rem;font-weight:700">⬆️</span>
+                    <span style="color:var(--tbl-ul-color);font-size:0.68rem;font-weight:700">⬆️</span>
                     <input type="number" step="0.5" min="0" value="${upLimit}" id="off_tbl_ul_${canonMac}" 
                            class="tbl-limit-input"
                            oninput="this.dataset.dirty='1'"
@@ -4973,7 +5150,7 @@ function renderDevices(devices) {
                 <input type="text" list="tg_users_datalist" value="${tgChat}" id="off_tbl_tg_${canonMac}" 
                        oninput="this.dataset.dirty='1'"
                        onkeydown="if(event.key==='Enter') saveDeviceTable('${canonMac}')"
-                       style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border, rgba(96,165,250,0.3));background:rgba(0,0,0,0.35);color:var(--tbl-tg-color, #93c5fd)" 
+                       style="width:78px;height:24px;padding:1px 4px;direction:ltr;text-align:center;font-size:0.75rem;border-radius:5px;border:1px solid var(--tbl-tg-border);background:var(--surface-overlay);color:var(--tbl-tg-color)" 
                        placeholder="Chat ID" title="معرف التيليجرام">
               </td>
 
@@ -5373,7 +5550,7 @@ async function checkCloudUpdates(btn) {
         box.innerHTML = `
           <div style="color:var(--green);font-weight:700;font-size:1rem;margin-bottom:6px">🚀 يتوفر إصدار أحدث للراوتر (${data.latest_version})!</div>
           <div style="font-size:0.85rem;color:var(--text);margin-bottom:8px"><b>سجل التحديثات:</b> ${data.changelog || 'تحسينات في الأداء والاستقرار.'}</div>
-          <button type="button" class="primary-btn" onclick="startAutoCloudOta('${data.firmware_url}')" style="background:var(--green);color:#000;font-weight:700">⚡ تثبيت التحديث الهوائي الآن بنقرة واحدة</button>
+          <button type="button" class="primary-btn" onclick="startAutoCloudOta('${data.firmware_url}')" style="background:var(--green);color:var(--btn-text);font-weight:700">⚡ تثبيت التحديث الهوائي الآن بنقرة واحدة</button>
         `;
       } else {
         box.style.border = '1px solid var(--accent)';
@@ -5792,7 +5969,7 @@ function updateDiscoveredTgUsers(tgUsers) {
         let name = u.name || 'مستخدم';
         let un = u.username ? `@${u.username}` : 'بدون معرف';
         return `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;margin-bottom:6px;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-subtle);border:1px solid var(--border-subtle);border-radius:8px;margin-bottom:6px;gap:8px;flex-wrap:wrap">
             <div style="display:flex;flex-direction:column">
               <span style="font-weight:700;font-size:0.85rem;color:var(--text)">👤 ${name} <span style="font-weight:normal;color:var(--accent);font-size:0.78rem">(${un})</span></span>
               <span style="font-size:0.75rem;color:var(--muted);direction:ltr;text-align:left">Chat ID: <code style="color:var(--cyan)">${u.chat_id}</code></span>
@@ -6129,7 +6306,7 @@ async function scanWifiNetworks() {
     if (!data.ok) {
       if (dropdown) {
         dropdown.innerHTML = `
-          <div style="padding:12px;text-align:center;color:#ef4444;font-size:0.85rem">
+          <div style="padding:12px;text-align:center;color:var(--red);font-size:0.85rem">
             ❌ تعذر إتمام فحص الشبكات (${data.error || 'خطأ'}). يرجى المحاولة لاحقاً.
           </div>`;
       }
@@ -6148,8 +6325,8 @@ async function scanWifiNetworks() {
     }
 
     let html = `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px">
-        <span style="font-weight:700;font-size:0.82rem;color:#c4b5fd">الشبكات المكتشفة (${aps.length})</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border-subtle);margin-bottom:4px">
+        <span style="font-weight:700;font-size:0.82rem;color:var(--purple-color)">الشبكات المكتشفة (${aps.length})</span>
         <button type="button" onclick="document.getElementById('wifi_scan_results').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:2px 6px">✕</button>
       </div>
       <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
@@ -6157,29 +6334,29 @@ async function scanWifiNetworks() {
 
     aps.forEach(ap => {
       let sigIcon = '📶';
-      let sigColor = '#10b981';
-      if (ap.rssi < -75) { sigColor = '#ef4444'; }
-      else if (ap.rssi < -65) { sigColor = '#f59e0b'; }
+      let sigColor = 'var(--green)';
+      if (ap.rssi < -75) { sigColor = 'var(--red)'; }
+      else if (ap.rssi < -65) { sigColor = 'var(--amber)'; }
 
       const is5G = (ap.band === '5GHz');
       const bandBadge = is5G
-        ? `<span class="badge" style="background:rgba(168,85,247,0.22);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45);font-size:0.72rem;padding:2px 6px;font-weight:700">5 GHz</span>`
-        : `<span class="badge" style="background:rgba(6,182,212,0.18);color:#67e8f9;border:1px solid rgba(6,182,212,0.4);font-size:0.72rem;padding:2px 6px;font-weight:700">2.4 GHz</span>`;
+        ? `<span class="badge" style="background:var(--purple-subtle);color:var(--purple-color);border:1px solid var(--purple-border);font-size:0.72rem;padding:2px 6px;font-weight:700">5 GHz</span>`
+        : `<span class="badge" style="background:var(--cyan-subtle);color:var(--cyan);border:1px solid var(--cyan-border);font-size:0.72rem;padding:2px 6px;font-weight:700">2.4 GHz</span>`;
 
       const openBadge = ap.open
-        ? `<span style="font-size:0.7rem;color:#10b981;background:rgba(16,185,129,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">🔓 مفتوحة</span>`
+        ? `<span style="font-size:0.7rem;color:var(--green);background:var(--green-subtle);padding:1px 6px;border-radius:4px;border:1px solid var(--green-border)">🔓 مفتوحة</span>`
         : `<span style="font-size:0.7rem;color:var(--muted)" title="مشفرة">🔒</span>`;
 
       const safeSsid = ap.ssid.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
       html += `
         <div onclick="selectScannedWifi('${safeSsid}', ${ap.open ? 'true' : 'false'}, '${ap.band}')" 
-             style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,0.03);transition:background 0.15s;gap:8px"
-             onmouseover="this.style.background='rgba(139,92,246,0.18)'" 
-             onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+             style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;background:var(--surface-alt);border:1px solid var(--glass-border);transition:background 0.15s;gap:8px"
+             onmouseover="this.style.background='var(--glass-border)'" 
+             onmouseout="this.style.background='var(--surface-alt)'">
           <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
             <span style="font-size:1.05rem;color:${sigColor}">${sigIcon}</span>
-            <span style="font-weight:700;font-size:0.88rem;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left">${ap.ssid}</span>
+            <span style="font-weight:700;font-size:0.88rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left">${ap.ssid}</span>
             ${openBadge}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -6196,7 +6373,7 @@ async function scanWifiNetworks() {
   } catch (err) {
     if (dropdown) {
       dropdown.innerHTML = `
-        <div style="padding:12px;text-align:center;color:#ef4444;font-size:0.85rem">
+        <div style="padding:12px;text-align:center;color:var(--red);font-size:0.85rem">
           ❌ حدث خطأ أثناء الاتصال بالراوتر لفحص الشبكات.
         </div>`;
     }
