@@ -168,10 +168,25 @@ body {
   text-decoration: underline;
 }
 
-.header{
+.sticky-top-section {
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: 1000;
+  padding-top: 6px;
+  padding-bottom: 4px;
+  background: linear-gradient(180deg, rgba(15, 11, 26, 0.96) 0%, rgba(15, 11, 26, 0.90) 85%, rgba(15, 11, 26, 0) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  margin-bottom: 12px;
+}
+[data-theme='matrix'] .sticky-top-section {
+  background: linear-gradient(180deg, rgba(6, 17, 12, 0.96) 0%, rgba(6, 17, 12, 0.90) 85%, rgba(6, 17, 12, 0) 100%);
+}
+
+.header{
+  position: relative;
+  top: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -239,308 +254,148 @@ body {
 }
 
 
-/* FLOATING RIGHT SIDEBAR TABS DOCK */
-
-/* FLOATING LEFT METRICS DOCK (WIDE SCREENS ONLY) */
-.floating-metrics-dock {
-  position: fixed;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%) translateX(-140%) translateZ(0);
-  will-change: transform, opacity;
-  opacity: 0;
-  pointer-events: none;
-  background: var(--glass-header);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 10px 8px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+/* ==================== APP LAYOUT (SIDEBAR + CONTENT) ==================== */
+.app-layout {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  z-index: 9998;
-  min-width: 132px;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
-  user-select: none;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
 }
 
-.floating-metrics-dock.visible {
-  transform: translateY(-50%) translateX(0);
-  opacity: 1;
-  pointer-events: auto;
+/* DEDICATED VERTICAL SIDEBAR (RIGHT SIDE) */
+.sidebar-nav {
+  width: 250px;
+  flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--sticky-top-height, 168px) + 8px);
+  border-radius: 14px;
+  padding: 12px 10px;
+  z-index: 50;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s ease;
 }
 
-.fmd-header {
+.sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 6px 6px 6px;
+  padding: 4px 8px 10px 8px;
   border-bottom: 1px solid var(--glass-border);
-  margin-bottom: 2px;
+  margin-bottom: 8px;
 }
 
-.fmd-title {
-  font-size: 0.72rem;
+.sidebar-title {
+  font-size: 0.82rem;
   font-weight: 800;
   color: var(--muted);
   letter-spacing: 0.3px;
 }
 
-.fmd-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  transition: all 0.2s ease;
-}
-
-.fmd-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateX(3px);
-}
-
-.fmd-icon {
-  font-size: 0.95rem;
-  flex-shrink: 0;
-}
-
-.fmd-details {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-}
-
-.fmd-label {
-  font-size: 0.64rem;
-  color: var(--muted);
-}
-
-.fmd-val {
-  font-size: 0.76rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-/* Hide on screens smaller than 1150px */
-@media (max-width: 1149px) {
-  .floating-metrics-dock {
-    display: none !important;
-  }
-}
-
-.floating-tabs-dock {
-  position: fixed;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%) translateX(130%) translateZ(0);
-  will-change: transform, opacity;
-  opacity: 0;
-  pointer-events: none;
-  background: var(--glass-header);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 10px 8px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+.sidebar-tabs {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 9999;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  width: 100%;
 }
 
-.floating-tabs-dock.visible {
-  transform: translateY(-50%) translateX(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.floating-tab-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  color: var(--text);
-  padding: 8px 12px;
-  font-size: 0.82rem;
-  font-weight: 700;
+.sidebar-tabs .tab-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  white-space: nowrap;
-  font-family: inherit;
   text-align: right;
+  justify-content: flex-start;
+  user-select: none;
 }
 
-.floating-tab-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+.sidebar-tabs .tab-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
   border-color: var(--accent);
   transform: translateX(-4px);
 }
 
-.floating-tab-btn.active {
+.sidebar-tabs .tab-btn.active {
   background: var(--accent-grad);
-  border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
-  box-shadow: 0 4px 14px var(--accent-shadow);
+  border-color: transparent;
+  box-shadow: 0 4px 16px var(--accent-shadow);
+  transform: translateX(-2px);
 }
 
-.ft-icon {
-  font-size: 1.05rem;
+.sidebar-tabs .tab-btn .tab-icon {
+  font-size: 1.1rem;
   flex-shrink: 0;
 }
 
-.ft-text {
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.ft-divider {
-  height: 1px;
-  background: var(--glass-border);
-  margin: 3px 0;
-}
-
-.ft-top-btn {
-  background: rgba(6, 182, 212, 0.12);
-  border-color: rgba(6, 182, 212, 0.3);
-  color: var(--cyan);
-}
-
-.ft-top-btn:hover {
-  background: rgba(6, 182, 212, 0.25);
-  border-color: var(--cyan);
-  color: #fff;
-}
-
-/* Responsive for Mobile */
-@media (max-width: 768px) {
-  
-/* FLOATING LEFT METRICS DOCK (WIDE SCREENS ONLY) */
-.floating-metrics-dock {
-  position: fixed;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%) translateX(-140%) translateZ(0);
-  will-change: transform, opacity;
-  opacity: 0;
-  pointer-events: none;
-  background: var(--glass-header);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 10px 8px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  z-index: 9998;
-  min-width: 132px;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
-  user-select: none;
-}
-
-.floating-metrics-dock.visible {
-  transform: translateY(-50%) translateX(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.fmd-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 6px 6px 6px;
-  border-bottom: 1px solid var(--glass-border);
-  margin-bottom: 2px;
-}
-
-.fmd-title {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--muted);
-  letter-spacing: 0.3px;
-}
-
-.fmd-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  transition: all 0.2s ease;
-}
-
-.fmd-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateX(3px);
-}
-
-.fmd-icon {
-  font-size: 0.95rem;
-  flex-shrink: 0;
-}
-
-.fmd-details {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-}
-
-.fmd-label {
-  font-size: 0.64rem;
-  color: var(--muted);
-}
-
-.fmd-val {
-  font-size: 0.76rem;
-  font-weight: 800;
+.sidebar-tabs .tab-btn .tab-title {
+  flex: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Hide on screens smaller than 1150px */
-@media (max-width: 1149px) {
-  .floating-metrics-dock {
-    display: none !important;
+/* CONTENT AREA (LEFT SIDE) */
+.content-area {
+  flex: 1;
+  min-width: 0;
+}
+
+/* RESPONSIVE LAYOUT FOR MOBILE / SMALL SCREENS */
+@media (max-width: 900px) {
+  .app-layout {
+    flex-direction: column;
+    gap: 10px;
   }
-}
-
-.floating-tabs-dock {
-    right: 8px;
-    top: auto;
-    bottom: 24px;
-    transform: translateY(0) translateX(130%);
-    border-radius: 30px;
+  
+  .sidebar-nav {
+    width: 100%;
+    position: sticky;
+    top: calc(var(--sticky-top-height, 168px) + 4px);
+    z-index: 999;
     padding: 8px 6px;
-    gap: 5px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    background: var(--glass-header);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
-  .floating-tabs-dock.visible {
-    transform: translateY(0) translateX(0);
+  
+  .sidebar-header {
+    display: none;
   }
-  .ft-text {
-    display: none !important;
+  
+  .sidebar-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding-bottom: 2px;
   }
-  .floating-tab-btn {
-    width: 38px;
-    height: 38px;
-    padding: 0;
-    border-radius: 50%;
-    justify-content: center;
+  
+  .sidebar-tabs::-webkit-scrollbar {
+    display: none;
   }
-  .floating-tab-btn:hover {
-    transform: scale(1.1);
+  
+  .sidebar-tabs .tab-btn {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    gap: 6px;
+    border-radius: 8px;
+    transform: none !important;
   }
 }
 
@@ -565,7 +420,7 @@ body {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 2px;
 }
 .metric-card{
   padding: 10px 8px;
@@ -1663,6 +1518,7 @@ table.devices-table {
 </head>
 <body>
 <main>
+<div class="sticky-top-section" id="sticky-top-section">
 <header class="header glass">
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <h1>🌐 <span>راوتر ESP32 المتقدم</span></h1>
@@ -1723,15 +1579,45 @@ table.devices-table {
     <span class="metric-sub" id="wan-info-sub">جاري الفحص...</span>
   </div>
 </div>
+</div>
 
-<nav class="tabs">
-  <button class="tab-btn active" onclick="switchTab('tab-devices', this)">👥 الأجهزة والسرعات</button>
-  <button class="tab-btn" onclick="switchTab('tab-period', this)">🎯 باقة الإنترنت والاستهلاك</button>
-  <button class="tab-btn" onclick="switchTab('tab-telegram', this)">بوت وتنبيهات التيليجرام 🤖</button>
-  <button class="tab-btn" onclick="switchTab('tab-reboot', this)">📊 المراقبة وإعادة التشغيل (الريستارت)</button>
-  <button class="tab-btn" onclick="switchTab('tab-settings', this)">⚙️ إعدادات الجهاز والوايفاي</button>
-  <button class="tab-btn" onclick="switchTab('tab-ota', this)">🚀 التحديثات (OTA)</button>
-</nav>
+<div class="app-layout">
+  <!-- DEDICATED VERTICAL SIDEBAR (RIGHT in RTL) -->
+  <aside class="sidebar-nav glass" id="sidebar-nav" aria-label="قائمة التبويبات الرئيسية">
+    <div class="sidebar-header">
+      <span class="sidebar-title">⚡ لوحة التحكم</span>
+      <span class="pulse online" style="width:7px;height:7px"></span>
+    </div>
+    <nav class="sidebar-tabs">
+      <button type="button" class="tab-btn active" onclick="switchTab('tab-devices', this)">
+        <span class="tab-icon">👥</span>
+        <span class="tab-title">الأجهزة والسرعات</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-period', this)">
+        <span class="tab-icon">🎯</span>
+        <span class="tab-title">باقة النت والاستهلاك</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-telegram', this)">
+        <span class="tab-icon">🤖</span>
+        <span class="tab-title">بوت وتنبيهات التيليجرام</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-reboot', this)">
+        <span class="tab-icon">📊</span>
+        <span class="tab-title">المراقبة والريستارت</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-settings', this)">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-title">إعدادات الجهاز والوايفاي</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-ota', this)">
+        <span class="tab-icon">🚀</span>
+        <span class="tab-title">التحديثات السحابية (OTA)</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- CONTENT AREA (LEFT in RTL) -->
+  <div class="content-area">
 
 <!-- TAB 1: DEVICES -->
 <section id="tab-devices" class="tab-content active">
@@ -2392,10 +2278,10 @@ table.devices-table {
       <div class="form-group" style="margin-top:10px">
         <label style="font-weight:600">معيار وسرعة بث واستقبال الواي فاي (Wi-Fi Protocol / Bandwidth):</label>
         <select name="wifi_protocol" id="cfg_wifi_protocol">
-          <option value="1">🚀 أقصى سرعة وأداء: Wi-Fi 6 (802.11ax Turbo) + نطاق عريض 40MHz (HE40/HT40) للبث والاستقبال</option>
-          <option value="0">🛡️ استقرار فائق وتوافق شامل: Wi-Fi 6 + نطاق 20MHz (HE20/HT20) للأجهزة القديمة والمقويات</option>
-          <option value="2">⚡ للأجهزة الحديثة فقط: 802.11ax/n Only (نطاق عريض 40MHz أقصى سرعة)</option>
-          <option value="3">🔒 للأجهزة الحديثة فقط: 802.11ax/n Only (نطاق 20MHz للاستقرار)</option>
+          <option value="1">🚀 أقصى سرعة وأداء: نطاق عريض 40MHz فائق السرعة (HT40 Turbo - ربط حتى 150 Mbps لكسر حاجز 22M)</option>
+          <option value="0">🛡️ استقرار وتوافق Wi-Fi 6: نطاق 20MHz القياسي (HE20/HT20 للأجهزة والمقويات)</option>
+          <option value="2">⚡ وضع السرعة الفائقة 40MHz (HT40 Turbo - سرعة قصوى بدون قيود)</option>
+          <option value="3">🔒 وضع Wi-Fi 6 القياسي 20MHz (HE20 أقصى استقرار وتوافق)</option>
         </select>
       </div>
 
@@ -2559,104 +2445,10 @@ table.devices-table {
     </div>
   </div>
 </section>
+  </div><!-- /.content-area -->
+</div><!-- /.app-layout -->
 
 
-<!-- FLOATING LEFT METRICS DOCK (Appears on wide screens when scrolling down) -->
-<div id="floating-metrics-dock" class="floating-metrics-dock" aria-label="شريط الإحصائيات اللحظية">
-  <div class="fmd-header">
-    <span class="fmd-title">📊 الحالة اللحظية</span>
-    <span class="pulse online" style="width:7px;height:7px"></span>
-  </div>
-  
-  <div class="fmd-item" title="سرعة التحميل اللحظية">
-    <span class="fmd-icon">⬇️</span>
-    <div class="fmd-details">
-      <span class="fmd-label">التحميل</span>
-      <b class="fmd-val" id="dock-down-speed" style="color:var(--cyan)">18.84 Mbps</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="سرعة الرفع اللحظية">
-    <span class="fmd-icon">⬆️</span>
-    <div class="fmd-details">
-      <span class="fmd-label">الرفع</span>
-      <b class="fmd-val" id="dock-up-speed" style="color:var(--accent)">4.36 Mbps</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="الأجهزة المتصلة حالياً">
-    <span class="fmd-icon">👥</span>
-    <div class="fmd-details">
-      <span class="fmd-label">الأجهزة</span>
-      <b class="fmd-val" id="dock-clients" style="color:var(--green)">6 / 12</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="استهلاك باقة الإنترنت">
-    <span class="fmd-icon">🎯</span>
-    <div class="fmd-details">
-      <span class="fmd-label">الباقة</span>
-      <b class="fmd-val" id="dock-quota" style="color:var(--amber)">105.4 GB</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="الذاكرة المتاحة (RAM)">
-    <span class="fmd-icon">🧠</span>
-    <div class="fmd-details">
-      <span class="fmd-label">الرام</span>
-      <b class="fmd-val" id="dock-ram" style="color:#f472b6">186 KB</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="مدة التشغيل">
-    <span class="fmd-icon">⏱️</span>
-    <div class="fmd-details">
-      <span class="fmd-label">التشغيل</span>
-      <b class="fmd-val" id="dock-uptime" style="color:#a78bfa">3ي 14س</b>
-    </div>
-  </div>
-
-  <div class="fmd-item" title="الإنترنت المصدر">
-    <span class="fmd-icon">📶</span>
-    <div class="fmd-details">
-      <span class="fmd-label">المصدر</span>
-      <b class="fmd-val" id="dock-wan" style="color:var(--green)">-58 dBm</b>
-    </div>
-  </div>
-</div>
-
-<!-- FLOATING RIGHT SIDEBAR TABS DOCK -->
-<div id="floating-tabs-dock" class="floating-tabs-dock" aria-label="شريط التبويبات السريع">
-  <button type="button" class="floating-tab-btn active" data-tab="tab-devices" onclick="switchTab('tab-devices', null, true)" title="إدارة الأجهزة والسرعات">
-    <span class="ft-icon">👥</span>
-    <span class="ft-text">إدارة الأجهزة والسرعات</span>
-  </button>
-  <button type="button" class="floating-tab-btn" data-tab="tab-quota" onclick="switchTab('tab-quota', null, true)" title="باقة الإنترنت والاستهلاك">
-    <span class="ft-icon">💖</span>
-    <span class="ft-text">باقة الإنترنت والاستهلاك</span>
-  </button>
-  <button type="button" class="floating-tab-btn" data-tab="tab-telegram" onclick="switchTab('tab-telegram', null, true)" title="بوت وتنبيهات التيليجرام">
-    <span class="ft-icon">🤖</span>
-    <span class="ft-text">بوت وتنبيهات التيليجرام</span>
-  </button>
-  <button type="button" class="floating-tab-btn" data-tab="tab-reboot" onclick="switchTab('tab-reboot', null, true)" title="المراقبة وإعادة التشغيل (الريستارت)">
-    <span class="ft-icon">📊</span>
-    <span class="ft-text">المراقبة والريستارت</span>
-  </button>
-  <button type="button" class="floating-tab-btn" data-tab="tab-settings" onclick="switchTab('tab-settings', null, true)" title="إعدادات الجهاز والواي فاي">
-    <span class="ft-icon">⚙️</span>
-    <span class="ft-text">إعدادات الواي فاي</span>
-  </button>
-  <button type="button" class="floating-tab-btn" data-tab="tab-ota" onclick="switchTab('tab-ota', null, true)" title="التحديث الهوائي OTA السحابي">
-    <span class="ft-icon">🚀</span>
-    <span class="ft-text">التحديث الهوائي OTA</span>
-  </button>
-  <div class="ft-divider"></div>
-  <button type="button" class="floating-tab-btn ft-top-btn" onclick="scrollToTop()" title="الصعود لأعلى الصفحة">
-    <span class="ft-icon">⬆️</span>
-    <span class="ft-text">الصعود لأعلى</span>
-  </button>
-</div>
 
 <!-- FLOATING LIVE METRICS & ACTION TOAST (Never shifts or pushes layout) -->
 <div class="floating-toast" id="live-floating-toast">
@@ -2705,6 +2497,16 @@ table.devices-table {
 // -----------------------------------------------------------------------------
 let currentZoom = 85;
 
+function updateStickyTopHeight() {
+  let el = document.getElementById('sticky-top-section');
+  if (el && el.offsetHeight > 0) {
+    document.documentElement.style.setProperty('--sticky-top-height', el.offsetHeight + 'px');
+  }
+}
+window.addEventListener('resize', updateStickyTopHeight);
+window.addEventListener('DOMContentLoaded', updateStickyTopHeight);
+setTimeout(updateStickyTopHeight, 100);
+
 function applyPageZoom(pct, saveToStorage = true) {
   pct = Math.max(70, Math.min(110, pct));
   currentZoom = pct;
@@ -2723,6 +2525,8 @@ function applyPageZoom(pct, saveToStorage = true) {
     try { localStorage.setItem('esp_page_zoom', pct); } catch(e){}
   }
   
+  setTimeout(updateStickyTopHeight, 60);
+
   if (typeof drawSpeedChart === 'function') {
     setTimeout(drawSpeedChart, 60);
   }
@@ -2854,7 +2658,7 @@ function setTheme(theme) {
   document.getElementById('btn-theme-sunset').classList.toggle('active', theme === 'sunset');
   document.getElementById('btn-theme-matrix').classList.toggle('active', theme === 'matrix');
   drawSpeedChart();
-    if (typeof syncFloatingMetrics === 'function') syncFloatingMetrics();
+    
 }
 setTheme(currentTheme);
 
@@ -2944,129 +2748,26 @@ function toggleOfflineSection() {
 
 
 
-function syncFloatingMetrics() {
-  const dVal = document.getElementById('cur-down-mbps');
-  const dockD = document.getElementById('dock-down-speed');
-  if (dVal && dockD) dockD.textContent = dVal.textContent;
-
-  const uVal = document.getElementById('cur-up-mbps');
-  const dockU = document.getElementById('dock-up-speed');
-  if (uVal && dockU) dockU.textContent = uVal.textContent;
-
-  const cVal = document.getElementById('active-clients-str') || document.querySelector('.metric-card .metric-value[style*="green"]');
-  const dockC = document.getElementById('dock-clients');
-  if (cVal && dockC) dockC.textContent = cVal.textContent.replace(' متصل', '').trim();
-
-  const qVal = document.getElementById('main-quota-metric');
-  const dockQ = document.getElementById('dock-quota');
-  if (qVal && dockQ) dockQ.textContent = qVal.textContent;
-
-  const rVal = document.getElementById('free-heap-metric');
-  const dockR = document.getElementById('dock-ram');
-  if (rVal && dockR) dockR.textContent = rVal.textContent;
-
-  const upVal = document.getElementById('uptime-metric');
-  const dockUp = document.getElementById('dock-uptime');
-  if (upVal && dockUp) dockUp.textContent = upVal.textContent;
-
-  const wVal = document.getElementById('wan-details-metric');
-  const dockW = document.getElementById('dock-wan');
-  if (wVal && dockW) {
-    let parts = wVal.textContent.split('|');
-    dockW.textContent = parts[0] ? parts[0].trim() : '-58 dBm';
-  }
-}
-
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-let cachedTriggerPoint = -1;
-function updateTriggerPoint() {
-  const navTabs = document.querySelector('.tabs');
-  if (navTabs) {
-    cachedTriggerPoint = navTabs.offsetTop + navTabs.offsetHeight - 20;
-  } else {
-    cachedTriggerPoint = 220;
-  }
-}
-
-let lastScrolledState = null;
-let lastShowState = null;
-let lastMetricsVisible = null;
-
-function handleFloatingTabsScroll() {
-  const scrollY = window.scrollY;
-  const isScrolled = scrollY > 20;
-  if (isScrolled !== lastScrolledState) {
-    lastScrolledState = isScrolled;
-    const header = document.querySelector('.header');
-    if (header) header.classList.toggle('scrolled', isScrolled);
-  }
-
-  if (cachedTriggerPoint < 0) updateTriggerPoint();
-  const shouldShow = scrollY > cachedTriggerPoint;
-
-  if (shouldShow !== lastShowState) {
-    lastShowState = shouldShow;
-    const tabsDock = document.getElementById('floating-tabs-dock');
-    if (tabsDock) tabsDock.classList.toggle('visible', shouldShow);
-  }
-
-  const metricsDock = document.getElementById('floating-metrics-dock');
-  if (metricsDock) {
-    const isWide = window.innerWidth >= 1150;
-    const shouldShowMetrics = shouldShow && isWide;
-    if (shouldShowMetrics !== lastMetricsVisible) {
-      lastMetricsVisible = shouldShowMetrics;
-      metricsDock.classList.toggle('visible', shouldShowMetrics);
-      if (shouldShowMetrics && typeof syncFloatingMetrics === 'function') {
-        syncFloatingMetrics();
-      }
-    }
-  }
-}
-
-let scrollTicking = false;
-window.addEventListener('scroll', () => {
-  if (!scrollTicking) {
-    requestAnimationFrame(() => {
-      handleFloatingTabsScroll();
-      scrollTicking = false;
-    });
-    scrollTicking = true;
-  }
-}, { passive: true });
-window.addEventListener('resize', () => {
-  cachedTriggerPoint = -1;
-  handleFloatingTabsScroll();
-});
-
 function switchTab(tabId, btn, shouldScrollTop = false) {
-  document.querySelectorAll('.tab-btn').forEach(b => {
+  document.querySelectorAll('.tab-btn, .sidebar-tabs .tab-btn, .floating-tab-btn').forEach(b => {
     let onclickAttr = b.getAttribute('onclick') || '';
-    if (onclickAttr.includes(`'${tabId}'`)) {
+    let dataTab = b.getAttribute('data-tab') || '';
+    if (onclickAttr.includes(`'${tabId}'`) || dataTab === tabId) {
       b.classList.add('active');
     } else {
       b.classList.remove('active');
     }
   });
 
-  document.querySelectorAll('.floating-tab-btn').forEach(fb => {
-    if (fb.getAttribute('data-tab') === tabId) {
-      fb.classList.add('active');
-    } else {
-      fb.classList.remove('active');
-    }
-  });
-
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   let target = document.getElementById(tabId);
   if (target) target.classList.add('active');
-  if (tabId === 'tab-reboot') setTimeout(drawSpeedChart, 60);
+  if (tabId === 'tab-reboot' && typeof drawSpeedChart === 'function') setTimeout(drawSpeedChart, 60);
 
   if (shouldScrollTop) {
-    scrollToTop();
+    let sc = document.querySelector('.main-content-scroll') || window;
+    if (sc.scrollTo) sc.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 

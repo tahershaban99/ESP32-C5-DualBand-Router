@@ -1,6 +1,6 @@
 {
-  "version": "v3.5.9",
+  "version": "v3.6.0",
   "release_date": "2026-11-09",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إصلاح تجمد لوحة التحكم (Syntax Error) واستعادة التحديث اللحظي للبيانات وجميع أزرار التنقل بسلاسة تامة."
+  "changelog": "تثبيت الهيدر وصف البطاقات الإحصائية الـ 7 معاً في أعلى الصفحة (Sticky Top Section) بخلفية زجاجية ضبابية تمنع تداخل النصوص مع التمرير، وتوافق كامل وسلس مع القائمة الجانبية والهواتف."
 }

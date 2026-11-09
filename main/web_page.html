@@ -168,10 +168,25 @@ body {
   text-decoration: underline;
 }
 
-.header{
+.sticky-top-section {
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: 1000;
+  padding-top: 6px;
+  padding-bottom: 4px;
+  background: linear-gradient(180deg, rgba(15, 11, 26, 0.96) 0%, rgba(15, 11, 26, 0.90) 85%, rgba(15, 11, 26, 0) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  margin-bottom: 12px;
+}
+[data-theme='matrix'] .sticky-top-section {
+  background: linear-gradient(180deg, rgba(6, 17, 12, 0.96) 0%, rgba(6, 17, 12, 0.90) 85%, rgba(6, 17, 12, 0) 100%);
+}
+
+.header{
+  position: relative;
+  top: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -252,7 +267,7 @@ body {
   width: 250px;
   flex-shrink: 0;
   position: sticky;
-  top: 14px;
+  top: calc(var(--sticky-top-height, 168px) + 8px);
   border-radius: 14px;
   padding: 12px 10px;
   z-index: 50;
@@ -346,8 +361,8 @@ body {
   .sidebar-nav {
     width: 100%;
     position: sticky;
-    top: 0;
-    z-index: 1000;
+    top: calc(var(--sticky-top-height, 168px) + 4px);
+    z-index: 999;
     padding: 8px 6px;
     margin-bottom: 6px;
     border-radius: 10px;
@@ -405,7 +420,7 @@ body {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 2px;
 }
 .metric-card{
   padding: 10px 8px;
@@ -1503,6 +1518,7 @@ table.devices-table {
 </head>
 <body>
 <main>
+<div class="sticky-top-section" id="sticky-top-section">
 <header class="header glass">
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <h1>🌐 <span>راوتر ESP32 المتقدم</span></h1>
@@ -1562,6 +1578,7 @@ table.devices-table {
     <span class="metric-value" id="wan-ssid-val" style="color:var(--green);font-size:1.18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">--</span>
     <span class="metric-sub" id="wan-info-sub">جاري الفحص...</span>
   </div>
+</div>
 </div>
 
 <div class="app-layout">
@@ -2480,6 +2497,16 @@ table.devices-table {
 // -----------------------------------------------------------------------------
 let currentZoom = 85;
 
+function updateStickyTopHeight() {
+  let el = document.getElementById('sticky-top-section');
+  if (el && el.offsetHeight > 0) {
+    document.documentElement.style.setProperty('--sticky-top-height', el.offsetHeight + 'px');
+  }
+}
+window.addEventListener('resize', updateStickyTopHeight);
+window.addEventListener('DOMContentLoaded', updateStickyTopHeight);
+setTimeout(updateStickyTopHeight, 100);
+
 function applyPageZoom(pct, saveToStorage = true) {
   pct = Math.max(70, Math.min(110, pct));
   currentZoom = pct;
@@ -2498,6 +2525,8 @@ function applyPageZoom(pct, saveToStorage = true) {
     try { localStorage.setItem('esp_page_zoom', pct); } catch(e){}
   }
   
+  setTimeout(updateStickyTopHeight, 60);
+
   if (typeof drawSpeedChart === 'function') {
     setTimeout(drawSpeedChart, 60);
   }
