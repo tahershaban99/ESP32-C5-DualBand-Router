@@ -1,6 +1,6 @@
 {
-  "version": "v3.7.0",
+  "version": "v3.7.1",
   "release_date": "2026-11-09",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "إضافة صفحة النظرة العامة التفاعلية الشاملة (Overview Dashboard) كصفحة رئيسية افتراضية مع خريطة مسار الشبكة الحية ومراقبة موارد المعالج وتحليل الكوتة والرسم البياني اللحظي للسرعة."
+  "changelog": "إصلاح ربط وتحديث بيانات لوحة النظرة العامة الحية (Overview Live Data Binding) من محرك الراوتر ومراقبة الأجهزة والسرعات والكوتة لحظياً كل ثانيتين."
 }

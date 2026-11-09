@@ -3919,61 +3919,72 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
 }
 
 function drawOvSparkline() {
-  let canvas = document.getElementById('ovLiveCanvas');
-  if (!canvas || !canvas.getContext) return;
-  let ctx = canvas.getContext('2d');
-  let w = canvas.width;
-  let h = canvas.height;
+  try {
+    let canvas = document.getElementById('ovLiveCanvas');
+    if (!canvas || !canvas.getContext) return;
+    let ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    let pw = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
+    if (pw > 0 && Math.abs(canvas.width - pw) > 5) canvas.width = pw;
+    let w = canvas.width;
+    let h = canvas.height;
 
-  ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, w, h);
 
-  if (ovSpeedHistory.length < 2) return;
+    if (!ovSpeedHistory || ovSpeedHistory.length < 2) return;
 
-  let maxVal = 1.0;
-  for (let pt of ovSpeedHistory) {
-    if (pt.down > maxVal) maxVal = pt.down;
-    if (pt.up > maxVal) maxVal = pt.up;
+    let maxVal = 1.0;
+    for (let pt of ovSpeedHistory) {
+      if (pt.down > maxVal) maxVal = pt.down;
+      if (pt.up > maxVal) maxVal = pt.up;
+    }
+    maxVal *= 1.25; // headroom
+
+    let stepX = w / (ovSpeedHistory.length - 1);
+
+    // Draw Download Curve (Green)
+    ctx.beginPath();
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < ovSpeedHistory.length; i++) {
+      let x = i * stepX;
+      let y = h - ((ovSpeedHistory[i].down / maxVal) * (h - 14)) - 6;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw Download Gradient Fill
+    if (ctx.createLinearGradient && ctx.closePath) {
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      let gradDown = ctx.createLinearGradient(0, 0, 0, h);
+      gradDown.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+      gradDown.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+      ctx.fillStyle = gradDown;
+      ctx.fill();
+    }
+
+    // Draw Upload Curve (Cyan Accent)
+    ctx.beginPath();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.0;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < ovSpeedHistory.length; i++) {
+      let x = i * stepX;
+      let y = h - ((ovSpeedHistory[i].up / maxVal) * (h - 14)) - 6;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  } catch(e) {
+    console.warn('drawOvSparkline error:', e);
   }
-  maxVal *= 1.25; // headroom
-
-  let stepX = w / (ovSpeedHistory.length - 1);
-
-  // Draw Download Curve (Green)
-  ctx.beginPath();
-  ctx.strokeStyle = '#10b981';
-  ctx.lineWidth = 2.5;
-  ctx.lineJoin = 'round';
-  for (let i = 0; i < ovSpeedHistory.length; i++) {
-    let x = i * stepX;
-    let y = h - ((ovSpeedHistory[i].down / maxVal) * (h - 12)) - 6;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-
-  // Draw Download Gradient Fill
-  ctx.lineTo(w, h);
-  ctx.lineTo(0, h);
-  ctx.closePath();
-  let gradDown = ctx.createLinearGradient(0, 0, 0, h);
-  gradDown.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
-  gradDown.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-  ctx.fillStyle = gradDown;
-  ctx.fill();
-
-  // Draw Upload Curve (Cyan/Magenta Accent)
-  ctx.beginPath();
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 2.0;
-  ctx.lineJoin = 'round';
-  for (let i = 0; i < ovSpeedHistory.length; i++) {
-    let x = i * stepX;
-    let y = h - ((ovSpeedHistory[i].up / maxVal) * (h - 12)) - 6;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
 }
+window.addEventListener('resize', drawOvSparkline);
+setTimeout(drawOvSparkline, 200);
 
 async function refreshData() {
   if (_actionInFlight || isOtaActive) return;
@@ -4287,7 +4298,23 @@ async function refreshData() {
     if (data.tg_users) {
       updateDiscoveredTgUsers(data.tg_users);
     }
-  } catch (err) {}
+
+    // UPDATE OVERVIEW TAB WITH LIVE REAL DATA!
+    try {
+      let devs = data.devices || [];
+      let actDevs = devs.filter(d => d.connected);
+      let vipDevs = devs.filter(d => (d.gaming || d.vip_gaming) && d.connected);
+      let offDevs = devs.filter(d => !d.connected);
+      let totalActive = Math.max(actDevs.length, data.active_clients || 0);
+      if (typeof updateOverviewTab === 'function') {
+        updateOverviewTab(data, downMbps, upMbps, totalActive, vipDevs.length, offDevs.length);
+      }
+    } catch(ovErr) {
+      console.warn('Overview tab update error:', ovErr);
+    }
+  } catch (err) {
+    console.warn('refreshData error:', err);
+  }
 }
 
 function renderDevices(devices) {
