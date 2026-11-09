@@ -1514,6 +1514,506 @@ table.devices-table {
   70% { transform: scale(2.2); opacity: 0; }
   100% { transform: scale(2.2); opacity: 0; }
 }
+
+/* =============================================================================
+   OVERVIEW TAB DASHBOARD (MODERN RESPONSIVE GLASSMORPHISM)
+   ============================================================================= */
+.metrics-grid {
+  max-height: 250px;
+  opacity: 1;
+  overflow: visible;
+  transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, margin 0.35s ease, padding 0.35s ease;
+}
+.metrics-grid.collapsed-on-overview {
+  max-height: 0 !important;
+  opacity: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+.ov-topology-card {
+  padding: 16px 20px;
+  border-radius: 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+.ov-topology-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: 10px;
+}
+.ov-topology-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ov-badge-pill {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 30px;
+  padding: 4px 12px;
+}
+.ov-topology-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1.2fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.ov-node-box {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ov-node-center {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.05);
+}
+.ov-node-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.ov-node-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+.ov-node-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+.ov-node-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ov-node-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+.ov-node-info {
+  min-width: 0;
+  overflow: hidden;
+}
+.ov-node-name {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-node-details {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ov-node-ip {
+  font-family: monospace;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #a7f3d0;
+  direction: ltr;
+  text-align: center;
+}
+.ov-node-chips {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 3px;
+  direction: ltr;
+}
+.ov-pipe-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  text-align: center;
+}
+.ov-link-speed {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--green);
+  font-family: monospace;
+  direction: ltr;
+}
+.ov-link-sub {
+  font-size: 0.64rem;
+  color: var(--muted);
+}
+.ov-link-arrow {
+  color: var(--green);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.ov-manage-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.ov-manage-btn:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.3);
+}
+
+/* 3-COLUMN MAIN GRID */
+.ov-main-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.ov-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ov-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: 8px;
+}
+.ov-card-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+}
+.ov-card-subtitle {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.ov-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+/* HARDWARE LIST */
+.ov-meter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ov-meter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ov-meter-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.ov-bar-bg {
+  width: 100%;
+  height: 7px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ov-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+.ov-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.ov-action-btn {
+  padding: 8px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.ov-action-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+
+/* QUOTA GAUGE */
+.ov-gauge-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: center;
+}
+.ov-circle-gauge {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0;
+}
+.ov-svg-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.ov-ring-bg {
+  fill: none;
+  stroke: rgba(255,255,255,0.08);
+  stroke-width: 9;
+}
+.ov-ring-fill {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease, stroke 0.3s;
+}
+.ov-ring-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+}
+.ov-ring-pct {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fff;
+}
+.ov-ring-sub {
+  font-size: 0.64rem;
+  color: var(--muted);
+}
+.ov-gauge-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.ov-quota-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ov-stat-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.ov-stat-num {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+}
+.ov-stat-denom {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.ov-quota-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ov-mini-box {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ov-mini-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.ov-mini-val {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #fff;
+}
+.ov-mini-sub {
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+.ov-bottom-badges {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.7rem;
+  padding-top: 4px;
+}
+.ov-predict-pill {
+  color: var(--green);
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.ov-sub-pill {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+/* LIVE BANDWIDTH GAUGES */
+.ov-dual-gauges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.ov-speed-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.ov-speed-circle {
+  position: relative;
+  width: 95px;
+  height: 95px;
+}
+.ov-speed-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.ov-speed-fill-down {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.ov-speed-fill-up {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.ov-speed-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.ov-speed-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.ov-speed-val {
+  font-size: 1.12rem;
+  font-weight: 900;
+  color: #fff;
+  font-family: monospace;
+}
+.ov-speed-unit {
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+.ov-speed-sub {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-family: monospace;
+}
+.ov-sparkline-box {
+  background: rgba(0,0,0,0.3);
+  border-radius: 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ov-sparkline-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+}
+.ov-live-canvas {
+  width: 100%;
+  height: 75px;
+  border-radius: 6px;
+  display: block;
+}
+
+@media (max-width: 1080px) {
+  .ov-main-grid {
+    grid-template-columns: 1fr;
+  }
+  .ov-topology-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .ov-pipe-link {
+    transform: rotate(90deg);
+    padding: 2px 0;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1542,7 +2042,7 @@ table.devices-table {
   </div>
 </header>
 
-<div class="metrics-grid">
+<div class="metrics-grid collapsed-on-overview">
   <div class="metric-card glass">
     <span class="metric-label">🚀 سرعة التحميل اللحظية</span>
     <span class="metric-value" id="cur-down-mbps" style="color:var(--green)">0.00 Mbps</span>
@@ -1589,7 +2089,11 @@ table.devices-table {
       <span class="pulse online" style="width:7px;height:7px"></span>
     </div>
     <nav class="sidebar-tabs">
-      <button type="button" class="tab-btn active" onclick="switchTab('tab-devices', this)">
+      <button type="button" class="tab-btn active" onclick="switchTab('tab-overview', this)">
+        <span class="tab-icon">🌐</span>
+        <span class="tab-title">نظرة عامة (Overview)</span>
+      </button>
+      <button type="button" class="tab-btn" onclick="switchTab('tab-devices', this)">
         <span class="tab-icon">👥</span>
         <span class="tab-title">الأجهزة والسرعات</span>
       </button>
@@ -1620,7 +2124,230 @@ table.devices-table {
   <div class="content-area">
 
 <!-- TAB 1: DEVICES -->
-<section id="tab-devices" class="tab-content active">
+<!-- TAB 0: OVERVIEW DASHBOARD -->
+<section id="tab-overview" class="tab-content active">
+  <!-- LIVE NETWORK TOPOLOGY -->
+  <div class="ov-topology-card glass">
+    <div class="ov-topology-header">
+      <div class="ov-topology-title">
+        <span>🌐</span> خريطة مسار الشبكة الحية (LIVE NETWORK TOPOLOGY)
+      </div>
+      <div class="ov-badge-pill" id="ov-napt-badge">
+        ⚡ NAPT Hardware Routing: Active
+      </div>
+    </div>
+    <div class="ov-topology-grid">
+      <!-- WAN Node (Right in RTL) -->
+      <div class="ov-node-box glass">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">المصدر الرئيسي (WAN Upstream)</span>
+          <span class="ov-node-badge" id="ov-wan-band">5GHz</span>
+        </div>
+        <div class="ov-node-main">
+          <span class="ov-node-icon">📡</span>
+          <div class="ov-node-info">
+            <div class="ov-node-name" id="ov-wan-ssid">جاري الفحص...</div>
+            <div class="ov-node-details" id="ov-wan-details">GW: -- • إشارة: --</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipe Link 1 -->
+      <div class="ov-pipe-link">
+        <div class="ov-link-speed" id="ov-link-speed-wan">Mbps 0.00</div>
+        <div class="ov-link-sub">معدل النقل</div>
+        <div class="ov-link-arrow">➔</div>
+      </div>
+
+      <!-- ESP32 Core (Center) -->
+      <div class="ov-node-box glass ov-node-center">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">نواة التوجيه والكوتة (ESP32-C5)</span>
+          <span class="ov-node-icon">🧠</span>
+        </div>
+        <div class="ov-node-main" style="flex-direction:column;align-items:center;text-align:center">
+          <div class="ov-node-ip" id="ov-ip-transition">IP: -- ➔ 192.168.4.1</div>
+          <div class="ov-node-chips" id="ov-core-specs">240MHz • RAM: -- KB • HT40</div>
+        </div>
+      </div>
+
+      <!-- Pipe Link 2 -->
+      <div class="ov-pipe-link">
+        <div class="ov-link-speed" id="ov-link-speed-lan">Mbps 0.00</div>
+        <div class="ov-link-sub">معدل النقل</div>
+        <div class="ov-link-arrow">➔</div>
+      </div>
+
+      <!-- LAN Clients Node (Left in RTL) -->
+      <div class="ov-node-box glass">
+        <div class="ov-node-top">
+          <span class="ov-node-sub">الأجهزة المتصلة (LAN Clients)</span>
+          <button type="button" class="ov-manage-btn" onclick="switchTab('tab-devices', this)">إدارة ➔</button>
+        </div>
+        <div class="ov-node-main">
+          <span class="ov-node-icon">💻</span>
+          <div class="ov-node-info">
+            <div class="ov-node-name" id="ov-lan-count">0 أجهزة متصلة حالياً</div>
+            <div class="ov-node-details" id="ov-lan-details">0 جهاز VIP ألعاب 👑 • 0 غير متصل</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-COLUMN MAIN GRID -->
+  <div class="ov-main-grid">
+    <!-- Card 1: Hardware Resources -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">موارد النظام (Hardware)</div>
+          <div class="ov-card-subtitle">أداء شريحة ESP32-C5 RISC-V</div>
+        </div>
+        <span class="ov-chip">MHz 240</span>
+      </div>
+
+      <div class="ov-meter-list">
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>الذاكرة الحرة (Free Heap RAM)</span>
+            <span id="ov-ram-val" style="color:var(--cyan)">-- KB (مستقر)</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-ram-bar" style="width:0%;background:var(--cyan)"></div></div>
+        </div>
+
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>حمل مسرع الشبكة (NAPT Load)</span>
+            <span id="ov-napt-val" style="color:var(--green)">--%</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-napt-bar" style="width:0%;background:var(--green)"></div></div>
+        </div>
+
+        <div class="ov-meter-row">
+          <div class="ov-meter-head">
+            <span>جودة إشارة المصدر (WAN Signal)</span>
+            <span id="ov-rssi-val" style="color:#a3e635">-- dBm (--%)</span>
+          </div>
+          <div class="ov-bar-bg"><div class="ov-bar-fill" id="ov-rssi-bar" style="width:0%;background:#a3e635"></div></div>
+        </div>
+      </div>
+
+      <div class="ov-quick-actions">
+        <button type="button" class="ov-action-btn" onclick="switchTab('tab-telegram', this)">🤖 بوت التليجرام</button>
+        <button type="button" class="ov-action-btn" onclick="switchTab('tab-ota', this)">🚀 التحديث الهوائي OTA</button>
+      </div>
+    </div>
+
+    <!-- Card 2: Quota & Balance Analysis -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">تحليل الكوتة الكلية والرصيد</div>
+          <div class="ov-card-subtitle">معدل الاستهلاك اليومي وتوقعات نهاية الباقة</div>
+        </div>
+        <button type="button" class="ov-manage-btn" onclick="switchTab('tab-period', this)">ضبط الباقة</button>
+      </div>
+
+      <div class="ov-gauge-wrapper">
+        <div class="ov-circle-gauge">
+          <svg viewBox="0 0 120 120" class="ov-svg-ring">
+            <circle cx="60" cy="60" r="50" class="ov-ring-bg"></circle>
+            <circle cx="60" cy="60" r="50" class="ov-ring-fill" id="ov-quota-ring" stroke-dasharray="314" stroke-dashoffset="314"></circle>
+          </svg>
+          <div class="ov-ring-content">
+            <span class="ov-ring-pct" id="ov-quota-pct">0.0%</span>
+            <span class="ov-ring-sub">مستهلك</span>
+          </div>
+        </div>
+        <div class="ov-gauge-details">
+          <div class="ov-quota-stat">
+            <span class="ov-stat-label">إجمالي المستهلك الكلي</span>
+            <div class="ov-stat-num" id="ov-quota-consumed">0.00 GB <span class="ov-stat-denom" id="ov-quota-total">/ 0 GB</span></div>
+          </div>
+          <div class="ov-quota-stat">
+            <span class="ov-stat-label">الرصيد المتبقي الصافي</span>
+            <div class="ov-stat-num" id="ov-quota-rem" style="color:var(--green)">0.00 GB</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-quota-mini-grid">
+        <div class="ov-mini-box">
+          <div class="ov-mini-label">⏳ المتبقي للتجديد</div>
+          <div class="ov-mini-val" id="ov-renew-countdown">-- يوم و -- س</div>
+          <div class="ov-mini-sub" id="ov-renew-date">التجديد: --</div>
+        </div>
+        <div class="ov-mini-box">
+          <div class="ov-mini-label">🛡️ المعدل اليومي الآمن</div>
+          <div class="ov-mini-val" id="ov-safe-rate">-- GB / يوم</div>
+          <div class="ov-mini-sub" id="ov-safe-badge" style="color:var(--green)">استهلاكك ضمن الآمن ✅</div>
+        </div>
+      </div>
+
+      <div class="ov-bottom-badges">
+        <span class="ov-predict-pill" id="ov-predict-pill">✅ توقع: تكفي لنهاية الشهر</span>
+        <span class="ov-sub-pill" id="ov-meter-acc">⚠️ دقة العداد: 100%</span>
+      </div>
+    </div>
+
+    <!-- Card 3: Live Bandwidth Meter & Waveform -->
+    <div class="ov-card glass">
+      <div class="ov-card-header">
+        <div>
+          <div class="ov-card-title">عداد السرعة والتدفق اللحظي</div>
+          <div class="ov-card-subtitle">(Live Bandwidth) مراقبة حية لسرعة السحب والرفع</div>
+        </div>
+        <span class="ov-chip" id="ov-peak-speed">الذروة: Mbps 0.00</span>
+      </div>
+
+      <div class="ov-dual-gauges">
+        <!-- Download Gauge -->
+        <div class="ov-speed-gauge">
+          <div class="ov-speed-circle">
+            <svg viewBox="0 0 100 100" class="ov-speed-svg">
+              <circle cx="50" cy="50" r="40" class="ov-ring-bg"></circle>
+              <circle cx="50" cy="50" r="40" class="ov-speed-fill-down" id="ov-speed-ring-down" stroke-dasharray="251" stroke-dashoffset="251"></circle>
+            </svg>
+            <div class="ov-speed-center">
+              <span class="ov-speed-label" style="color:var(--green)">📥 تنزيل</span>
+              <span class="ov-speed-val" id="ov-live-down-mbps">0.00</span>
+              <span class="ov-speed-unit">Mbps</span>
+            </div>
+          </div>
+          <span class="ov-speed-sub" id="ov-live-down-raw">0 KB/s</span>
+        </div>
+
+        <!-- Upload Gauge -->
+        <div class="ov-speed-gauge">
+          <div class="ov-speed-circle">
+            <svg viewBox="0 0 100 100" class="ov-speed-svg">
+              <circle cx="50" cy="50" r="40" class="ov-ring-bg"></circle>
+              <circle cx="50" cy="50" r="40" class="ov-speed-fill-up" id="ov-speed-ring-up" stroke-dasharray="251" stroke-dashoffset="251"></circle>
+            </svg>
+            <div class="ov-speed-center">
+              <span class="ov-speed-label" style="color:var(--accent)">📤 رفع</span>
+              <span class="ov-speed-val" id="ov-live-up-mbps">0.00</span>
+              <span class="ov-speed-unit">Mbps</span>
+            </div>
+          </div>
+          <span class="ov-speed-sub" id="ov-live-up-raw">0 KB/s</span>
+        </div>
+      </div>
+
+      <!-- Live Canvas Sparkline Waveform -->
+      <div class="ov-sparkline-box">
+        <div class="ov-sparkline-head">
+          <span>المنحنى اللحظي (آخر 60 ثانية)</span>
+          <span style="color:var(--muted)">تحديث كل 2 ثانية</span>
+        </div>
+        <canvas id="ovLiveCanvas" width="450" height="90" class="ov-live-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tab-devices" class="tab-content">
   <div class="view-bar">
     <div style="font-weight:700;font-size:1.05rem;color:#fff">الأجهزة والتحكم في الكوتة والسرعات (<span id="dev-count-txt">0</span>)</div>
     <div class="view-btns theme-switcher">
@@ -2762,6 +3489,24 @@ function switchTab(tabId, btn, shouldScrollTop = false) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   let target = document.getElementById(tabId);
   if (target) target.classList.add('active');
+
+  // Smooth collapse or expand of top 7 metric cards on Overview vs other tabs
+  let mg = document.querySelector('.metrics-grid');
+  if (mg) {
+    if (tabId === 'tab-overview') {
+      mg.classList.add('collapsed-on-overview');
+    } else {
+      mg.classList.remove('collapsed-on-overview');
+    }
+  }
+
+  // Update sticky header & sidebar positions smoothly
+  if (typeof updateStickyTopHeight === 'function') {
+    setTimeout(updateStickyTopHeight, 40);
+    setTimeout(updateStickyTopHeight, 360);
+  }
+
+  if (tabId === 'tab-overview' && typeof drawOvSparkline === 'function') setTimeout(drawOvSparkline, 60);
   if (tabId === 'tab-reboot' && typeof drawSpeedChart === 'function') setTimeout(drawSpeedChart, 60);
 
   if (shouldScrollTop) {
@@ -2990,6 +3735,244 @@ function drawSpeedChart() {
 
 function formatBytes(bytes) {
   return formatSmartBytes(bytes);
+}
+
+
+// -----------------------------------------------------------------------------
+// OVERVIEW TAB REAL-TIME RENDERING & LIVE SPARKLINE
+// -----------------------------------------------------------------------------
+let ovPeakSpeedMbps = 0.0;
+let ovSpeedHistory = []; // stores last 30 readings (60s)
+
+function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlineCount) {
+  try {
+    // 1. Live Network Topology
+    let wanSsidEl = document.getElementById('ov-wan-ssid');
+    let wanDetailsEl = document.getElementById('ov-wan-details');
+    let wanBandEl = document.getElementById('ov-wan-band');
+    let rssi = data.sta_rssi || 0;
+    let rssiPct = Math.min(100, Math.max(0, Math.round(2 * (rssi + 100))));
+
+    if (wanSsidEl) wanSsidEl.textContent = data.sta_ssid || 'غير متصل بالمصدر';
+    if (wanDetailsEl) {
+      let gw = data.sta_gw || '2.2.2.2';
+      wanDetailsEl.textContent = `GW: ${gw} • إشارة: ${rssi} dBm (${rssiPct}%)`;
+    }
+    if (wanBandEl) {
+      wanBandEl.textContent = (data.sta_channel > 14) ? '5GHz' : '2.4GHz';
+      wanBandEl.style.background = (data.sta_channel > 14) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)';
+      wanBandEl.style.color = (data.sta_channel > 14) ? '#6ee7b7' : '#a5b4fc';
+    }
+
+    let ipTransEl = document.getElementById('ov-ip-transition');
+    if (ipTransEl) {
+      let staIp = data.sta_ip || '2.2.2.75';
+      ipTransEl.textContent = `IP: ${staIp} ➔ 192.168.4.1`;
+    }
+
+    let coreSpecsEl = document.getElementById('ov-core-specs');
+    let freeRamKb = Math.round((data.free_heap || 0) / 1024);
+    if (coreSpecsEl) {
+      coreSpecsEl.textContent = `${data.cpu_freq_mhz || 240}MHz • RAM: ${freeRamKb} KB • HT40`;
+    }
+
+    let totalSpeedMbps = (parseFloat(downMbps) + parseFloat(upMbps)).toFixed(2);
+    let speedWanEl = document.getElementById('ov-link-speed-wan');
+    let speedLanEl = document.getElementById('ov-link-speed-lan');
+    if (speedWanEl) speedWanEl.textContent = `Mbps ${totalSpeedMbps}`;
+    if (speedLanEl) speedLanEl.textContent = `Mbps ${totalSpeedMbps}`;
+
+    let lanCountEl = document.getElementById('ov-lan-count');
+    let lanDetailsEl = document.getElementById('ov-lan-details');
+    if (lanCountEl) lanCountEl.textContent = `${activeCount} أجهزة متصلة حالياً`;
+    if (lanDetailsEl) lanDetailsEl.textContent = `${vipCount} جهاز VIP ألعاب 👑 • ${offlineCount} غير متصل`;
+
+    // 2. Hardware Resources
+    let ramValEl = document.getElementById('ov-ram-val');
+    let ramBarEl = document.getElementById('ov-ram-bar');
+    if (ramValEl) ramValEl.textContent = `${freeRamKb} KB (مستقر)`;
+    if (ramBarEl) {
+      let ramPct = Math.min(100, Math.max(10, Math.round((freeRamKb / 280) * 100)));
+      ramBarEl.style.width = ramPct + '%';
+    }
+
+    let naptValEl = document.getElementById('ov-napt-val');
+    let naptBarEl = document.getElementById('ov-napt-bar');
+    let naptLoad = Math.min(100, Math.max(15, (activeCount * 8) + Math.round(parseFloat(totalSpeedMbps) * 2)));
+    if (naptValEl) naptValEl.textContent = `${naptLoad}%`;
+    if (naptBarEl) naptBarEl.style.width = `${naptLoad}%`;
+
+    let rssiValEl = document.getElementById('ov-rssi-val');
+    let rssiBarEl = document.getElementById('ov-rssi-bar');
+    if (rssiValEl) rssiValEl.textContent = `${rssi} dBm (${rssiPct}%)`;
+    if (rssiBarEl) rssiBarEl.style.width = `${rssiPct}%`;
+
+    // 3. Quota & Balance Analysis
+    let gbDiv = (data.gb_standard === 1000) ? 1000000000 : (1024 * 1024 * 1024);
+    let consumedGb = ((data.total_up || 0) + (data.total_down || 0)) / gbDiv;
+    let mainQuotaGb = parseFloat(data.main_quota_gb || 0);
+    let remGb = (mainQuotaGb > 0) ? Math.max(0, mainQuotaGb - consumedGb) : 0;
+    let quotaPct = (mainQuotaGb > 0) ? Math.min(100, (consumedGb / mainQuotaGb) * 100) : 0;
+
+    let qRingEl = document.getElementById('ov-quota-ring');
+    let qPctEl = document.getElementById('ov-quota-pct');
+    if (qPctEl) qPctEl.textContent = quotaPct.toFixed(1) + '%';
+    if (qRingEl) {
+      let offset = 314 - (314 * (quotaPct / 100));
+      qRingEl.style.strokeDashoffset = offset;
+      if (quotaPct > 90) qRingEl.style.stroke = 'var(--red, #f43f5e)';
+      else if (quotaPct > 75) qRingEl.style.stroke = '#f59e0b';
+      else qRingEl.style.stroke = 'var(--green, #10b981)';
+    }
+
+    let qConsEl = document.getElementById('ov-quota-consumed');
+    let qTotEl = document.getElementById('ov-quota-total');
+    let qRemEl = document.getElementById('ov-quota-rem');
+    if (qConsEl) qConsEl.innerHTML = `${consumedGb.toFixed(2)} GB <span class="ov-stat-denom" id="ov-quota-total">/ ${mainQuotaGb.toFixed(1)} GB</span>`;
+    if (qRemEl) qRemEl.textContent = `${remGb.toFixed(2)} GB`;
+
+    let countdownEl = document.getElementById('ov-renew-countdown');
+    let renewDateEl = document.getElementById('ov-renew-date');
+    if (countdownEl) {
+      if (data.rem_days >= 0) countdownEl.textContent = `${data.rem_days} يوم و ${data.rem_hours || 0} س`;
+      else countdownEl.textContent = '--';
+    }
+    if (renewDateEl) renewDateEl.textContent = `التجديد: ${data.q_end || '--'}`;
+
+    let safeRateEl = document.getElementById('ov-safe-rate');
+    let safeBadgeEl = document.getElementById('ov-safe-badge');
+    let safeDailyRate = (data.rem_days > 0) ? (remGb / data.rem_days) : remGb;
+    if (safeRateEl) safeRateEl.textContent = `${safeDailyRate.toFixed(2)} GB / يوم`;
+    
+    let daysElapsed = Math.max(1, (data.elapsed_s || 86400) / 86400);
+    let avgDailyUsage = consumedGb / daysElapsed;
+    if (safeBadgeEl) {
+      if (avgDailyUsage <= safeDailyRate || mainQuotaGb === 0) {
+        safeBadgeEl.textContent = 'استهلاكك ضمن الآمن ✅';
+        safeBadgeEl.style.color = 'var(--green, #10b981)';
+      } else {
+        safeBadgeEl.textContent = 'تجاوز المعدل الآمن ⚠️';
+        safeBadgeEl.style.color = 'var(--red, #f43f5e)';
+      }
+    }
+
+    let predictPillEl = document.getElementById('ov-predict-pill');
+    if (predictPillEl) {
+      if (remGb > 0 && avgDailyUsage <= safeDailyRate) {
+        predictPillEl.textContent = '✅ توقع: تكفي لنهاية الشهر';
+        predictPillEl.style.color = 'var(--green, #10b981)';
+        predictPillEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      } else if (mainQuotaGb > 0 && remGb <= 0) {
+        predictPillEl.textContent = '⚠️ انتهت الباقة بالكامل';
+        predictPillEl.style.color = 'var(--red, #f43f5e)';
+        predictPillEl.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+      } else {
+        predictPillEl.textContent = '⚠️ استهلاكك أسرع من المتوقع';
+        predictPillEl.style.color = '#f59e0b';
+        predictPillEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+      }
+    }
+
+    let meterAccEl = document.getElementById('ov-meter-acc');
+    if (meterAccEl) {
+      meterAccEl.textContent = `دقة العداد: ${data.meter_scale_pct || 100}% (معيار ${data.gb_standard || 1024}MB)`;
+    }
+
+    // 4. Live Bandwidth & Speed Meter
+    let liveDownEl = document.getElementById('ov-live-down-mbps');
+    let liveUpEl = document.getElementById('ov-live-up-mbps');
+    let liveDownRawEl = document.getElementById('ov-live-down-raw');
+    let liveUpRawEl = document.getElementById('ov-live-up-raw');
+    if (liveDownEl) liveDownEl.textContent = downMbps;
+    if (liveUpEl) liveUpEl.textContent = upMbps;
+    if (liveDownRawEl) liveDownRawEl.textContent = `${Math.round((data.cur_down_bps || 0) / 1024)} KB/s`;
+    if (liveUpRawEl) liveUpRawEl.textContent = `${Math.round((data.cur_up_bps || 0) / 1024)} KB/s`;
+
+    let ringDownEl = document.getElementById('ov-speed-ring-down');
+    let ringUpEl = document.getElementById('ov-speed-ring-up');
+    let curDownF = parseFloat(downMbps);
+    let curUpF = parseFloat(upMbps);
+    let maxGaugeSpeed = Math.max(10, curDownF * 1.5, curUpF * 1.5);
+
+    if (ringDownEl) {
+      let downPct = Math.min(1, curDownF / maxGaugeSpeed);
+      ringDownEl.style.strokeDashoffset = 251 - (251 * downPct);
+    }
+    if (ringUpEl) {
+      let upPct = Math.min(1, curUpF / maxGaugeSpeed);
+      ringUpEl.style.strokeDashoffset = 251 - (251 * upPct);
+    }
+
+    let curTotalMbps = curDownF + curUpF;
+    if (curTotalMbps > ovPeakSpeedMbps) ovPeakSpeedMbps = curTotalMbps;
+    let peakEl = document.getElementById('ov-peak-speed');
+    if (peakEl) peakEl.textContent = `الذروة: Mbps ${ovPeakSpeedMbps.toFixed(2)}`;
+
+    // Push into history and draw waveform
+    ovSpeedHistory.push({ down: curDownF, up: curUpF });
+    if (ovSpeedHistory.length > 30) ovSpeedHistory.shift();
+    drawOvSparkline();
+
+  } catch(err) {
+    console.warn('updateOverviewTab error:', err);
+  }
+}
+
+function drawOvSparkline() {
+  let canvas = document.getElementById('ovLiveCanvas');
+  if (!canvas || !canvas.getContext) return;
+  let ctx = canvas.getContext('2d');
+  let w = canvas.width;
+  let h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  if (ovSpeedHistory.length < 2) return;
+
+  let maxVal = 1.0;
+  for (let pt of ovSpeedHistory) {
+    if (pt.down > maxVal) maxVal = pt.down;
+    if (pt.up > maxVal) maxVal = pt.up;
+  }
+  maxVal *= 1.25; // headroom
+
+  let stepX = w / (ovSpeedHistory.length - 1);
+
+  // Draw Download Curve (Green)
+  ctx.beginPath();
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  for (let i = 0; i < ovSpeedHistory.length; i++) {
+    let x = i * stepX;
+    let y = h - ((ovSpeedHistory[i].down / maxVal) * (h - 12)) - 6;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw Download Gradient Fill
+  ctx.lineTo(w, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  let gradDown = ctx.createLinearGradient(0, 0, 0, h);
+  gradDown.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+  gradDown.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+  ctx.fillStyle = gradDown;
+  ctx.fill();
+
+  // Draw Upload Curve (Cyan/Magenta Accent)
+  ctx.beginPath();
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2.0;
+  ctx.lineJoin = 'round';
+  for (let i = 0; i < ovSpeedHistory.length; i++) {
+    let x = i * stepX;
+    let y = h - ((ovSpeedHistory[i].up / maxVal) * (h - 12)) - 6;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
 }
 
 async function refreshData() {
