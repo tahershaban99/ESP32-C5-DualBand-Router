@@ -192,6 +192,28 @@ static void json_escape(const char *src, char *dst, size_t max_len) {
   dst[j] = 0;
 }
 
+// Helper to escape characters for HTML parse mode in Telegram messages
+static void html_escape(const char *src, char *dst, size_t max_len) {
+  if (!src || !dst || max_len == 0)
+    return;
+  size_t j = 0;
+  for (size_t i = 0; src[i] && j + 6 < max_len; ++i) {
+    if (src[i] == '&') {
+      memcpy(dst + j, "&amp;", 5);
+      j += 5;
+    } else if (src[i] == '<') {
+      memcpy(dst + j, "&lt;", 4);
+      j += 4;
+    } else if (src[i] == '>') {
+      memcpy(dst + j, "&gt;", 4);
+      j += 4;
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = 0;
+}
+
 bool telegram_send_message(const char *chat_id, const char *text) {
   return telegram_send_message_with_keyboard(chat_id, text, NULL);
 }
@@ -249,10 +271,10 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
   esp_http_client_config_t config = {
       .url = url,
       .method = HTTP_METHOD_POST,
-      .timeout_ms = 10000,
+      .timeout_ms = 12000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = 1024,
+      .buffer_size_tx = 3584,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -339,10 +361,10 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   esp_http_client_config_t config = {
       .url = url,
       .method = HTTP_METHOD_POST,
-      .timeout_ms = 8000,
+      .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = 1024,
+      .buffer_size_tx = 3584,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -418,6 +440,7 @@ bool telegram_answer_callback_query(const char *callback_query_id,
   esp_err_t err = esp_http_client_perform(client);
   esp_http_client_cleanup(client);
   tg_http_unlock();
+  vTaskDelay(pdMS_TO_TICKS(50));
   return (err == ESP_OK);
 }
 
@@ -509,7 +532,7 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
       .timeout_ms = 10000,
       .crt_bundle_attach = esp_crt_bundle_attach,
       .buffer_size = 512,
-      .buffer_size_tx = 2400,
+      .buffer_size_tx = 3584,
   };
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -754,6 +777,9 @@ static void format_single_device_report(int p_idx, char *out, size_t max_out) {
              rem_gb, (unsigned)pct);
   }
 
+  char esc_dev[64];
+  html_escape(dev_name, esc_dev, sizeof(esc_dev));
+
   snprintf(out, max_out,
            "📱 <b>تقرير جهازك: %s</b>\n\n"
            "🌐 <b>عنوان IP:</b> <code>%s</code>\n"
@@ -764,7 +790,7 @@ static void format_single_device_report(int p_idx, char *out, size_t max_out) {
            "   • ⬆️ رفع: %.2f GB\n"
            "⚡ <b>السرعة اللحظية:</b> ⬇️ %.2f Mbps | ⬆️ %.2f Mbps\n"
            "🛡️ <b>سقف السرعة:</b> %s",
-           dev_name, ip_str, conn_str, gam ? " | 🎮 VIP" : "", q_str, tot_gb,
+           esc_dev, ip_str, conn_str, gam ? " | 🎮 VIP" : "", q_str, tot_gb,
            down_gb, up_gb, (double)live_down / 1000000.0,
            (double)live_up / 1000000.0, cap_str);
 }
@@ -826,23 +852,39 @@ static void format_multi_device_summary(const int *p_indices, size_t count,
     double d_q_gb = (double)quota / gb_div;
     uint32_t pct = (quota > 0) ? (uint32_t)((d_used_gb / d_q_gb) * 100.0) : 0;
 
+    char esc_dname[64];
+    html_escape(dev_name, esc_dname, sizeof(esc_dname));
+
     char line[160];
     if (quota > 0) {
       snprintf(line, sizeof(line), "• <b>%s</b>: %.2f / %.2f GB (%u%%) %s\n",
-               dev_name, d_used_gb, d_q_gb, (unsigned)pct, blk ? "🔴" : "🟢");
+               esc_dname, d_used_gb, d_q_gb, (unsigned)pct, blk ? "🔴" : "🟢");
     } else {
-      snprintf(line, sizeof(line), "• <b>%s</b>: %.2f GB %s\n", dev_name,
+      snprintf(line, sizeof(line), "• <b>%s</b>: %.2f GB %s\n", esc_dname,
                d_used_gb, blk ? "🔴" : "🟢");
     }
     if (strlen(dev_lines) + strlen(line) < sizeof(dev_lines) - 20) {
       strcat(dev_lines, line);
     }
 
-    // Add inline keyboard button
+    // Add inline keyboard button safely escaped
+    char safe_btn[40];
+    size_t bo = 0;
+    for (size_t c = 0; dev_name[c] && bo < sizeof(safe_btn) - 1; ++c) {
+      if (dev_name[c] == '"' || dev_name[c] == '\\') {
+        safe_btn[bo++] = '\'';
+      } else {
+        safe_btn[bo++] = dev_name[c];
+      }
+    }
+    while (bo > 0 && ((unsigned char)safe_btn[bo - 1] & 0xC0) == 0x80) bo--;
+    if (bo > 0 && ((unsigned char)safe_btn[bo - 1] & 0x80) != 0) bo--;
+    safe_btn[bo] = 0;
+
     char btn[140];
     snprintf(btn, sizeof(btn),
              "%s[{\"text\":\"📱 %s\",\"callback_data\":\"dev_idx:%d\"}]",
-             (kb_buttons[0] ? "," : ""), dev_name, p_idx);
+             (kb_buttons[0] ? "," : ""), safe_btn, p_idx);
     if (strlen(kb_buttons) + strlen(btn) < sizeof(kb_buttons) - 30) {
       strcat(kb_buttons, btn);
     }
@@ -1305,20 +1347,22 @@ static void send_user_speed_report(const char *chat_id, int64_t edit_msg_id,
   for (size_t li = 0; li < s_cnt; ++li) {
     if (snaps[li].name[0] == 0)
       continue;
+    char esc_uname[64];
+    html_escape(snaps[li].name, esc_uname, sizeof(esc_uname));
     char lbuf[260];
     if (snaps[li].cap_down > 0 || snaps[li].cap_up > 0) {
       snprintf(lbuf, sizeof(lbuf),
-               "• <b>%.32s</b>:\n   ⬇️ %.2f Mbps (حد: %.1f M) | ⬆️ %.2f Mbps (حد: "
+               "• <b>%s</b>:\n   ⬇️ %.2f Mbps (حد: %.1f M) | ⬆️ %.2f Mbps (حد: "
                "%.1f M)\n",
-               snaps[li].name, (double)snaps[li].c_down / 1000000.0,
+               esc_uname, (double)snaps[li].c_down / 1000000.0,
                (double)snaps[li].cap_down / 1000000.0,
                (double)snaps[li].c_up / 1000000.0,
                (double)snaps[li].cap_up / 1000000.0);
     } else {
       snprintf(lbuf, sizeof(lbuf),
-               "• <b>%.32s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة "
+               "• <b>%s</b>:\n   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps (السرعة كاملة "
                "مفتوحة 🚀)\n",
-               snaps[li].name, (double)snaps[li].c_down / 1000000.0,
+               esc_uname, (double)snaps[li].c_down / 1000000.0,
                (double)snaps[li].c_up / 1000000.0);
     }
     if (strlen(spd_rep) + strlen(lbuf) < 730)
@@ -1378,17 +1422,19 @@ static void send_user_status_report(const char *chat_id, int64_t edit_msg_id,
   for (size_t li = 0; li < s_cnt; ++li) {
     if (snaps[li].name[0] == 0)
       continue;
+    char esc_sname[64];
+    html_escape(snaps[li].name, esc_sname, sizeof(esc_sname));
     char lbuf[260];
     ip4_addr_t dip = {.addr = snaps[li].ip};
     if (snaps[li].is_conn) {
       snprintf(
           lbuf, sizeof(lbuf),
-          "• <b>%.32s</b>: 🟢 متصل بالواي فاي (<code>%d.%d.%d.%d</code>) %s\n",
-          snaps[li].name, IP2STR(&dip),
+          "• <b>%s</b>: 🟢 متصل بالواي فاي (<code>%d.%d.%d.%d</code>) %s\n",
+          esc_sname, IP2STR(&dip),
           snaps[li].blk ? "🔴 [محظور من النت]" : "✅ [الإنترنت نشط]");
     } else {
-      snprintf(lbuf, sizeof(lbuf), "• <b>%.32s</b>: ⚪ غير متصل بالشبكة حالياً\n",
-               snaps[li].name);
+      snprintf(lbuf, sizeof(lbuf), "• <b>%s</b>: ⚪ غير متصل بالشبكة حالياً\n",
+               esc_sname);
     }
     if (strlen(st_rep) + strlen(lbuf) < 730)
       strcat(st_rep, lbuf);
@@ -1510,6 +1556,8 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
         portEXIT_CRITICAL(&data_mux);
 
         double my_used_gb = (double)my_used / gb_div;
+        char my_esc[64];
+        html_escape(my_name, my_esc, sizeof(my_esc));
         char my_sec[250];
         if (my_quota > 0) {
           double my_q_gb = (double)my_quota / gb_div;
@@ -1520,12 +1568,12 @@ static void send_admin_quota_report(const char *chat_id, int64_t edit_msg_id,
                    "\n📱 <b>باقة جهازك الشخصي (%s):</b>\n"
                    "   • المستهلك: %.2f GB من %.2f GB (%.1f%%)\n"
                    "   • المتبقي: %.2f GB\n",
-                   my_name, my_used_gb, my_q_gb, my_pct, my_rem_gb);
+                   my_esc, my_used_gb, my_q_gb, my_pct, my_rem_gb);
         } else {
           snprintf(my_sec, sizeof(my_sec),
                    "\n📱 <b>استهلاك جهازك الشخصي (%s):</b>\n"
                    "   • المستهلك: %.2f GB (استهلاك مفتوح ♾️)\n",
-                   my_name, my_used_gb);
+                   my_esc, my_used_gb);
         }
         if (strlen(reply) + strlen(my_sec) < 1120) {
           strcat(reply, my_sec);
@@ -1588,11 +1636,14 @@ static void send_admin_speed_report(const char *chat_id, int64_t edit_msg_id,
         uint32_t my_up = (u >= 0) ? device_live_speeds[u].cur_up_bps : 0;
         portEXIT_CRITICAL(&data_mux);
 
+        char my_esc[64];
+        html_escape(my_name, my_esc, sizeof(my_esc));
+
         char my_spd[220];
         snprintf(my_spd, sizeof(my_spd),
                  "\n📱 <b>سرعة جهازك الشخصي (%s):</b>\n"
                  "   ⬇️ %.2f Mbps | ⬆️ %.2f Mbps\n",
-                 my_name, (double)my_down / 1000000.0,
+                 my_esc, (double)my_down / 1000000.0,
                  (double)my_up / 1000000.0);
         if (strlen(reply) + strlen(my_spd) < 720) {
           strcat(reply, my_spd);
@@ -1768,11 +1819,14 @@ static void send_admin_devices_report(const char *chat_id,
                (double)snap[i].dev_quota / gb_div);
     }
 
+    char esc_name[64];
+    html_escape(name, esc_name, sizeof(esc_name));
+
     if (rep_len + 250 < 1900) {
       int w = snprintf(reply + rep_len, 2048 - rep_len,
                        "%u. <b>%s</b> (<code>%s</code>) %s%s\n"
                        "   ⬇️ %.2f M | ⬆️ %.2f M | 📊 %.2f%s\n",
-                       count, name, ip_s,
+                       count, esc_name, ip_s,
                        snap[i].is_blocked
                            ? "🔴 [محظور]"
                            : (snap[i].is_online ? "🟢 [متصل]" : "⚪ [غير متصل]"),
@@ -1796,6 +1850,9 @@ static void send_admin_devices_report(const char *chat_id,
           safe_btn_name[s_out++] = name[c];
         }
       }
+      // UTF-8 multibyte boundary safe trim
+      while (s_out > 0 && ((unsigned char)safe_btn_name[s_out - 1] & 0xC0) == 0x80) s_out--;
+      if (s_out > 0 && ((unsigned char)safe_btn_name[s_out - 1] & 0x80) != 0) s_out--;
       safe_btn_name[s_out] = 0;
 
       char btn_label[54];
@@ -2279,13 +2336,13 @@ static void telegram_task(void *pvParameters) {
     char url[220];
     snprintf(url, sizeof(url),
              "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64
-             "&timeout=5&limit=1",
+             "&timeout=15&limit=1",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 9000,
+        .timeout_ms = 22000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 1536,
         .buffer_size_tx = 512,
@@ -2298,10 +2355,13 @@ static void telegram_task(void *pvParameters) {
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     int total_read = 0;
+    int http_status = 0;
+    esp_err_t open_err = ESP_FAIL;
     if (client) {
-      esp_err_t err = esp_http_client_open(client, 0);
-      if (err == ESP_OK) {
+      open_err = esp_http_client_open(client, 0);
+      if (open_err == ESP_OK) {
         esp_http_client_fetch_headers(client);
+        http_status = esp_http_client_get_status_code(client);
         char chunk[256];
         while (true) {
           int r = esp_http_client_read(client, chunk, sizeof(chunk));
@@ -2751,7 +2811,7 @@ static void telegram_task(void *pvParameters) {
                 free(kb_rep);
             }
 
-            if (cb_id[0] && !answered_toast) {
+            if (cb_id[0] && !answered_toast && cb_msg_id <= 0) {
               telegram_answer_callback_query(cb_id, NULL);
             }
           } else if (cb_id[0]) {
@@ -3414,10 +3474,40 @@ static void telegram_task(void *pvParameters) {
         }
       }
     }
-    if (total_read > 0) {
-      vTaskDelay(pdMS_TO_TICKS(50));
+    // Robust delay & Exponential Backoff handling
+    if (open_err != ESP_OK || (http_status > 0 && http_status != 200)) {
+      static uint8_t tg_consec_fails = 0;
+      if (tg_consec_fails < 15)
+        tg_consec_fails++;
+
+      if (http_status == 429) {
+        // Rate limited by Telegram: back off 35 seconds to clear temporary block
+        ESP_LOGW(TG_TAG, "Telegram rate limited (HTTP 429)! Backing off 35s...");
+        vTaskDelay(pdMS_TO_TICKS(35000));
+        tg_consec_fails = 0;
+      } else if (http_status == 409) {
+        // Conflict: another getUpdates is active or webhook registered
+        ESP_LOGW(TG_TAG, "Telegram conflict (HTTP 409)! Backing off 10s...");
+        vTaskDelay(pdMS_TO_TICKS(10000));
+      } else {
+        uint32_t backoff_ms = 1500 * tg_consec_fails;
+        if (backoff_ms > 20000)
+          backoff_ms = 20000;
+        if (backoff_ms < 2000)
+          backoff_ms = 2000;
+        ESP_LOGW(TG_TAG,
+                 "Telegram poll failed: err=%s, status=%d (retrying in %lu ms, free heap=%lu)",
+                 esp_err_to_name(open_err), http_status, (unsigned long)backoff_ms,
+                 (unsigned long)esp_get_free_heap_size());
+        vTaskDelay(pdMS_TO_TICKS(backoff_ms));
+      }
     } else {
-      vTaskDelay(pdMS_TO_TICKS(200));
+      // Successful poll
+      if (total_read > 0) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+      } else {
+        vTaskDelay(pdMS_TO_TICKS(200));
+      }
     }
   }
   free(rx_buffer);
@@ -3425,8 +3515,8 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 with standard 8KB stack (streamlined heap memory, 0% stack overhead)
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 8192, NULL, 4, NULL,
+  // Pinned to Core 0 with 10KB stack to provide ample safety margin for deep mbedTLS cert validation
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 10240, NULL, 4, NULL,
                           0);
-  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (8KB stack)");
+  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (10KB stack)");
 }
