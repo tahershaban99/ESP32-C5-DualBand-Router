@@ -1,6 +1,6 @@
 {
-  "version": "v3.7.4",
-  "release_date": "2026-11-09",
+  "version": "v3.7.5",
+  "release_date": "2026-11-10",
   "firmware_url": "https://raw.githubusercontent.com/tahershaban99/ESP32-C5-DualBand-Router/main/bin/esp32_napt_router.bin",
-  "changelog": "لوحة ألوان جديدة للوضع الداكن معتمدة بالكامل على الأسود الحالك والأحمر القرمزي الصلب (Pitch Black & Precision Crimson) بدون تدرجات لونية (Anti-AI-Slop)."
+  "changelog": "إصلاح شامل واستجابة فورية لبوت التيليجرام: تسريع polling وفتح الاتصال اللحظي للأزرار وحل مشكلة الذاكرة وتجميد الأوامر."
 }

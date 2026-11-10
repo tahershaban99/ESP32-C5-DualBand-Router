@@ -2336,13 +2336,13 @@ static void telegram_task(void *pvParameters) {
     char url[220];
     snprintf(url, sizeof(url),
              "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64
-             "&timeout=15&limit=1",
+             "&timeout=1&limit=1",
              telegram_token, last_update_id + 1);
 
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 22000,
+        .timeout_ms = 6000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 1536,
         .buffer_size_tx = 512,
@@ -2358,6 +2358,7 @@ static void telegram_task(void *pvParameters) {
     int http_status = 0;
     esp_err_t open_err = ESP_FAIL;
     if (client) {
+      esp_http_client_set_header(client, "Connection", "close");
       open_err = esp_http_client_open(client, 0);
       if (open_err == ESP_OK) {
         esp_http_client_fetch_headers(client);
@@ -2811,7 +2812,7 @@ static void telegram_task(void *pvParameters) {
                 free(kb_rep);
             }
 
-            if (cb_id[0] && !answered_toast && cb_msg_id <= 0) {
+            if (cb_id[0] && !answered_toast) {
               telegram_answer_callback_query(cb_id, NULL);
             }
           } else if (cb_id[0]) {
@@ -3475,9 +3476,9 @@ static void telegram_task(void *pvParameters) {
       }
     }
     // Robust delay & Exponential Backoff handling
+    static uint8_t tg_consec_fails = 0;
     if (open_err != ESP_OK || (http_status > 0 && http_status != 200)) {
-      static uint8_t tg_consec_fails = 0;
-      if (tg_consec_fails < 15)
+      if (tg_consec_fails < 10)
         tg_consec_fails++;
 
       if (http_status == 429) {
@@ -3490,11 +3491,11 @@ static void telegram_task(void *pvParameters) {
         ESP_LOGW(TG_TAG, "Telegram conflict (HTTP 409)! Backing off 10s...");
         vTaskDelay(pdMS_TO_TICKS(10000));
       } else {
-        uint32_t backoff_ms = 1500 * tg_consec_fails;
-        if (backoff_ms > 20000)
-          backoff_ms = 20000;
-        if (backoff_ms < 2000)
-          backoff_ms = 2000;
+        uint32_t backoff_ms = 1000 * tg_consec_fails;
+        if (backoff_ms > 8000)
+          backoff_ms = 8000;
+        if (backoff_ms < 1500)
+          backoff_ms = 1500;
         ESP_LOGW(TG_TAG,
                  "Telegram poll failed: err=%s, status=%d (retrying in %lu ms, free heap=%lu)",
                  esp_err_to_name(open_err), http_status, (unsigned long)backoff_ms,
@@ -3502,11 +3503,12 @@ static void telegram_task(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(backoff_ms));
       }
     } else {
-      // Successful poll
+      // Successful poll: immediately clear any previous failure counter
+      tg_consec_fails = 0;
       if (total_read > 0) {
         vTaskDelay(pdMS_TO_TICKS(50));
       } else {
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(100));
       }
     }
   }
