@@ -31,6 +31,11 @@ static bool telegram_busy = false;
 static bool awaiting_custom_reboot_time = false;
 static uint32_t last_ota_check_s = 0;
 static SemaphoreHandle_t tg_http_mux = NULL;
+static esp_http_client_handle_t s_tg_client = NULL;
+static char *s_tg_rx_buf = NULL;
+static int s_tg_rx_len = 0;
+static bool s_tg_capture_rx = false;
+static bool s_last_send_ok = true;
 
 static bool tg_http_lock(TickType_t wait_ticks) {
   if (!tg_http_mux) {
@@ -45,6 +50,148 @@ static void tg_http_unlock(void) {
   if (tg_http_mux) {
     xSemaphoreGive(tg_http_mux);
   }
+}
+
+static esp_err_t tg_http_event_handler(esp_http_client_event_t *evt) {
+  if (evt->event_id == HTTP_EVENT_ON_DATA) {
+    if (s_tg_capture_rx && s_tg_rx_buf && evt->data && evt->data_len > 0) {
+      const char *chunk = (const char *)evt->data;
+      int r = evt->data_len;
+      if (s_tg_rx_len + r <= 2042) {
+        memcpy(s_tg_rx_buf + s_tg_rx_len, chunk, (size_t)r);
+        s_tg_rx_len += r;
+      } else {
+        // Sliding window: keep the first 750 bytes (update_id,
+        // callback_query id, from.id, chat.id, message.message_id) and slide
+        // the tail (which holds callback_data / text at the end of a long
+        // inline keyboard JSON)
+        const int head_keep = 750;
+        const int tail_max = 2042 - head_keep;
+        if (s_tg_rx_len < head_keep) {
+          int copy_head = head_keep - s_tg_rx_len;
+          if (copy_head > r)
+            copy_head = r;
+          memcpy(s_tg_rx_buf + s_tg_rx_len, chunk, (size_t)copy_head);
+          s_tg_rx_len += copy_head;
+          int rem = r - copy_head;
+          if (rem > 0) {
+            if (rem > tail_max) {
+              memcpy(s_tg_rx_buf + head_keep,
+                     chunk + copy_head + (rem - tail_max), (size_t)tail_max);
+              s_tg_rx_len = head_keep + tail_max;
+            } else {
+              memcpy(s_tg_rx_buf + head_keep, chunk + copy_head, (size_t)rem);
+              s_tg_rx_len += rem;
+            }
+          }
+        } else {
+          if (r >= tail_max) {
+            memcpy(s_tg_rx_buf + head_keep, chunk + (r - tail_max),
+                   (size_t)tail_max);
+            s_tg_rx_len = head_keep + tail_max;
+          } else {
+            int cur_tail = s_tg_rx_len - head_keep;
+            int drop = (cur_tail + r) - tail_max;
+            if (drop > 0) {
+              memmove(s_tg_rx_buf + head_keep, s_tg_rx_buf + head_keep + drop,
+                      (size_t)(cur_tail - drop));
+              cur_tail -= drop;
+            }
+            memcpy(s_tg_rx_buf + head_keep + cur_tail, chunk, (size_t)r);
+            s_tg_rx_len = head_keep + cur_tail + r;
+          }
+        }
+      }
+      s_tg_rx_buf[s_tg_rx_len] = '\0';
+    }
+  }
+  return ESP_OK;
+}
+
+static void tg_close_persistent_client_locked(void) {
+  if (s_tg_client) {
+    esp_http_client_cleanup(s_tg_client);
+    s_tg_client = NULL;
+  }
+}
+
+static esp_err_t tg_perform_request_locked(const char *url,
+                                           esp_http_client_method_t method,
+                                           const char *post_body,
+                                           int timeout_ms, char *rx_out,
+                                           int *rx_out_len, int *out_status) {
+  if (out_status)
+    *out_status = 0;
+  if (rx_out_len)
+    *rx_out_len = 0;
+
+  if (!s_tg_client) {
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = method,
+        .timeout_ms = timeout_ms,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = tg_http_event_handler,
+        .buffer_size = 1536,
+        .buffer_size_tx = 3584,
+        .keep_alive_enable = true,
+        .keep_alive_idle = 15,
+        .keep_alive_interval = 5,
+        .keep_alive_count = 3,
+    };
+    s_tg_client = esp_http_client_init(&config);
+    if (!s_tg_client) {
+      return ESP_ERR_NO_MEM;
+    }
+  } else {
+    esp_http_client_set_url(s_tg_client, url);
+    esp_http_client_set_method(s_tg_client, method);
+    esp_http_client_set_timeout_ms(s_tg_client, timeout_ms);
+  }
+
+  esp_err_t err = ESP_FAIL;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    esp_http_client_prepare(s_tg_client);
+    if (method == HTTP_METHOD_POST && post_body) {
+      esp_http_client_set_header(s_tg_client, "Content-Type",
+                                 "application/json");
+      esp_http_client_set_post_field(s_tg_client, post_body, strlen(post_body));
+    } else {
+      esp_http_client_delete_header(s_tg_client, "Content-Type");
+      esp_http_client_set_post_field(s_tg_client, NULL, 0);
+    }
+
+    if (rx_out) {
+      s_tg_rx_buf = rx_out;
+      s_tg_rx_len = 0;
+      rx_out[0] = '\0';
+      s_tg_capture_rx = true;
+    } else {
+      s_tg_rx_buf = NULL;
+      s_tg_rx_len = 0;
+      s_tg_capture_rx = false;
+    }
+
+    err = esp_http_client_perform(s_tg_client);
+    s_tg_capture_rx = false;
+
+    if (err == ESP_OK) {
+      if (out_status)
+        *out_status = esp_http_client_get_status_code(s_tg_client);
+      if (rx_out_len)
+        *rx_out_len = s_tg_rx_len;
+      break;
+    }
+
+    // Reconnect once if keep-alive socket was closed by peer
+    esp_http_client_close(s_tg_client);
+  }
+
+  if (err != ESP_OK) {
+    esp_http_client_close(s_tg_client);
+  }
+
+  return err;
 }
 
 // Persistent Interactive Keyboards
@@ -228,6 +375,7 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
     ESP_LOGW(
         TG_TAG,
         "Cannot send message: Telegram HTTP client locked by another task");
+    s_last_send_ok = false;
     return false;
   }
 
@@ -235,71 +383,45 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text,
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage",
            telegram_token);
 
-  char *escaped_text = (char *)malloc(2048);
-  if (!escaped_text) {
-    ESP_LOGE(TG_TAG, "Failed to allocate memory for escaped_text");
-    tg_http_unlock();
-    return false;
-  }
-  json_escape(text, escaped_text, 2048);
-
-  size_t body_sz = strlen(escaped_text) +
-                   (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) +
-                   256;
+  size_t kb_len = inline_keyboard_json ? strlen(inline_keyboard_json) : 0;
+  size_t body_sz = 2304 + kb_len;
   if (body_sz < 2800)
     body_sz = 2800;
   char *body = (char *)malloc(body_sz);
   if (!body) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for sendMessage body");
-    free(escaped_text);
     tg_http_unlock();
+    s_last_send_ok = false;
     return false;
   }
 
+  int off = snprintf(body, body_sz, "{\"chat_id\":\"%s\",\"text\":\"", chat_id);
+  if (off < 0)
+    off = 0;
+  json_escape(text, body + off, 2048);
+  off += (int)strlen(body + off);
   if (inline_keyboard_json && inline_keyboard_json[0]) {
-    snprintf(body, body_sz,
-             "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\","
-             "\"reply_markup\":%s}",
-             chat_id, escaped_text, inline_keyboard_json);
+    snprintf(body + off, body_sz - (size_t)off,
+             "\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
+             inline_keyboard_json);
   } else {
-    snprintf(body, body_sz,
-             "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
-             chat_id, escaped_text);
-  }
-  free(escaped_text);
-
-  esp_http_client_config_t config = {
-      .url = url,
-      .method = HTTP_METHOD_POST,
-      .timeout_ms = 12000,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-      .buffer_size = 512,
-      .buffer_size_tx = 3584,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) {
-    ESP_LOGE(TG_TAG, "Failed to initialize HTTP client for sendMessage");
-    free(body);
-    tg_http_unlock();
-    return false;
+    snprintf(body + off, body_sz - (size_t)off, "\",\"parse_mode\":\"HTML\"}");
   }
 
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_post_field(client, body, strlen(body));
-
-  esp_err_t err = esp_http_client_perform(client);
-  int status = esp_http_client_get_status_code(client);
-  esp_http_client_cleanup(client);
+  int status = 0;
+  esp_err_t err = tg_perform_request_locked(url, HTTP_METHOD_POST, body, 10000,
+                                            NULL, NULL, &status);
   free(body);
   tg_http_unlock();
 
   if (err == ESP_OK && (status == 200 || status == 201)) {
     ESP_LOGI(TG_TAG, "Telegram message sent successfully to %s", chat_id);
+    s_last_send_ok = true;
     return true;
   } else {
     ESP_LOGW(TG_TAG, "Failed to send Telegram message to %s: err=%s, status=%d",
              chat_id, esp_err_to_name(err), status);
+    s_last_send_ok = false;
     return false;
   }
 }
@@ -317,6 +439,7 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   }
 
   if (!tg_http_lock(pdMS_TO_TICKS(10000))) {
+    s_last_send_ok = false;
     return false;
   }
 
@@ -324,69 +447,43 @@ telegram_edit_or_send_with_keyboard(const char *chat_id, int64_t message_id,
   snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/editMessageText",
            telegram_token);
 
-  char *escaped_text = (char *)malloc(2048);
-  if (!escaped_text) {
-    tg_http_unlock();
-    return telegram_send_message_with_keyboard(chat_id, text,
-                                               inline_keyboard_json);
-  }
-  json_escape(text, escaped_text, 2048);
-
-  size_t body_sz = strlen(escaped_text) +
-                   (inline_keyboard_json ? strlen(inline_keyboard_json) : 0) +
-                   256;
+  size_t kb_len = inline_keyboard_json ? strlen(inline_keyboard_json) : 0;
+  size_t body_sz = 2304 + kb_len;
   if (body_sz < 2800)
     body_sz = 2800;
   char *body = (char *)malloc(body_sz);
   if (!body) {
-    free(escaped_text);
     tg_http_unlock();
     return telegram_send_message_with_keyboard(chat_id, text,
                                                inline_keyboard_json);
   }
 
+  int off = snprintf(body, body_sz,
+                     "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64
+                     ",\"text\":\"",
+                     chat_id, message_id);
+  if (off < 0)
+    off = 0;
+  json_escape(text, body + off, 2048);
+  off += (int)strlen(body + off);
   if (inline_keyboard_json && inline_keyboard_json[0]) {
-    snprintf(body, body_sz,
-             "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64
-             ",\"text\":\"%s\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
-             chat_id, message_id, escaped_text, inline_keyboard_json);
+    snprintf(body + off, body_sz - (size_t)off,
+             "\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
+             inline_keyboard_json);
   } else {
-    snprintf(body, body_sz,
-             "{\"chat_id\":\"%s\",\"message_id\":%" PRIi64
-             ",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
-             chat_id, message_id, escaped_text);
-  }
-  free(escaped_text);
-
-  esp_http_client_config_t config = {
-      .url = url,
-      .method = HTTP_METHOD_POST,
-      .timeout_ms = 10000,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-      .buffer_size = 512,
-      .buffer_size_tx = 3584,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) {
-    free(body);
-    tg_http_unlock();
-    return telegram_send_message_with_keyboard(chat_id, text,
-                                               inline_keyboard_json);
+    snprintf(body + off, body_sz - (size_t)off, "\",\"parse_mode\":\"HTML\"}");
   }
 
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_post_field(client, body, strlen(body));
-
-  esp_err_t err = esp_http_client_perform(client);
-  int status = esp_http_client_get_status_code(client);
-  esp_http_client_cleanup(client);
+  int status = 0;
+  esp_err_t err = tg_perform_request_locked(url, HTTP_METHOD_POST, body, 8000,
+                                            NULL, NULL, &status);
   free(body);
   tg_http_unlock();
 
   if (err == ESP_OK && (status == 200 || status == 201 || status == 400)) {
     // Note: status 400 in editMessageText usually means "message is not
     // modified" (already up to date)
+    s_last_send_ok = true;
     return true;
   }
   return telegram_send_message_with_keyboard(chat_id, text,
@@ -419,28 +516,9 @@ bool telegram_answer_callback_query(const char *callback_query_id,
              callback_query_id);
   }
 
-  esp_http_client_config_t config = {
-      .url = url,
-      .method = HTTP_METHOD_POST,
-      .timeout_ms = 6000,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-      .buffer_size = 256,
-      .buffer_size_tx = 300,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) {
-    tg_http_unlock();
-    return false;
-  }
-
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_post_field(client, body, strlen(body));
-
-  esp_err_t err = esp_http_client_perform(client);
-  esp_http_client_cleanup(client);
+  esp_err_t err = tg_perform_request_locked(url, HTTP_METHOD_POST, body, 4000,
+                                            NULL, NULL, NULL);
   tg_http_unlock();
-  vTaskDelay(pdMS_TO_TICKS(50));
   return (err == ESP_OK);
 }
 
@@ -503,54 +581,26 @@ int telegram_send_test_alert_diag(char *out_err, size_t max_err) {
                     "💡 تم تفعيل لوحة المفاتيح التفاعلية أدناه لتسهيل "
                     "الاستعلام والتحكم بلمسة واحدة.";
 
-  char *escaped_text = (char *)malloc(2048);
-  if (!escaped_text) {
-    tg_http_unlock();
-    if (out_err && max_err > 0)
-      snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
-    return -2;
-  }
-  json_escape(msg, escaped_text, 2048);
-
   char *body = (char *)malloc(2800);
   if (!body) {
-    free(escaped_text);
     tg_http_unlock();
     if (out_err && max_err > 0)
       snprintf(out_err, max_err, "فشل تخصيص الذاكرة");
     return -2;
   }
-  snprintf(body, 2800,
-           "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\","
-           "\"reply_markup\":%s}",
-           first_admin, escaped_text, TG_ADMIN_KEYBOARD);
-  free(escaped_text);
+  int off =
+      snprintf(body, 2800, "{\"chat_id\":\"%s\",\"text\":\"", first_admin);
+  if (off < 0)
+    off = 0;
+  json_escape(msg, body + off, 2048);
+  off += (int)strlen(body + off);
+  snprintf(body + off, 2800 - (size_t)off,
+           "\",\"parse_mode\":\"HTML\",\"reply_markup\":%s}",
+           TG_ADMIN_KEYBOARD);
 
-  esp_http_client_config_t config = {
-      .url = url,
-      .method = HTTP_METHOD_POST,
-      .timeout_ms = 10000,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-      .buffer_size = 512,
-      .buffer_size_tx = 3584,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) {
-    free(body);
-    tg_http_unlock();
-    if (out_err && max_err > 0) {
-      snprintf(out_err, max_err, "فشل إنشاء عميل الاتصال HTTP");
-    }
-    return -3;
-  }
-
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_post_field(client, body, strlen(body));
-
-  esp_err_t err = esp_http_client_perform(client);
-  int status = esp_http_client_get_status_code(client);
-  esp_http_client_cleanup(client);
+  int status = 0;
+  esp_err_t err = tg_perform_request_locked(url, HTTP_METHOD_POST, body, 10000,
+                                            NULL, NULL, &status);
   free(body);
   tg_http_unlock();
 
@@ -2205,19 +2255,8 @@ static void telegram_ack_offset_before_reboot(void) {
            "&timeout=0&limit=1",
            telegram_token, last_update_id + 1);
 
-  esp_http_client_config_t config = {
-      .url = url,
-      .method = HTTP_METHOD_GET,
-      .timeout_ms = 5000,
-      .crt_bundle_attach = esp_crt_bundle_attach,
-      .buffer_size = 512,
-      .buffer_size_tx = 256,
-  };
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (client) {
-    esp_http_client_perform(client);
-    esp_http_client_cleanup(client);
-  }
+  tg_perform_request_locked(url, HTTP_METHOD_GET, NULL, 4000, NULL, NULL, NULL);
+  tg_close_persistent_client_locked();
   tg_http_unlock();
 }
 
@@ -2241,6 +2280,10 @@ static void telegram_task(void *pvParameters) {
     // Pause Telegram polling while OTA firmware download/flash is active to
     // prevent concurrent mbedTLS sessions and preserve RAM.
     if (ota_updater_is_busy()) {
+      if (tg_http_lock(pdMS_TO_TICKS(1000))) {
+        tg_close_persistent_client_locked();
+        tg_http_unlock();
+      }
       vTaskDelay(pdMS_TO_TICKS(3000));
       continue;
     }
@@ -2252,6 +2295,10 @@ static void telegram_task(void *pvParameters) {
     if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK || !sta_netif ||
         esp_netif_get_ip_info(sta_netif, &sta_ip) != ESP_OK ||
         sta_ip.ip.addr == 0) {
+      if (tg_http_lock(pdMS_TO_TICKS(1000))) {
+        tg_close_persistent_client_locked();
+        tg_http_unlock();
+      }
       vTaskDelay(pdMS_TO_TICKS(3000));
       continue;
     }
@@ -2325,96 +2372,33 @@ static void telegram_task(void *pvParameters) {
     // Check automated quota alerts safely within telegram_task
     telegram_check_quota_alerts();
 
-    // Anti-Congestion Priority: Only yield polling if traffic is saturating (>28 Mbps)
-    // so packet forwarding achieves wire-speed throughput without stalling the bot
-    uint32_t traffic_bps = total_cur_down_bps + total_cur_up_bps;
-    if (traffic_bps > 28000000) {
-      vTaskDelay(pdMS_TO_TICKS(300));
-      continue;
-    }
-
     char url[220];
     snprintf(url, sizeof(url),
              "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64
-             "&timeout=1&limit=1",
+             "&timeout=2&limit=1",
              telegram_token, last_update_id + 1);
 
-    esp_http_client_config_t config = {
-        .url = url,
-        .method = HTTP_METHOD_GET,
-        .timeout_ms = 6000,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .buffer_size = 1536,
-        .buffer_size_tx = 512,
-    };
-
     if (!tg_http_lock(pdMS_TO_TICKS(4000))) {
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      vTaskDelay(pdMS_TO_TICKS(500));
       continue;
     }
 
-    esp_http_client_handle_t client = esp_http_client_init(&config);
     int total_read = 0;
     int http_status = 0;
-    esp_err_t open_err = ESP_FAIL;
-    if (client) {
-      esp_http_client_set_header(client, "Connection", "close");
-      open_err = esp_http_client_open(client, 0);
-      if (open_err == ESP_OK) {
-        esp_http_client_fetch_headers(client);
-        http_status = esp_http_client_get_status_code(client);
-        char chunk[256];
-        while (true) {
-          int r = esp_http_client_read(client, chunk, sizeof(chunk));
-          if (r <= 0)
-            break;
-          if (total_read + r <= 2042) {
-            memcpy(rx_buffer + total_read, chunk, (size_t)r);
-            total_read += r;
-          } else {
-            // Sliding window: keep the first 350 bytes (update_id,
-            // callback_query id, from.id, message.message_id) and slide the
-            // tail (which holds callback_data / text at the end of a long
-            // inline keyboard JSON)
-            const int head_keep = 350;
-            const int tail_max = 2042 - head_keep;
-            if (total_read < head_keep) {
-              int copy_head = head_keep - total_read;
-              if (copy_head > r)
-                copy_head = r;
-              memcpy(rx_buffer + total_read, chunk, (size_t)copy_head);
-              total_read += copy_head;
-              int rem = r - copy_head;
-              if (rem > 0) {
-                memcpy(rx_buffer + head_keep, chunk + copy_head, (size_t)rem);
-                total_read += rem;
-              }
-            } else {
-              int cur_tail = total_read - head_keep;
-              int drop = (cur_tail + r) - tail_max;
-              if (drop > 0) {
-                memmove(rx_buffer + head_keep, rx_buffer + head_keep + drop,
-                        (size_t)(cur_tail - drop));
-                cur_tail -= drop;
-              }
-              memcpy(rx_buffer + head_keep + cur_tail, chunk, (size_t)r);
-              total_read = head_keep + cur_tail + r;
-            }
-          }
-        }
-        rx_buffer[total_read] = 0;
-      }
-      esp_http_client_cleanup(client);
-    }
+    esp_err_t open_err =
+        tg_perform_request_locked(url, HTTP_METHOD_GET, NULL, 6000, rx_buffer,
+                                  &total_read, &http_status);
     tg_http_unlock();
 
-    if (total_read > 0) {
+    if (total_read > 0 && http_status == 200) {
+      s_last_send_ok = true;
+      int64_t candidate_up_id = last_update_id;
       char *ptr = rx_buffer;
       while ((ptr = strstr(ptr, "\"update_id\":")) != NULL) {
         ptr += 12;
         int64_t up_id = strtoll(ptr, NULL, 10);
-        if (up_id > last_update_id) {
-          last_update_id = up_id;
+        if (up_id > candidate_up_id) {
+          candidate_up_id = up_id;
         }
 
         char *next_up = strstr(ptr, "\"update_id\":");
@@ -3474,6 +3458,35 @@ static void telegram_task(void *pvParameters) {
           }
         }
       }
+
+      if (candidate_up_id > last_update_id) {
+        static int64_t s_retry_up_id = 0;
+        static uint8_t s_retry_count = 0;
+        if (s_last_send_ok) {
+          last_update_id = candidate_up_id;
+          s_retry_up_id = 0;
+          s_retry_count = 0;
+        } else {
+          if (s_retry_up_id == candidate_up_id) {
+            s_retry_count++;
+          } else {
+            s_retry_up_id = candidate_up_id;
+            s_retry_count = 1;
+          }
+          if (s_retry_count >= 3) {
+            ESP_LOGW(TG_TAG,
+                     "Update %" PRIi64 " send failed %u times; advancing offset",
+                     candidate_up_id, s_retry_count);
+            last_update_id = candidate_up_id;
+            s_retry_up_id = 0;
+            s_retry_count = 0;
+          } else {
+            ESP_LOGW(TG_TAG,
+                     "Update %" PRIi64 " reply failed (attempt %u/3); will retry",
+                     candidate_up_id, s_retry_count);
+          }
+        }
+      }
     }
     // Robust delay & Exponential Backoff handling
     static uint8_t tg_consec_fails = 0;
@@ -3506,9 +3519,9 @@ static void telegram_task(void *pvParameters) {
       // Successful poll: immediately clear any previous failure counter
       tg_consec_fails = 0;
       if (total_read > 0) {
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(20));
       } else {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
       }
     }
   }
@@ -3517,8 +3530,8 @@ static void telegram_task(void *pvParameters) {
 }
 
 void telegram_bot_init(void) {
-  // Pinned to Core 0 with 10KB stack to provide ample safety margin for deep mbedTLS cert validation
-  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 10240, NULL, 4, NULL,
+  // Pinned to Core 0 with 10KB stack and priority 6 for responsive Keep-Alive handling under load
+  xTaskCreatePinnedToCore(telegram_task, "telegram_task", 10240, NULL, 6, NULL,
                           0);
-  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (10KB stack)");
+  ESP_LOGI(TG_TAG, "Telegram bot background task created on Core 0 (10KB stack, prio 6)");
 }
