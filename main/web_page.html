@@ -3920,8 +3920,9 @@ function updateOverviewTab(data, downMbps, upMbps, activeCount, vipCount, offlin
 
     let coreSpecsEl = document.getElementById('ov-core-specs');
     let freeRamKb = Math.round((data.free_heap || 0) / 1024);
+    let bwLabel = (data.current_bw === 40) ? 'HT40 Turbo (150M)' : (data.current_bw === 20 ? '20MHz (72M)' : 'HT40');
     if (coreSpecsEl) {
-      coreSpecsEl.textContent = `${data.cpu_freq_mhz || 240}MHz • RAM: ${freeRamKb} KB • HT40`;
+      coreSpecsEl.textContent = `${data.cpu_freq_mhz || 240}MHz • RAM: ${freeRamKb} KB • ${bwLabel}`;
     }
 
     let totalSpeedMbps = (parseFloat(downMbps) + parseFloat(upMbps)).toFixed(2);
@@ -4265,8 +4266,9 @@ async function refreshData() {
       document.getElementById('wan-ssid-val').textContent = data.sta_ssid || 'غير متصل';
     }
     if (document.getElementById('wan-info-sub')) {
+      let bwText = data.current_bw ? ` | ${data.current_bw}MHz 🚀` : '';
       document.getElementById('wan-info-sub').textContent = data.sta_ssid ?
-        ('الإشارة: ' + data.sta_rssi + ' dBm 📶 | IP: ' + (data.sta_ip || '--') + (data.current_band ? ' | ' + data.current_band + ' ⚡' : '')) : 'جاري الفحص...';
+        ('الإشارة: ' + data.sta_rssi + ' dBm 📶 | IP: ' + (data.sta_ip || '--') + (data.current_band ? ' | ' + data.current_band + ' ⚡' : '') + bwText) : 'جاري الفحص...';
     }
     if (document.getElementById('parent-ssid-txt')) document.getElementById('parent-ssid-txt').textContent = data.sta_ssid || 'غير متصل';
     if (document.getElementById('parent-rssi-txt')) document.getElementById('parent-rssi-txt').textContent = data.sta_rssi ? (data.sta_rssi + ' dBm 📶') : '--';

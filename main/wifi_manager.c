@@ -1111,6 +1111,27 @@ const char *wifi_manager_get_current_band_str(void) {
   return "Dual-Band";
 }
 
+uint8_t wifi_manager_get_current_bandwidth_mhz(void) {
+  wifi_band_mode_t bmode = WIFI_BAND_MODE_AUTO;
+  if (wifi_band_mode == 1) bmode = WIFI_BAND_MODE_2G_ONLY;
+  else if (wifi_band_mode == 2) bmode = WIFI_BAND_MODE_5G_ONLY;
+
+  if (bmode == WIFI_BAND_MODE_AUTO) {
+    wifi_bandwidths_t bws = {0};
+    if (esp_wifi_get_bandwidths(WIFI_IF_AP, &bws) == ESP_OK) {
+      if (bws.ghz_5g == WIFI_BW40 || bws.ghz_2g == WIFI_BW40) return 40;
+      return 20;
+    }
+  } else {
+    wifi_bandwidth_t bw = WIFI_BW20;
+    if (esp_wifi_get_bandwidth(WIFI_IF_AP, &bw) == ESP_OK) {
+      if (bw == WIFI_BW40) return 40;
+      return 20;
+    }
+  }
+  return (wifi_protocol_mode == 1 || wifi_protocol_mode == 2) ? 40 : 20;
+}
+
 uint8_t wifi_manager_get_current_band(void) {
   wifi_band_t cur_band = WIFI_BAND_2G;
   if (esp_wifi_get_band(&cur_band) == ESP_OK) {

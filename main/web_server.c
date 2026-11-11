@@ -452,11 +452,12 @@ static esp_err_t devices_handler(httpd_req_t *req) {
         buf + used, sizeof(buf) - used,
         ",\"sta_static_enabled\":%s,\"sta_ip\":\"%s\",\"sta_mask\":\"%s\","
         "\"sta_gw\":\"%s\",\"sta_dns\":\"%s\","
-        "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"router_"
+        "\"wifi_proto\":%u,\"wifi_band\":%u,\"current_band\":\"%s\",\"current_bw\":%u,\"router_"
         "ssid\":",
         sta_static_enabled ? "true" : "false", current_sta_ip, current_sta_mask,
         current_sta_gw, sta_dns_text, (unsigned)wifi_protocol_mode,
-        (unsigned)wifi_band_mode, wifi_manager_get_current_band_str());
+        (unsigned)wifi_band_mode, wifi_manager_get_current_band_str(),
+        (unsigned)wifi_manager_get_current_bandwidth_mhz());
   }
   if (used >= sizeof(buf) - 64)
     used = sizeof(buf) - 64;

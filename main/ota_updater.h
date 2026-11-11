@@ -1,11 +1,12 @@
 #pragma once
 
+#include "esp_http_server.h"
 #include <esp_err.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "esp_http_server.h"
 
-#define ROUTER_FIRMWARE_VERSION "v3.7.7"
+
+#define ROUTER_FIRMWARE_VERSION "v3.7.8"
 #define ROUTER_BUILD_TIMESTAMP __DATE__ " " __TIME__
 
 typedef enum {
@@ -19,11 +20,11 @@ typedef enum {
 
 typedef struct {
   ota_state_t state;
-  uint8_t progress_pct;      // 0 - 100
-  char current_version[24];  // e.g. "v3.2.0-PRO"
-  char build_timestamp[32];  // compile time
-  char running_partition[24];// e.g. "ota_0"
-  char target_partition[24]; // e.g. "ota_1"
+  uint8_t progress_pct;       // 0 - 100
+  char current_version[24];   // e.g. "v3.2.0-PRO"
+  char build_timestamp[32];   // compile time
+  char running_partition[24]; // e.g. "ota_0"
+  char target_partition[24];  // e.g. "ota_1"
   char error_msg[64];
   uint32_t total_bytes;
   uint32_t written_bytes;
@@ -38,5 +39,3 @@ esp_err_t ota_check_remote_version(char *out_version, size_t ver_len,
                                    char *out_url, size_t url_len,
                                    char *out_changelog, size_t log_len,
                                    bool *update_available);
-
-
