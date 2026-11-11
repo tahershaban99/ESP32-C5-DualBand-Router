@@ -216,11 +216,19 @@ async function submitTelegramSettings(e, isSt = false) {
     th = (document.getElementById('cfg_tg_thresholds')?.value || document.getElementById('cfg_tg_thresholds_st')?.value || '').trim();
   }
 
-  // Sync inputs across tabs
-  if (document.getElementById('cfg_tg_chat_id')) document.getElementById('cfg_tg_chat_id').value = cid;
-  if (document.getElementById('cfg_tg_chat_id_st')) document.getElementById('cfg_tg_chat_id_st').value = cid;
-  if (document.getElementById('cfg_tg_thresholds')) document.getElementById('cfg_tg_thresholds').value = th;
-  if (document.getElementById('cfg_tg_thresholds_st')) document.getElementById('cfg_tg_thresholds_st').value = th;
+  // Sync inputs across tabs and clear dirty markers
+  ['cfg_tg_chat_id', 'cfg_tg_chat_id_st'].forEach(id => {
+    let el = document.getElementById(id);
+    if (el) { el.value = cid; el.dataset.dirty = ''; }
+  });
+  ['cfg_tg_thresholds', 'cfg_tg_thresholds_st'].forEach(id => {
+    let el = document.getElementById(id);
+    if (el) { el.value = th; el.dataset.dirty = ''; }
+  });
+  ['cfg_tg_token', 'cfg_tg_token_st'].forEach(id => {
+    let el = document.getElementById(id);
+    if (el) { el.dataset.dirty = ''; }
+  });
 
   let btn = document.getElementById('tg_save_btn');
   if (btn) btn.disabled = true;

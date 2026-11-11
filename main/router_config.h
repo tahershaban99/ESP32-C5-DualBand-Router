@@ -40,7 +40,8 @@ extern char telegram_thresholds[48];
 extern uint32_t telegram_alert_flags;
 
 bool telegram_is_admin(const char *chat_id);
-void telegram_broadcast_admins(const char *text);
+bool telegram_broadcast_admins(const char *text);
+size_t parse_telegram_thresholds(const char *str, uint8_t out_vals[16]);
 
 void config_load(void);
 void config_save_all(void);

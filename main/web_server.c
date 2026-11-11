@@ -923,8 +923,13 @@ static esp_err_t device_save_handler(httpd_req_t *req) {
     // (unlimited)
     int u_idx = meter_find_usage_locked(mac, false);
     if (u_idx >= 0) {
-      uint64_t consumed = usage_records[u_idx].upload_bytes +
-                          usage_records[u_idx].download_bytes;
+      uint64_t consumed =
+          meter_calc_scaled_bytes(usage_records[u_idx].upload_bytes,
+                                  router_meter_scale_pct,
+                                  router_meter_scale_mode) +
+          meter_calc_scaled_bytes(usage_records[u_idx].download_bytes,
+                                  router_meter_scale_pct,
+                                  router_meter_scale_mode);
       if (quota_bytes == 0 || consumed < quota_bytes) {
         blk = false;
       }

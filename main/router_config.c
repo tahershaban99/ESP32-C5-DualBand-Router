@@ -41,8 +41,80 @@ bool telegram_enabled = false;
 bool telegram_interactive = false;
 char telegram_token[80] = {0};
 char telegram_chat_id[128] = {0};
-char telegram_thresholds[48] = "50,75,90,95"; // Default multi-thresholds
+char telegram_thresholds[48] = "50,75,90,95,100"; // Default multi-thresholds
 uint32_t telegram_alert_flags = 0;
+
+size_t parse_telegram_thresholds(const char *str, uint8_t out_vals[16]) {
+  if (!str || !out_vals) return 0;
+  size_t count = 0;
+  int cur_val = 0;
+  bool in_num = false;
+  const unsigned char *p = (const unsigned char *)str;
+
+  while (*p) {
+    int digit = -1;
+    if (*p >= '0' && *p <= '9') {
+      digit = *p - '0';
+      p++;
+    } else if (p[0] == 0xD9 && p[1] >= 0xA0 && p[1] <= 0xA9) {
+      // Eastern Arabic numerals (٠..٩)
+      digit = p[1] - 0xA0;
+      p += 2;
+    } else if (p[0] == 0xDB && p[1] >= 0xB0 && p[1] <= 0xB9) {
+      // Extended Arabic-Indic numerals (۰..۹)
+      digit = p[1] - 0xB0;
+      p += 2;
+    } else {
+      p++;
+    }
+
+    if (digit >= 0) {
+      cur_val = cur_val * 10 + digit;
+      if (cur_val > 1000) cur_val = 1000;
+      in_num = true;
+    } else if (in_num) {
+      if (cur_val >= 1 && cur_val <= 100 && count < 16) {
+        uint8_t v = (uint8_t)cur_val;
+        bool exists = false;
+        for (size_t i = 0; i < count; ++i) {
+          if (out_vals[i] == v) {
+            exists = true;
+            break;
+          }
+        }
+        if (!exists) {
+          out_vals[count++] = v;
+        }
+      }
+      cur_val = 0;
+      in_num = false;
+    }
+  }
+  if (in_num && cur_val >= 1 && cur_val <= 100 && count < 16) {
+    uint8_t v = (uint8_t)cur_val;
+    bool exists = false;
+    for (size_t i = 0; i < count; ++i) {
+      if (out_vals[i] == v) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      out_vals[count++] = v;
+    }
+  }
+
+  for (size_t i = 0; i < count; ++i) {
+    for (size_t j = i + 1; j < count; ++j) {
+      if (out_vals[j] < out_vals[i]) {
+        uint8_t tmp = out_vals[i];
+        out_vals[i] = out_vals[j];
+        out_vals[j] = tmp;
+      }
+    }
+  }
+  return count;
+}
 
 void config_load(void) {
   nvs_handle_t nvs;
@@ -179,10 +251,21 @@ void config_load(void) {
   nvs_get_str(nvs, "tg_chat_id", telegram_chat_id, &len);
 
   len = sizeof(telegram_thresholds);
+  bool need_thresh_upgrade = false;
   if (nvs_get_str(nvs, "tg_thresh", telegram_thresholds, &len) != ESP_OK || !telegram_thresholds[0]) {
-    strncpy(telegram_thresholds, "50,75,90,95", sizeof(telegram_thresholds) - 1);
+    strncpy(telegram_thresholds, "50,75,90,95,100", sizeof(telegram_thresholds) - 1);
+  } else if (strcmp(telegram_thresholds, "50,75,90,95") == 0 ||
+             strcmp(telegram_thresholds, "50, 75, 90, 95") == 0) {
+    strncpy(telegram_thresholds, "50,75,90,95,100", sizeof(telegram_thresholds) - 1);
+    need_thresh_upgrade = true;
   }
   nvs_get_u32(nvs, "tg_flags", &telegram_alert_flags);
+  uint8_t flg_v2 = 0;
+  bool need_flg_v2_save = false;
+  if (nvs_get_u8(nvs, "tg_flg_v2", &flg_v2) != ESP_OK || flg_v2 == 0) {
+    telegram_alert_flags = 0;
+    need_flg_v2_save = true;
+  }
 
   // If token is configured, auto-activate both alerts and interactive bot
   if (telegram_token[0]) {
@@ -191,6 +274,21 @@ void config_load(void) {
   }
 
   nvs_close(nvs);
+
+  if (need_thresh_upgrade || need_flg_v2_save) {
+    nvs_handle_t rw_nvs;
+    if (nvs_open("router", NVS_READWRITE, &rw_nvs) == ESP_OK) {
+      if (need_thresh_upgrade) {
+        nvs_set_str(rw_nvs, "tg_thresh", telegram_thresholds);
+      }
+      if (need_flg_v2_save) {
+        nvs_set_u32(rw_nvs, "tg_flags", 0);
+        nvs_set_u8(rw_nvs, "tg_flg_v2", 1);
+      }
+      nvs_commit(rw_nvs);
+      nvs_close(rw_nvs);
+    }
+  }
 }
 
 void config_save_admin(const char *user, const char *pass) {
@@ -284,9 +382,87 @@ void config_save_telegram(bool enabled, bool interactive, const char *token, con
     strncpy(telegram_chat_id, chat_id, sizeof(telegram_chat_id) - 1);
     telegram_chat_id[sizeof(telegram_chat_id) - 1] = 0;
   }
+
+  bool policies_updated = false;
   if (thresholds && thresholds[0]) {
+    uint8_t old_vals[16] = {0};
+    size_t old_cnt = parse_telegram_thresholds(telegram_thresholds, old_vals);
+
     strncpy(telegram_thresholds, thresholds, sizeof(telegram_thresholds) - 1);
     telegram_thresholds[sizeof(telegram_thresholds) - 1] = 0;
+
+    uint8_t new_vals[16] = {0};
+    size_t new_cnt = parse_telegram_thresholds(telegram_thresholds, new_vals);
+
+    portENTER_CRITICAL(&data_mux);
+    uint64_t total_used = 0;
+    for (size_t i = 0; i < usage_count; ++i) {
+      total_used += meter_calc_scaled_bytes(usage_records[i].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) +
+                    meter_calc_scaled_bytes(usage_records[i].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+    }
+    uint32_t main_pct = (main_quota_bytes > 0) ? (uint32_t)((total_used * 100ULL) / main_quota_bytes) : 0;
+
+    uint8_t main_max_alerted = 0;
+    for (size_t i = 0; i < old_cnt; ++i) {
+      if ((telegram_alert_flags & (1UL << i)) && old_vals[i] <= main_pct) {
+        if (old_vals[i] > main_max_alerted) main_max_alerted = old_vals[i];
+      }
+    }
+    uint32_t new_main_flags = 0;
+    for (size_t j = 0; j < new_cnt; ++j) {
+      if (new_vals[j] <= main_pct) {
+        bool was_alerted = false;
+        for (size_t i = 0; i < old_cnt; ++i) {
+          if (old_vals[i] == new_vals[j] && (telegram_alert_flags & (1UL << i))) {
+            was_alerted = true;
+            break;
+          }
+        }
+        if (was_alerted || new_vals[j] < main_max_alerted) {
+          new_main_flags |= (1UL << j);
+        }
+      }
+    }
+    telegram_alert_flags = new_main_flags;
+
+    for (size_t p = 0; p < policy_count; ++p) {
+      if (device_policies[p].quota_bytes == 0) continue;
+      int u = meter_find_usage_locked(device_policies[p].mac, false);
+      uint64_t dev_used = 0;
+      if (u >= 0) {
+        dev_used = meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) +
+                   meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+      }
+      uint32_t dev_pct = (uint32_t)((dev_used * 100ULL) / device_policies[p].quota_bytes);
+      uint16_t old_dev_flags = device_policies[p].alert_flags;
+      uint8_t dev_max_alerted = 0;
+      for (size_t i = 0; i < old_cnt; ++i) {
+        if ((old_dev_flags & (1U << i)) && old_vals[i] <= dev_pct) {
+          if (old_vals[i] > dev_max_alerted) dev_max_alerted = old_vals[i];
+        }
+      }
+      uint16_t new_dev_flags = 0;
+      for (size_t j = 0; j < new_cnt; ++j) {
+        if (new_vals[j] <= dev_pct) {
+          bool was_alerted = false;
+          for (size_t i = 0; i < old_cnt; ++i) {
+            if (old_vals[i] == new_vals[j] && (old_dev_flags & (1U << i))) {
+              was_alerted = true;
+              break;
+            }
+          }
+          if (was_alerted || new_vals[j] < dev_max_alerted) {
+            new_dev_flags |= (1U << j);
+          }
+        }
+      }
+      if (device_policies[p].alert_flags != new_dev_flags) {
+        device_policies[p].alert_flags = new_dev_flags;
+        policy_dirty = true;
+        policies_updated = true;
+      }
+    }
+    portEXIT_CRITICAL(&data_mux);
   }
 
   // Force true if token is set
@@ -300,8 +476,12 @@ void config_save_telegram(bool enabled, bool interactive, const char *token, con
     nvs_set_str(nvs, "tg_token", telegram_token);
     nvs_set_str(nvs, "tg_chat_id", telegram_chat_id);
     nvs_set_str(nvs, "tg_thresh", telegram_thresholds);
+    nvs_set_u32(nvs, "tg_flags", telegram_alert_flags);
     nvs_commit(nvs);
     nvs_close(nvs);
+  }
+  if (policies_updated) {
+    meter_save_usage();
   }
 }
 

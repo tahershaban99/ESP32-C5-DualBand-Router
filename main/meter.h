@@ -33,6 +33,7 @@ extern char quota_start_date[12];
 extern char quota_end_date[12];
 
 extern int32_t reboot_countdown_s;
+extern bool policy_dirty;
 extern bool device_catalog_dirty;
 extern volatile uint32_t pending_discovered_ip;
 

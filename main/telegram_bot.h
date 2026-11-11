@@ -23,6 +23,6 @@ bool telegram_send_message_with_keyboard(const char *chat_id, const char *text, 
 bool telegram_answer_callback_query(const char *callback_query_id, const char *text);
 
 bool telegram_is_admin(const char *chat_id);
-void telegram_broadcast_admins(const char *text);
+bool telegram_broadcast_admins(const char *text);
 void telegram_register_discovered_user(const char *chat_id, const char *first_name, const char *username);
 size_t telegram_get_discovered_users(tg_discovered_user_t *out_users, size_t max_count);

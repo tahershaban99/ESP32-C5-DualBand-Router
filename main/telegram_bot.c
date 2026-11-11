@@ -294,9 +294,10 @@ bool telegram_is_admin(const char *chat_id) {
   return false;
 }
 
-void telegram_broadcast_admins(const char *text) {
+bool telegram_broadcast_admins(const char *text) {
   if (!text || !text[0] || !telegram_chat_id[0])
-    return;
+    return false;
+  bool any_ok = false;
   char copy[140];
   strncpy(copy, telegram_chat_id, sizeof(copy) - 1);
   copy[sizeof(copy) - 1] = 0;
@@ -306,10 +307,13 @@ void telegram_broadcast_admins(const char *text) {
     while (*tok == ' ')
       tok++;
     if (*tok) {
-      telegram_send_message_with_keyboard(tok, text, TG_ADMIN_KEYBOARD);
+      if (telegram_send_message_with_keyboard(tok, text, TG_ADMIN_KEYBOARD)) {
+        any_ok = true;
+      }
     }
     tok = strtok_r(NULL, ", ;", &saveptr);
   }
+  return any_ok;
 }
 
 // Helper to escape characters for JSON string value
@@ -1001,9 +1005,13 @@ void telegram_check_quota_alerts(void) {
   uint64_t main_quota_bytes_val = 0;
   portENTER_CRITICAL(&data_mux);
   for (size_t i = 0; i < usage_count; ++i) {
-    total_used_bytes += meter_calc_scaled_bytes(
-        (usage_records[i].upload_bytes + usage_records[i].download_bytes),
-        router_meter_scale_pct, router_meter_scale_mode);
+    total_used_bytes +=
+        meter_calc_scaled_bytes(usage_records[i].upload_bytes,
+                                router_meter_scale_pct,
+                                router_meter_scale_mode) +
+        meter_calc_scaled_bytes(usage_records[i].download_bytes,
+                                router_meter_scale_pct,
+                                router_meter_scale_mode);
   }
   main_quota_bytes_val = main_quota_bytes;
   portEXIT_CRITICAL(&data_mux);
@@ -1011,93 +1019,105 @@ void telegram_check_quota_alerts(void) {
   double gb_div =
       (router_gb_standard == 1000) ? 1000000000.0 : (1024.0 * 1024.0 * 1024.0);
 
+  uint8_t th_vals[16] = {0};
+  size_t th_cnt = parse_telegram_thresholds(telegram_thresholds, th_vals);
+  if (th_cnt == 0) {
+    return;
+  }
+
   // 1. Check Main ISP Quota Multi-Thresholds
   if (main_quota_bytes_val > 0 && telegram_chat_id[0]) {
     uint32_t current_pct =
         (uint32_t)((total_used_bytes * 100ULL) / main_quota_bytes_val);
 
-    char thresh_copy[50];
-    strncpy(thresh_copy, telegram_thresholds, sizeof(thresh_copy) - 1);
-    thresh_copy[sizeof(thresh_copy) - 1] = 0;
+    // Auto-heal stale bits above current_pct (e.g., if quota was increased)
+    uint32_t valid_flags = 0;
+    for (size_t i = 0; i < th_cnt; ++i) {
+      if (current_pct >= (uint32_t)th_vals[i]) {
+        valid_flags |= (telegram_alert_flags & (1UL << i));
+      }
+    }
+    if (valid_flags != telegram_alert_flags) {
+      config_save_telegram_flags(valid_flags);
+    }
 
-    char *saveptr = NULL;
-    char *tok = strtok_r(thresh_copy, ",", &saveptr);
-    uint8_t th_idx = 0;
-
-    while (tok && th_idx < 16) {
-      while (*tok == ' ')
-        tok++;
-      int th_val = atoi(tok);
-      if (th_val > 0 && th_val <= 100) {
-        uint32_t mask = (1UL << th_idx);
-        if (current_pct >= (uint32_t)th_val && !(telegram_alert_flags & mask)) {
-          telegram_alert_flags |= mask;
-          config_save_telegram_flags(telegram_alert_flags);
-
-          double used_gb = (double)total_used_bytes / gb_div;
-          double total_gb = (double)main_quota_bytes_val / gb_div;
-          double rem_gb = total_gb > used_gb ? (total_gb - used_gb) : 0.0;
-
-          time_t now = time(NULL);
-          int32_t rem_days = -1, rem_hours = -1;
-          if (now > 1700000000 && quota_end_date[0]) {
-            time_t end_ts = meter_parse_date(quota_end_date, true);
-            if (end_ts > now) {
-              int64_t diff = (int64_t)(end_ts - now);
-              rem_days = (int32_t)(diff / 86400);
-              rem_hours = (int32_t)((diff % 86400) / 3600);
-            } else {
-              rem_days = 0;
-              rem_hours = 0;
-            }
-          }
-
-          uint16_t active_cnt = 0;
-          portENTER_CRITICAL(&data_mux);
-          for (size_t k = 0; k < MAX_CLIENTS; ++k) {
-            if (valid_device_mac(active_clients[k].mac) &&
-                active_clients[k].aid != 0) {
-              active_cnt++;
-            }
-          }
-          portEXIT_CRITICAL(&data_mux);
-
-          char alert_msg[550];
-          if (rem_days >= 0) {
-            snprintf(
-                alert_msg, sizeof(alert_msg),
-                "🚨 <b>تنبيه استهلاك باقة الإنترنت الرئيسية (%u%%)</b> 🚨\n\n"
-                "📊 <b>النسبة المستهلكة:</b> %u%%\n"
-                "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
-                "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
-                "📅 <b>تاريخ التجديد:</b> %s (متبقي %ld يوم و %ld ساعة)\n"
-                "⚡ <b>الأجهزة النشطة:</b> %u / 12 متصل",
-                th_val, (unsigned)current_pct, used_gb, total_gb, rem_gb,
-                quota_end_date, (long)rem_days, (long)rem_hours, active_cnt);
-          } else {
-            snprintf(
-                alert_msg, sizeof(alert_msg),
-                "🚨 <b>تنبيه استهلاك باقة الإنترنت الرئيسية (%u%%)</b> 🚨\n\n"
-                "📊 <b>النسبة المستهلكة:</b> %u%%\n"
-                "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
-                "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
-                "⚡ <b>الأجهزة النشطة:</b> %u / 12 متصل",
-                th_val, (unsigned)current_pct, used_gb, total_gb, rem_gb,
-                active_cnt);
-          }
-
-          ESP_LOGW(
-              TG_TAG,
-              "Main ISP threshold %u%% triggered! Sending alert to admins...",
-              th_val);
-          telegram_busy = true;
-          telegram_broadcast_admins(alert_msg);
-          telegram_busy = false;
-          return; // Send one alert per check
+    int best_idx = -1;
+    uint32_t passed_mask = 0;
+    for (size_t i = 0; i < th_cnt; ++i) {
+      if (current_pct >= (uint32_t)th_vals[i]) {
+        passed_mask |= (1UL << i);
+        if (!(telegram_alert_flags & (1UL << i))) {
+          best_idx = (int)i;
         }
       }
-      tok = strtok_r(NULL, ",", &saveptr);
-      th_idx++;
+    }
+
+    if (best_idx >= 0) {
+      uint8_t th_val = th_vals[best_idx];
+      double used_gb = (double)total_used_bytes / gb_div;
+      double total_gb = (double)main_quota_bytes_val / gb_div;
+      double rem_gb = total_gb > used_gb ? (total_gb - used_gb) : 0.0;
+
+      time_t now = time(NULL);
+      int32_t rem_days = -1, rem_hours = -1;
+      if (now > 1700000000 && quota_end_date[0]) {
+        time_t end_ts = meter_parse_date(quota_end_date, true);
+        if (end_ts > now) {
+          int64_t diff = (int64_t)(end_ts - now);
+          rem_days = (int32_t)(diff / 86400);
+          rem_hours = (int32_t)((diff % 86400) / 3600);
+        } else {
+          rem_days = 0;
+          rem_hours = 0;
+        }
+      }
+
+      uint16_t active_cnt = 0;
+      portENTER_CRITICAL(&data_mux);
+      for (size_t k = 0; k < MAX_CLIENTS; ++k) {
+        if (valid_device_mac(active_clients[k].mac) &&
+            active_clients[k].aid != 0) {
+          active_cnt++;
+        }
+      }
+      portEXIT_CRITICAL(&data_mux);
+
+      char alert_msg[550];
+      if (rem_days >= 0) {
+        snprintf(
+            alert_msg, sizeof(alert_msg),
+            "🚨 <b>تنبيه استهلاك باقة الإنترنت الرئيسية (%u%%)</b> 🚨\n\n"
+            "📊 <b>النسبة المستهلكة:</b> %u%%\n"
+            "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
+            "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
+            "📅 <b>تاريخ التجديد:</b> %s (متبقي %ld يوم و %ld ساعة)\n"
+            "⚡ <b>الأجهزة النشطة:</b> %u / 12 متصل",
+            (unsigned)th_val, (unsigned)current_pct, used_gb, total_gb, rem_gb,
+            quota_end_date, (long)rem_days, (long)rem_hours, active_cnt);
+      } else {
+        snprintf(
+            alert_msg, sizeof(alert_msg),
+            "🚨 <b>تنبيه استهلاك باقة الإنترنت الرئيسية (%u%%)</b> 🚨\n\n"
+            "📊 <b>النسبة المستهلكة:</b> %u%%\n"
+            "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
+            "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
+            "⚡ <b>الأجهزة النشطة:</b> %u / 12 متصل",
+            (unsigned)th_val, (unsigned)current_pct, used_gb, total_gb, rem_gb,
+            active_cnt);
+      }
+
+      ESP_LOGW(
+          TG_TAG,
+          "Main ISP threshold %u%% triggered! Sending alert to admins...",
+          (unsigned)th_val);
+      telegram_busy = true;
+      bool sent_ok = telegram_broadcast_admins(alert_msg);
+      telegram_busy = false;
+      if (sent_ok) {
+        telegram_alert_flags |= passed_mask;
+        config_save_telegram_flags(telegram_alert_flags);
+      }
+      return; // Send one alert per check
     }
   }
 
@@ -1117,7 +1137,12 @@ void telegram_check_quota_alerts(void) {
       int u = meter_find_usage_locked(pol.mac, false);
       if (u >= 0) {
         dev_used =
-            usage_records[u].upload_bytes + usage_records[u].download_bytes;
+            meter_calc_scaled_bytes(usage_records[u].upload_bytes,
+                                    router_meter_scale_pct,
+                                    router_meter_scale_mode) +
+            meter_calc_scaled_bytes(usage_records[u].download_bytes,
+                                    router_meter_scale_pct,
+                                    router_meter_scale_mode);
       }
       int n_idx = meter_find_name_locked(pol.mac, false);
       if (n_idx >= 0 && device_names[n_idx].name[0]) {
@@ -1144,74 +1169,85 @@ void telegram_check_quota_alerts(void) {
 
     uint32_t dev_pct = (uint32_t)((dev_used * 100ULL) / pol.quota_bytes);
 
-    char thresh_copy[50];
-    strncpy(thresh_copy, telegram_thresholds, sizeof(thresh_copy) - 1);
-    thresh_copy[sizeof(thresh_copy) - 1] = 0;
+    // Auto-heal stale bits above dev_pct
+    uint16_t valid_dev_flags = 0;
+    for (size_t i = 0; i < th_cnt; ++i) {
+      if (dev_pct >= (uint32_t)th_vals[i]) {
+        valid_dev_flags |= (pol.alert_flags & (1U << i));
+      }
+    }
+    if (valid_dev_flags != pol.alert_flags) {
+      pol.alert_flags = valid_dev_flags;
+      portENTER_CRITICAL(&data_mux);
+      int idx = meter_find_policy_locked(pol.mac, false);
+      if (idx >= 0) {
+        device_policies[idx].alert_flags = valid_dev_flags;
+        policy_dirty = true;
+      }
+      portEXIT_CRITICAL(&data_mux);
+    }
 
-    char *saveptr = NULL;
-    char *tok = strtok_r(thresh_copy, ",", &saveptr);
-    uint8_t th_idx = 0;
-
-    while (tok && th_idx < 16) {
-      while (*tok == ' ')
-        tok++;
-      int th_val = atoi(tok);
-      if (th_val > 0 && th_val <= 100) {
-        uint16_t mask = (1U << th_idx);
-        if (dev_pct >= (uint32_t)th_val && !(pol.alert_flags & mask)) {
-          double dev_used_gb = (double)dev_used / gb_div;
-          double dev_total_gb = (double)pol.quota_bytes / gb_div;
-          double dev_rem_gb =
-              (dev_total_gb > dev_used_gb) ? (dev_total_gb - dev_used_gb) : 0.0;
-
-          char alert_msg[550];
-          ip4_addr_t dev_addr = {.addr = dev_ip};
-          const char *status_str =
-              (dev_pct >= 100)
-                  ? "🚫 تم حظر الوصول للإنترنت تلقائياً لوصول الاستهلاك إلى 100%"
-                  : "🟢 متصل وتحت المراقبة";
-
-          snprintf(alert_msg, sizeof(alert_msg),
-                   "🚨 <b>تنبيه استهلاك باقة الجهاز (%u%%)</b> 🚨\n\n"
-                   "📱 <b>الجهاز:</b> %s\n"
-                   "🌐 <b>عنوان IP:</b> %d.%d.%d.%d\n"
-                   "📊 <b>النسبة المستهلكة:</b> %u%%\n"
-                   "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
-                   "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
-                   "⚠️ <b>الحالة:</b> %s",
-                   th_val, dev_name, IP2STR(&dev_addr), (unsigned)dev_pct,
-                   dev_used_gb, dev_total_gb, dev_rem_gb, status_str);
-
-          ESP_LOGW(TG_TAG, "Device alert triggered: %s reached %u%%", dev_name,
-                   th_val);
-          telegram_busy = true;
-
-          // Dispatch to linked owner with TG_USER_KEYBOARD, and CC to all
-          // admins
-          bool sent_ok = false;
-          if (pol.telegram_chat_id[0]) {
-            sent_ok = telegram_send_message_with_keyboard(
-                pol.telegram_chat_id, alert_msg, TG_USER_KEYBOARD);
-            char cc_msg[650];
-            snprintf(cc_msg, sizeof(cc_msg),
-                     "📢 <b>[تنبيه إداري: استهلاك باقة جهاز (%u%%)]</b>\n\n%s",
-                     th_val, alert_msg);
-            telegram_broadcast_admins(cc_msg);
-          } else {
-            // No personal chat_id: alert all admins
-            telegram_broadcast_admins(alert_msg);
-            sent_ok = true;
-          }
-
-          telegram_busy = false;
-          if (sent_ok) {
-            meter_set_device_alert_flag(pol.mac, mask);
-          }
-          return; // Send one alert per check
+    int best_idx = -1;
+    uint16_t passed_mask = 0;
+    for (size_t i = 0; i < th_cnt; ++i) {
+      if (dev_pct >= (uint32_t)th_vals[i]) {
+        passed_mask |= (1U << i);
+        if (!(pol.alert_flags & (1U << i))) {
+          best_idx = (int)i;
         }
       }
-      tok = strtok_r(NULL, ",", &saveptr);
-      th_idx++;
+    }
+
+    if (best_idx >= 0) {
+      uint8_t th_val = th_vals[best_idx];
+      double dev_used_gb = (double)dev_used / gb_div;
+      double dev_total_gb = (double)pol.quota_bytes / gb_div;
+      double dev_rem_gb =
+          (dev_total_gb > dev_used_gb) ? (dev_total_gb - dev_used_gb) : 0.0;
+
+      char alert_msg[550];
+      ip4_addr_t dev_addr = {.addr = dev_ip};
+      const char *status_str =
+          (dev_pct >= 100)
+              ? "🚫 تم حظر الوصول للإنترنت تلقائياً لوصول الاستهلاك إلى 100%"
+              : "🟢 متصل وتحت المراقبة";
+
+      snprintf(alert_msg, sizeof(alert_msg),
+               "🚨 <b>تنبيه استهلاك باقة الجهاز (%u%%)</b> 🚨\n\n"
+               "📱 <b>الجهاز:</b> %s\n"
+               "🌐 <b>عنوان IP:</b> %d.%d.%d.%d\n"
+               "📊 <b>النسبة المستهلكة:</b> %u%%\n"
+               "📥 <b>المستهلك:</b> %.2f GB من أصل %.2f GB\n"
+               "⏳ <b>الرصيد المتبقي:</b> %.2f GB\n"
+               "⚠️ <b>الحالة:</b> %s",
+               (unsigned)th_val, dev_name, IP2STR(&dev_addr), (unsigned)dev_pct,
+               dev_used_gb, dev_total_gb, dev_rem_gb, status_str);
+
+      ESP_LOGW(TG_TAG, "Device alert triggered: %s reached %u%%", dev_name,
+               (unsigned)th_val);
+      telegram_busy = true;
+
+      // Dispatch to linked owner with TG_USER_KEYBOARD, and CC to all admins
+      bool sent_ok = false;
+      if (pol.telegram_chat_id[0]) {
+        bool user_sent = telegram_send_message_with_keyboard(
+            pol.telegram_chat_id, alert_msg, TG_USER_KEYBOARD);
+        char cc_msg[650];
+        snprintf(cc_msg, sizeof(cc_msg),
+                 "📢 <b>[تنبيه إداري: استهلاك باقة جهاز (%u%%)]</b>\n\n%s",
+                 (unsigned)th_val, alert_msg);
+        bool admin_sent = telegram_broadcast_admins(cc_msg);
+        sent_ok = user_sent || admin_sent;
+      } else {
+        // No personal chat_id: alert all admins
+        sent_ok = telegram_broadcast_admins(alert_msg);
+      }
+
+      telegram_busy = false;
+      if (sent_ok) {
+        meter_set_device_alert_flag(pol.mac, passed_mask);
+      }
+      return; // Send one alert per check
     }
   }
 }

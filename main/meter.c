@@ -344,7 +344,30 @@ void meter_resolve_canonical_mac_locked(const uint8_t in_mac[6], bool is_direct_
 }
 
 void meter_set_main_quota(uint64_t quota_bytes, const char *start_date, const char *end_date) {
+  bool quota_changed = false;
+  uint32_t new_flags = 0;
   portENTER_CRITICAL(&data_mux);
+  if (main_quota_bytes != quota_bytes) {
+    quota_changed = true;
+    uint64_t total_used = 0;
+    for (size_t i = 0; i < usage_count; ++i) {
+      total_used += meter_calc_scaled_bytes(usage_records[i].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) +
+                    meter_calc_scaled_bytes(usage_records[i].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+    }
+    uint32_t new_pct = (quota_bytes > 0) ? (uint32_t)((total_used * 100ULL) / quota_bytes) : 0;
+    uint8_t th_vals[16] = {0};
+    size_t th_cnt = parse_telegram_thresholds(telegram_thresholds, th_vals);
+    int best_idx = -1;
+    for (size_t i = 0; i < th_cnt; ++i) {
+      if (new_pct >= (uint32_t)th_vals[i]) {
+        best_idx = (int)i;
+      }
+    }
+    // Pre-mark strictly lower thresholds so only the highest reached threshold can fire
+    for (int i = 0; i < best_idx; ++i) {
+      new_flags |= (1UL << i);
+    }
+  }
   main_quota_bytes = quota_bytes;
   if (start_date) {
     strncpy(quota_start_date, start_date, sizeof(quota_start_date) - 1);
@@ -356,6 +379,9 @@ void meter_set_main_quota(uint64_t quota_bytes, const char *start_date, const ch
   }
   meter_state_dirty = true;
   portEXIT_CRITICAL(&data_mux);
+  if (quota_changed) {
+    config_save_telegram_flags(new_flags);
+  }
   meter_save_usage();
 }
 
@@ -401,7 +427,31 @@ void meter_set_device_policy(const uint8_t mac[6], uint64_t quota_bytes, bool bl
   int idx = meter_find_policy_locked(mac, true);
   if (idx >= 0) {
     if (device_policies[idx].quota_bytes != quota_bytes) {
-      device_policies[idx].alert_flags = 0;
+      if (quota_bytes == 0) {
+        device_policies[idx].alert_flags = 0;
+      } else {
+        int u = meter_find_usage_locked(mac, false);
+        uint64_t cur_used = 0;
+        if (u >= 0) {
+          cur_used = meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) +
+                     meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+        }
+        uint32_t new_pct = (uint32_t)((cur_used * 100ULL) / quota_bytes);
+        uint8_t th_vals[16] = {0};
+        size_t th_cnt = parse_telegram_thresholds(telegram_thresholds, th_vals);
+        uint16_t kept_flags = 0;
+        int best_idx = -1;
+        for (size_t i = 0; i < th_cnt; ++i) {
+          if (new_pct >= (uint32_t)th_vals[i]) {
+            best_idx = (int)i;
+            kept_flags |= (device_policies[idx].alert_flags & (1U << i));
+          }
+        }
+        for (int i = 0; i < best_idx; ++i) {
+          kept_flags |= (1U << i);
+        }
+        device_policies[idx].alert_flags = kept_flags;
+      }
     }
     device_policies[idx].quota_bytes = quota_bytes;
     device_policies[idx].blocked = blocked;
@@ -542,15 +592,36 @@ void meter_add_device_quota(const uint8_t mac[6], int64_t add_bytes) {
   if (idx >= 0) {
     if (add_bytes <= 0) {
       device_policies[idx].quota_bytes = 0; // Unlimited
+      device_policies[idx].alert_flags = 0;
     } else {
       int u = meter_find_usage_locked(mac, false);
-      uint64_t cur_used = (u >= 0) ? (usage_records[u].upload_bytes + usage_records[u].download_bytes) : 0;
+      uint64_t cur_used = 0;
+      if (u >= 0) {
+        cur_used = meter_calc_scaled_bytes(usage_records[u].upload_bytes, router_meter_scale_pct, router_meter_scale_mode) +
+                   meter_calc_scaled_bytes(usage_records[u].download_bytes, router_meter_scale_pct, router_meter_scale_mode);
+      }
       uint64_t base_q = device_policies[idx].quota_bytes;
       // If device had no quota or already exceeded its old quota, add on top of max(base_q, cur_used) so it immediately gets the full added amount
       if (base_q < cur_used) base_q = cur_used;
-      device_policies[idx].quota_bytes = base_q + (uint64_t)add_bytes;
+      uint64_t new_q = base_q + (uint64_t)add_bytes;
+      device_policies[idx].quota_bytes = new_q;
+
+      uint32_t new_pct = (new_q > 0) ? (uint32_t)((cur_used * 100ULL) / new_q) : 0;
+      uint8_t th_vals[16] = {0};
+      size_t th_cnt = parse_telegram_thresholds(telegram_thresholds, th_vals);
+      uint16_t kept_flags = 0;
+      int best_idx = -1;
+      for (size_t i = 0; i < th_cnt; ++i) {
+        if (new_pct >= (uint32_t)th_vals[i]) {
+          best_idx = (int)i;
+          kept_flags |= (device_policies[idx].alert_flags & (1U << i));
+        }
+      }
+      for (int i = 0; i < best_idx; ++i) {
+        kept_flags |= (1U << i);
+      }
+      device_policies[idx].alert_flags = kept_flags;
     }
-    device_policies[idx].alert_flags = 0;
     device_policies[idx].blocked = false; // Auto-unblock immediately!
     policy_dirty = true;
     for (size_t s = 0; s < MAX_CLIENTS; ++s) {

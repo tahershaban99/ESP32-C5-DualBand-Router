@@ -523,18 +523,18 @@ async function refreshData() {
       }
     }
 
-    // Sync Telegram settings in both tabs
+    // Sync Telegram settings in both tabs (without overwriting unsaved user edits)
     if (data.tg_chat_id) {
       let c1 = document.getElementById('cfg_tg_chat_id');
       let c2 = document.getElementById('cfg_tg_chat_id_st');
-      if (c1 && !document.activeElement?.isSameNode(c1)) c1.value = data.tg_chat_id;
-      if (c2 && !document.activeElement?.isSameNode(c2)) c2.value = data.tg_chat_id;
+      if (c1 && !document.activeElement?.isSameNode(c1) && !c1.dataset.dirty) c1.value = data.tg_chat_id;
+      if (c2 && !document.activeElement?.isSameNode(c2) && !c2.dataset.dirty) c2.value = data.tg_chat_id;
     }
     if (data.tg_thresholds) {
       let t1 = document.getElementById('cfg_tg_thresholds');
       let t2 = document.getElementById('cfg_tg_thresholds_st');
-      if (t1 && !document.activeElement?.isSameNode(t1)) t1.value = data.tg_thresholds;
-      if (t2 && !document.activeElement?.isSameNode(t2)) t2.value = data.tg_thresholds;
+      if (t1 && !document.activeElement?.isSameNode(t1) && !t1.dataset.dirty) t1.value = data.tg_thresholds;
+      if (t2 && !document.activeElement?.isSameNode(t2) && !t2.dataset.dirty) t2.value = data.tg_thresholds;
     }
     if (data.tg_enable !== undefined) {
       let e1 = document.getElementById('cfg_tg_enable');

@@ -198,14 +198,14 @@
       <div class="form-group">
         <label>توكن البوت (Telegram Bot Token من BotFather):</label>
         <div class="pw-wrap">
-          <input id="cfg_tg_token_st" type="password" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" style="direction:ltr;text-align:left">
+          <input id="cfg_tg_token_st" type="password" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" oninput="this.dataset.dirty='1'" style="direction:ltr;text-align:left">
           <button type="button" class="pw-toggle" onclick="togglePwVis('cfg_tg_token_st',this)">👁️</button>
         </div>
       </div>
 
       <div class="form-group">
         <label>معرّف مدير الشبكة (Admin Chat ID - مفصول بفاصلة لأكثر من مشرف):</label>
-        <input id="cfg_tg_chat_id_st" type="text" placeholder="مثال: 12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" style="direction:ltr;text-align:left">
+        <input id="cfg_tg_chat_id_st" type="text" placeholder="مثال: 12345678, 98765432" title="يمكنك وضع أكثر من معرف مفصولاً بفاصلة" oninput="this.dataset.dirty='1'" style="direction:ltr;text-align:left">
       </div>
 
       <div class="form-group">
@@ -216,8 +216,8 @@
 
       <div class="form-group">
         <label>نسب التنبيه المتعددة عند الاستهلاك (Alert Thresholds %):</label>
-        <input id="cfg_tg_thresholds_st" type="text" value="50,75,90,95" placeholder="50,75,90,95" style="direction:ltr;text-align:center">
-        <small style="font-size:0.75rem;color:var(--muted)">افصل بين النسب بفاصلة (مثال: 50,75,90,95) للتنبيه عند كل حد لمرة واحدة خلال الدورة.</small>
+        <input id="cfg_tg_thresholds_st" type="text" value="50,75,90,95,100" placeholder="50,75,90,95,100" oninput="this.dataset.dirty='1'" style="direction:ltr;text-align:center">
+        <small style="font-size:0.75rem;color:var(--muted)">افصل بين النسب بفاصلة (مثال: 50,75,90,95,100) للتنبيه عند كل حد لمرة واحدة خلال الدورة.</small>
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap">
