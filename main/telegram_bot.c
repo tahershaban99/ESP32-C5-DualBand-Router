@@ -2279,8 +2279,13 @@ static void send_admin_status_report(const char *chat_id, int64_t edit_msg_id,
   free(kb);
 }
 
-static void telegram_ack_offset_before_reboot(void) {
-  if (!telegram_token[0] || last_update_id <= 0)
+static void telegram_ack_offset_before_reboot(int64_t target_update_id) {
+  int64_t up_id = (target_update_id > 0) ? target_update_id : last_update_id;
+  if (up_id > 0) {
+    config_save_telegram_last_update_id(up_id + 1);
+    last_update_id = up_id;
+  }
+  if (!telegram_token[0] || up_id <= 0)
     return;
   if (!tg_http_lock(pdMS_TO_TICKS(5000)))
     return;
@@ -2289,7 +2294,7 @@ static void telegram_ack_offset_before_reboot(void) {
   snprintf(url, sizeof(url),
            "https://api.telegram.org/bot%s/getUpdates?offset=%" PRIi64
            "&timeout=0&limit=1",
-           telegram_token, last_update_id + 1);
+           telegram_token, up_id + 1);
 
   tg_perform_request_locked(url, HTTP_METHOD_GET, NULL, 4000, NULL, NULL, NULL);
   tg_close_persistent_client_locked();
@@ -2310,6 +2315,14 @@ static void telegram_task(void *pvParameters) {
     ESP_LOGE(TG_TAG, "Failed to allocate memory for Telegram rx buffer");
     vTaskDelete(NULL);
     return;
+  }
+
+  // Restore persistent last_update_id from NVS across reboots
+  int64_t saved_up_id = config_get_telegram_last_update_id();
+  if (saved_up_id > last_update_id) {
+    last_update_id = saved_up_id;
+    ESP_LOGI(TG_TAG, "Restored Telegram last_update_id from NVS: %" PRIi64,
+             last_update_id);
   }
 
   while (true) {
@@ -2748,16 +2761,24 @@ static void telegram_task(void *pvParameters) {
                                                "🔄 جاري إعادة التشغيل...");
                 answered_toast = true;
               }
-              // Acknowledge update offset with Telegram BEFORE rebooting so
-              // Telegram never re-sends reboot_confirm on next boot!
-              telegram_ack_offset_before_reboot();
+              // Immediately disable the confirmation button in Telegram chat to prevent double-taps
+              if (cb_msg_id > 0) {
+                telegram_edit_or_send_with_keyboard(
+                    cb_sender, cb_msg_id,
+                    "🔄 <b>تم استلام أمر إعادة التشغيل...</b>\n\n"
+                    "⏳ جاري حفظ العدادات وإعادة تشغيل الراوتر الآن.",
+                    NULL);
+              }
+              // Advance update offset persistently before reboot so Telegram never re-sends this update
+              int64_t target_up = (candidate_up_id > last_update_id) ? candidate_up_id : (last_update_id > 0 ? last_update_id : up_id);
+              telegram_ack_offset_before_reboot(target_up);
               telegram_send_message_with_keyboard(
                   cb_sender,
                   "🔄 <b>جاري حفظ العدادات وإعادة تشغيل الراوتر الآن "
                   "بأمان...</b>",
                   TG_ADMIN_KEYBOARD);
               meter_save_usage();
-              vTaskDelay(pdMS_TO_TICKS(1000));
+              vTaskDelay(pdMS_TO_TICKS(1200));
               esp_restart();
             } else if (strcmp(cb_data, "ota_check") == 0 && is_cb_admin) {
               if (cb_id[0]) {
@@ -2783,7 +2804,8 @@ static void telegram_task(void *pvParameters) {
                                                "🚀 جاري بدء تحميل التحديث...");
                 answered_toast = true;
               }
-              telegram_ack_offset_before_reboot();
+              int64_t target_up = (candidate_up_id > last_update_id) ? candidate_up_id : (last_update_id > 0 ? last_update_id : up_id);
+              telegram_ack_offset_before_reboot(target_up);
               telegram_send_message_with_keyboard(
                   cb_sender,
                   "⏳ <b>جاري تنزيل الفيرموير وتحديث الراوتر هوائياً...</b>\n\n"

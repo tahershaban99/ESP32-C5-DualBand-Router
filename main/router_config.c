@@ -575,6 +575,25 @@ bool config_get_scheduled_reboot_flag(void) {
   return (flag != 0);
 }
 
+void config_save_telegram_last_update_id(int64_t update_id) {
+  nvs_handle_t nvs;
+  if (nvs_open("router", NVS_READWRITE, &nvs) == ESP_OK) {
+    nvs_set_i64(nvs, "tg_up_id", update_id);
+    nvs_commit(nvs);
+    nvs_close(nvs);
+  }
+}
+
+int64_t config_get_telegram_last_update_id(void) {
+  nvs_handle_t nvs;
+  int64_t update_id = 0;
+  if (nvs_open("router", NVS_READONLY, &nvs) == ESP_OK) {
+    nvs_get_i64(nvs, "tg_up_id", &update_id);
+    nvs_close(nvs);
+  }
+  return update_id;
+}
+
 void config_save_ota_auto_update(bool enabled) {
   ota_auto_update_enabled = enabled;
   nvs_handle_t nvs;

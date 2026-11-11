@@ -53,6 +53,8 @@ void config_save_auto_reboot(bool enabled, uint8_t hour, uint8_t min,
                              int8_t tz);
 void config_set_scheduled_reboot_flag(bool flag);
 bool config_get_scheduled_reboot_flag(void);
+void config_save_telegram_last_update_id(int64_t update_id);
+int64_t config_get_telegram_last_update_id(void);
 void config_save_ota_auto_update(bool enabled);
 void config_save_telegram(bool enabled, bool interactive, const char *token,
                           const char *chat_id, const char *thresholds);

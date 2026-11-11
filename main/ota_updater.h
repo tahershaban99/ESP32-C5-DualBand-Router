@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 
-#define ROUTER_FIRMWARE_VERSION "v3.7.8"
+#define ROUTER_FIRMWARE_VERSION "v3.7.9"
 #define ROUTER_BUILD_TIMESTAMP __DATE__ " " __TIME__
 
 typedef enum {
